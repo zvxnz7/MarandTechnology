@@ -33,4 +33,5 @@ wykonuje kopię bazy i w razie błędu wraca do poprzedniego programu.
 Nie umieszczaj w repozytorium live bazy SQLite, folderu data ani pliku
 data/secret.key. Repo zawiera kod i wybrane źródłowe dane pilota.
 
-Uruchomienie serwerowe, aktualizacje i kopie są opisane w DLA_INFORMATYKA.txt.
+Najprostsze uruchomienie serwerowe: pobierz repozytorium jako ZIP, rozpakuj je
+na Windows Server i uruchom INSTALL_SERVER.cmd. Instrukcja: SERVER_QUICKSTART.md.

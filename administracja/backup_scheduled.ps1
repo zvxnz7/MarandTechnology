@@ -1,7 +1,7 @@
 param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
 $ErrorActionPreference='Stop'
 $Cfg=Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
-$Node=(Get-Command node.exe -ErrorAction Stop).Source
+$Node=if ($Cfg.node_path -and (Test-Path -LiteralPath $Cfg.node_path -PathType Leaf)) { [IO.Path]::GetFullPath($Cfg.node_path) } else { (Get-Command node.exe -ErrorAction Stop).Source }
 $Data=[IO.Path]::GetFullPath($Cfg.data_dir)
 $Program=[IO.Path]::GetFullPath($Cfg.program_dir)
 $BackupRoot=[IO.Path]::GetFullPath($Cfg.backup_dir)

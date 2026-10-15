@@ -5,7 +5,7 @@
   "runtime": "node>=24.15",
   "files": {
     "manage.js": "aacdabf99467fa33cb33cead45f4c92fc9613697ba5a0fd7b6635479624118cd",
-    "NODE_SETUP.md": "6c711e6cbcda1bb7e50ac4173c4abc06a859dbc15d804127f19e35e69febab73",
+    "NODE_SETUP.md": "e106f969c3e9838046e8785d1ce1de4e5c2abc52b82a5ef4a8d1ce77c186f2c0",
     "package.json": "5ce41c0ea4add9824eca83a4985bbaf6e35fab5d80a0db8498e079d6b752912b",
     "schema.sql": "5a3a45c2b89dbc0edc2537f51941369fd33713c08a61ac781831b3288517e864",
     "seed/data.json": "aff2abc6cdf413b44cb73d03364065573b7aadca35f001ad359a46211522ce69",

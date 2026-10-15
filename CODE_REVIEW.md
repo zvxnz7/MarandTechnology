@@ -58,15 +58,11 @@ Node.js.
 
 ## Deployment items still needed
 
-- The supplied repository, `https://github.com/zvxnz7/MarandTechnology`, still
-  returned 404 through the connected GitHub account on 15 October 2026, and
-  this workspace has no `.git` remote. It may be private without app access or
-  still be getting created. Do not push the source documents until repository
-  visibility and access are confirmed.
-- Before using the update button on a server, configure the service paths,
-  copy `administracja/updater.js` and `konfiguracja.json` outside the program
-  directory, and set `MARAND_UPDATER`, `MARAND_UPDATE_CONFIG`, and (for a
-  private repo) a read-only `MARAND_GITHUB_TOKEN` in the service environment.
+- The private repository is now connected as `origin/main` in this workspace.
+- `INSTALL_SERVER.cmd` installs the Node app as a Windows scheduled task,
+  configures daily backups, copies the updater outside the program directory,
+  and supports private GitHub read-only access through a DPAPI-protected token.
+  See `SERVER_QUICKSTART.md` for initial server setup.
 - The Python tests have not been ported or run against the Node.js version.
   The app should be validated against a copy of the existing database before
   using it for production records.

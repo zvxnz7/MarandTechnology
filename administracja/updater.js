@@ -82,8 +82,17 @@ function verifyPackage(stage, expectedVersion, expectedSha) {
   }
   return release;
 }
-function powerShellService(config, action) {
+function powerShellService(config, action, configPath) {
   if (!config.service_name) throw new Error('Brak nazwy usługi w konfiguracji aktualizatora.');
+  if (config.service_type === 'scheduled-task') {
+    const controller = path.join(path.dirname(configPath), 'control-server.ps1');
+    if (!fs.existsSync(controller)) throw new Error('Brak control-server.ps1 obok aktualizatora.');
+    execFileSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', controller,
+      '-Action', action, '-ConfigPath', configPath,
+    ], { stdio: 'ignore', windowsHide: true, timeout: 90000 });
+    return;
+  }
   const script = "$ErrorActionPreference='Stop'; $s=Get-Service -Name $env:MARAND_SERVICE_NAME; if ($env:MARAND_SERVICE_ACTION -eq 'stop') { if ($s.Status -ne 'Stopped') { Stop-Service -InputObject $s -ErrorAction Stop; $s.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60)) } } else { if ($s.Status -ne 'Running') { Start-Service -InputObject $s -ErrorAction Stop; $s.WaitForStatus('Running',[TimeSpan]::FromSeconds(60)) } }";
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
     env: { ...process.env, MARAND_SERVICE_NAME: config.service_name, MARAND_SERVICE_ACTION: action },
@@ -170,7 +179,7 @@ async function update(packagePath, version, expectedSha) {
     await preserveHistoricalSources(config.program_dir, stage);
     await backupDatabase(config, backupPath);
     atomicJson(path.join(config.data_dir, 'maintenance.json'), { since: stamp, target: version }); maintenance = true;
-    powerShellService(config, 'stop'); stopped = true;
+    powerShellService(config, 'stop', configPath); stopped = true;
     rejectSymlinks(config.program_dir);
     await fsp.cp(config.program_dir, previous, { recursive: true, errorOnExist: true, force: false, dereference: false });
     const oldWorking = path.join(tempRoot, 'old');
@@ -178,7 +187,7 @@ async function update(packagePath, version, expectedSha) {
     try { await fsp.rename(stage, config.program_dir); }
     catch (error) { await fsp.rename(oldWorking, config.program_dir); throw error; }
     swapped = true;
-    powerShellService(config, 'start'); stopped = false;
+    powerShellService(config, 'start', configPath); stopped = false;
     await checkHealth(config, version);
     atomicJson(path.join(config.data_dir, 'update_status.json'), { ok: true, version, at: stamp, previous_program: previous, backup: backupPath });
     fs.rmSync(path.join(config.data_dir, 'maintenance.json'), { force: true }); maintenance = false;
@@ -188,12 +197,12 @@ async function update(packagePath, version, expectedSha) {
     let rollbackError = null;
     try {
       if (swapped) {
-        if (!stopped) { powerShellService(config, 'stop'); stopped = true; }
+        if (!stopped) { powerShellService(config, 'stop', configPath); stopped = true; }
         const failed = path.join(config.releases_dir, `FAILED-${version}-${stamp}`);
         if (fs.existsSync(config.program_dir)) await fsp.rename(config.program_dir, failed);
         await fsp.cp(previous, config.program_dir, { recursive: true, errorOnExist: true, force: false, dereference: false });
       }
-      if (stopped) { powerShellService(config, 'start'); stopped = false; }
+      if (stopped) { powerShellService(config, 'start', configPath); stopped = false; }
       await checkHealth(config, oldRelease.version);
       if (maintenance) { fs.rmSync(path.join(config.data_dir, 'maintenance.json'), { force: true }); maintenance = false; }
     } catch (restoreError) { rollbackError = restoreError.message; }
