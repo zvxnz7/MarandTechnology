@@ -1,0 +1,36 @@
+MARAND — TECHNOLOGIA I ROZWÓJ
+Wersja Node.js 0.2.0 · 15 października 2026
+
+CO ZAWIERA PILOT
+Działająca aplikacja z logowaniem i rolami, projektami, próbami i wariantami,
+roboczymi specyfikacjami, zatwierdzaniem, wersjonowaniem, historią zmian
+i niezmiennymi kartami na maszyny. Dane są w SQLite.
+
+Node.js zastępuje Pythona podczas uruchamiania aplikacji i obsługi bazy.
+Istniejącą bazę i hasła użytkowników można zachować. Nie są wymagane pakiety
+NPM ani Python na serwerze. Używaj Node.js 24.15 lub nowszego.
+
+URUCHOMIENIE NA WINDOWS
+1. Zainstaluj Node.js 24.15 lub nowszy.
+2. Rozpakuj cały folder programu na lokalnym dysku.
+3. Uruchom START_WINDOWS.cmd.
+4. Przy pierwszym uruchomieniu utwórz konto administratora i własne hasło
+   o długości co najmniej 12 znaków. Hasło nie jest widoczne podczas wpisywania.
+5. Otwórz http://127.0.0.1:8765.
+6. Nie zamykaj okna programu podczas pracy. Zakończenie: Ctrl+C.
+
+Na istniejącym pilocie pozostaw folder data bez zmian. Program nie nadpisuje
+istniejącej bazy ani haseł. Zrób zweryfikowaną kopię przed przeniesieniem
+programu na inny komputer.
+
+AKTUALIZACJE Z GITHUB
+Administrator aplikacji otwiera „Sprawdź aktualizacje”. Przycisk pojawi się
+w panelu aktualizacji, gdy informatyk skonfiguruje repozytorium, usługę i
+aktualizator w osobnym folderze administracja. Wydania powstają po wypchnięciu
+tagu vX.Y.Z. Aplikacja pobiera archiwum wydania z GitHub, sprawdza SHA-256,
+wykonuje kopię bazy i w razie błędu wraca do poprzedniego programu.
+
+Nie umieszczaj w repozytorium live bazy SQLite, folderu data ani pliku
+data/secret.key. Repo zawiera kod i wybrane źródłowe dane pilota.
+
+Uruchomienie serwerowe, aktualizacje i kopie są opisane w DLA_INFORMATYKA.txt.

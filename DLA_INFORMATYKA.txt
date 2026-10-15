@@ -1,0 +1,76 @@
+MARAND — INSTALACJA NODE.JS, AKTUALIZACJE I KOPIE
+Wersja 0.2.0 | 15.10.2026
+
+WYMAGANIA
+Windows Server, Node.js 24.15 lub nowszy, dostęp HTTPS albo zaufana sieć VPN.
+Nie jest potrzebny Python ani pakiet npm. SQLite jest częścią Node.js.
+
+ZALECANY UKŁAD
+C:\Marand\Technologia\program               kod aplikacji
+C:\Marand\Technologia\dane                  baza i klucz sesji
+C:\Marand\Technologia\administracja         aktualizator poza programem
+C:\Marand\Technologia\poprzednie_wersje     kopie kodu sprzed aktualizacji
+D:\Kopie\Marand-Technologia                 kopie bazy
+
+Foldery program, dane i administracja nie mogą być zagnieżdżone. Konto usługi
+Node.js potrzebuje odczytu programu, zapisu danych oraz odczytu źródeł. Konto
+aktualizatora musi móc zatrzymać i uruchomić usługę, zapisać backup oraz
+podmienić folder programu. Ogranicz dostęp do secret.key i kopii bazy.
+
+PIERWSZA INSTALACJA
+1. Skopiuj pliki aplikacji do program. Nie kopiuj bieżącego folderu data z
+   pilota produkcyjnego na serwer, jeśli dane mają być przeniesione osobno.
+2. Skopiuj administracja poza program. Zmień konfiguracja.przyklad.json na
+   konfiguracja.json i wpisz rzeczywiste ścieżki oraz nazwę usługi Windows.
+3. Ustaw dla usługi Node.js MARAND_DATA, MARAND_HOST=127.0.0.1 i MARAND_PORT.
+   Dla HTTPS ustaw MARAND_HTTPS=1; zakończenie TLS powinno być skonfigurowane
+   przez administratora serwera lub reverse proxy.
+4. Jeśli przenosisz istniejącą bazę, skopiuj ją do dane/marand.sqlite3 przed
+   uruchomieniem init. Wykonaj osobny backup przed pierwszym uruchomieniem.
+5. Uruchom z folderu program: node manage.js init. Polecenie nie zastępuje
+   istniejących danych. Jeśli administratora brakuje, poprosi o utworzenie.
+6. Skonfiguruj usługę Windows, aby uruchamiała node manage.js run --host
+   127.0.0.1 --port 8765. Nie wystawiaj portu aplikacji bezpośrednio do
+   publicznego Internetu.
+7. Utwórz pierwszą kopię: administracja\KOPIA.cmd.
+
+HASŁA I SESJE
+Node.js rozpoznaje hashe scrypt z pilota Python/Werkzeug i zachowuje bieżące
+konta. Hasła nie są przenoszone do plików konfiguracyjnych. Po zmianie runtime
+użytkownicy logują się ponownie; sesje przeglądarek są nowe.
+
+KOPIE BAZY
+Node manage.js backup --output <nowa-ścieżka.sqlite3> wykonuje spójną kopię
+SQLite i sprawdza jej integralność. administracja\ZAINSTALUJ_BACKUP.ps1
+konfiguruje codzienną kopię o 22:00, 14 kopii dziennych i zapis statusu w
+dane\backup_status.json. Kopie nie są szyfrowane: ogranicz uprawnienia
+folderu oraz utrzymuj dodatkową kopię poza serwerem. Harmonogram trzeba
+zainstalować na serwerze i sprawdzić jego wynik.
+
+AKTUALIZACJE Z GITHUB
+Repozytorium aplikacji ustawia się jako MARAND_GITHUB_REPO=owner/repo w
+środowisku usługi. Dla prywatnego repozytorium ustaw MARAND_GITHUB_TOKEN na
+osobny token wyłącznie do odczytu zawartości/release. Nie zapisuj tokenu w
+konfiguracja.json ani w Git.
+
+Ustaw MARAND_UPDATER na bezwzględną ścieżkę kopii updater.js poza programem,
+a MARAND_UPDATE_CONFIG na ścieżkę konfiguracja.json w tym samym folderze
+administracja. Po wydaniu tagu vX.Y.Z GitHub Actions publikuje
+marand-node-release.zip. Administrator aplikacji otwiera „Sprawdź
+aktualizacje” i wybiera instalację.
+
+Aktualizator sprawdza sumę SHA-256 pliku i każdego pliku manifestu, odrzuca
+zmianę schematu bazy, robi kopię SQLite, zatrzymuje usługę, podmienia kod i
+sprawdza /healthz. Baza i klucz sesji pozostają w osobnym katalogu. Jeżeli
+nowy program nie przejdzie kontroli, aktualizator przywraca poprzedni program.
+Przy błędzie aktualizacji sprawdź dane/update_status.json i maintenance.json.
+
+PANEL PODGLĄDU
+Plik PODGLAD.html jest historycznym widokiem bez zapisu. Używaj aplikacji
+Node.js, aby pracować na aktualnej bazie.
+
+BEZPIECZEŃSTWO REPOZYTORIUM
+Nie dodawaj do GitHub folderu data, secret.key, działającej bazy, tokenów, plików
+konfiguracji produkcyjnej ani kopii zapasowych. .gitignore obejmuje data i
+pliki SQLite. Repo jest źródłem kodu i wybranych danych pilota, a nie kopią
+produkcyjnej instalacji.

@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "schema": 1,
+  "protocol": 2,
+  "runtime": "node>=24.15",
+  "files": {
+    "manage.js": "aacdabf99467fa33cb33cead45f4c92fc9613697ba5a0fd7b6635479624118cd",
+    "NODE_SETUP.md": "6c711e6cbcda1bb7e50ac4173c4abc06a859dbc15d804127f19e35e69febab73",
+    "package.json": "5ce41c0ea4add9824eca83a4985bbaf6e35fab5d80a0db8498e079d6b752912b",
+    "schema.sql": "5a3a45c2b89dbc0edc2537f51941369fd33713c08a61ac781831b3288517e864",
+    "seed/data.json": "aff2abc6cdf413b44cb73d03364065573b7aadca35f001ad359a46211522ce69",
+    "seed/sources/02edc791aa4328f4.odt": "02edc791aa4328f4b5e2c9d22a185b6902c5c944af09fd1ebf546722ac559bae",
+    "seed/sources/0b645915dbad2078.odt": "0b645915dbad20782cdd9dee76e6c22f559aeb4fbea012462ddfd22e6d4a8d6e",
+    "seed/sources/355fb04f5f96648e.odt": "355fb04f5f96648e94bf4924138a50c83c1b11e1269300f5df184c8f85d6d249",
+    "seed/sources/38e175dcbe58b725.odt": "38e175dcbe58b72548bcbad4b13d3080948575bb01674b7949340727bc7b6e72",
+    "seed/sources/4d436d4ec88253c5.docx": "4d436d4ec88253c51b42593b0e5eb67dfb310314ec323ba58c8226a4b910aef5",
+    "seed/sources/4dc5cfffd2f26e54.odt": "4dc5cfffd2f26e545c004e2e9f90a166c0849b2865d6730e371a129a7be5e12a",
+    "seed/sources/68a65c9c29ba057b.docx": "68a65c9c29ba057b703d5afd6debbf3ef2df2a3637a8fdab55b89ca7c130a185",
+    "seed/sources/6b61343c61d1fd8b.odt": "6b61343c61d1fd8b91c901ec983a951fdb5cb0dea385b70b159ed686699688d1",
+    "seed/sources/6de9bf4be68b9862.odt": "6de9bf4be68b9862a0ece55aa774e5d92c1a51bbb6b4fa6084aadd7b29d12301",
+    "seed/sources/8f1227a0e2abeb48.odt": "8f1227a0e2abeb48e6e473028b28ce9bdfe86f89aae743457ae9a80f1d792513",
+    "seed/sources/9a5fa1f1900846e5.docx": "9a5fa1f1900846e5f17c93693ea58e89592b3d748c39f12d1abbbd91acf6402f",
+    "seed/sources/a3956c00e7b6831f.odt": "a3956c00e7b6831f0ae4d5e3fd04c4846e0a4a2ff1d31ba40b4d5d18a141e99f",
+    "seed/sources/d85d76e5fc611c5d.odt": "d85d76e5fc611c5dae291853901e357367dc059edb963064f349d5a8249dff7e",
+    "seed/sources/e1f7b76bcdeadea4.odt": "e1f7b76bcdeadea41e811838f513372772b9fdcffeb3d84f2ee7eba7f07f6106",
+    "server.js": "4d8415555a4e1b457d82a33f0af64702405283f7033eff895ebf11ae43aff258",
+    "static/app.css": "33fdb14765b1fecf8f9b1f36c2d06f13b039ee14f594088df8e3a4f983808e9f",
+    "static/app.js": "98cdd6f4692cb952b2548432abb5343b0068460bc95747c80cdbd0506f055007",
+    "static/card.css": "68e2fcff4085b2e2d8fcde9d20da9363e7d75d9a9ce7d6a01fabc02f7641ed08",
+    "static/logo.jpg": "0f09df11b009f14e2c628bf1ab84bb32f458b79b646a6236ad171e173f3fc86f",
+    "views.js": "e6bfdfb3c769ae46e406a6676464097e12e4fdaaae8b175e260bb3f3e87b2d5f"
+  }
+}

@@ -1,0 +1,15 @@
+.venv/
+data/
+PODGLAD.html
+__pycache__/
+.pytest_cache/
+*.sqlite3*
+.release/
+release/
+node_modules/
+.env
+.env.*
+!.env.example
+administracja/konfiguracja.json
+*.log
+marand-node-release.zip

@@ -1,0 +1,22 @@
+OPERACJE NODE.JS — MARAND
+
+Aktualna instrukcja instalacji i aktualizacji jest w pliku
+DLA_INFORMATYKA.txt w głównym folderze projektu.
+
+KOPIA BAZY
+Uruchom KOPIA.cmd. Skrypt tworzy spójną kopię SQLite, sprawdza jej
+integralność i zapisuje status widoczny w aplikacji dla administratora.
+ZAINSTALUJ_BACKUP.ps1 konfiguruje codzienny harmonogram.
+
+AKTUALIZACJA
+Zaloguj się jako administrator aplikacji i wybierz „Sprawdź aktualizacje”.
+Wybierz instalację dostępnego stabilnego wydania. Aktualizator sprawdza
+sumy SHA-256, kopiuje bazę, zatrzymuje usługę, podmienia program i sprawdza
+uruchomienie. W razie błędu przywraca poprzedni program.
+
+Do aktualizacji przez interfejs potrzebna jest zewnętrzna kopia updater.js
+oraz konfiguracja.json w folderze administracja poza program_dir.
+
+Pliki maintenance.py i server.py w repozytorium należą do pilota Python 0.1.1.
+Node.js nie uruchamia tych plików. Serwer korzysta z manage.js, server.js i
+updater.js; nie instaluj Pythona na serwerze dla tej aplikacji.

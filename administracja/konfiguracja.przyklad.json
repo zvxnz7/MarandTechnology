@@ -1,0 +1,9 @@
+{
+  "program_dir": "C:\\Marand\\Technologia\\program",
+  "data_dir": "C:\\Marand\\Technologia\\dane",
+  "backup_dir": "D:\\Kopie\\Marand-Technologia",
+  "releases_dir": "C:\\Marand\\Technologia\\poprzednie_wersje",
+  "service_name": "MarandTechnologia",
+  "health_url": "http://127.0.0.1:8765/healthz",
+  "daily_keep": 14
+}

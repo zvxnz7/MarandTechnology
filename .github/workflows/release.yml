@@ -1,0 +1,30 @@
+name: Build Node.js release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare release files
+        run: node tools/build-release.js "$GITHUB_REF_NAME" release
+      - name: Create release archive
+        run: |
+          cd release
+          zip -r ../marand-node-release.zip .
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" marand-node-release.zip --title "$GITHUB_REF_NAME" --generate-notes
