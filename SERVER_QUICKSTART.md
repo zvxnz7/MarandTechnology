@@ -30,17 +30,23 @@ backups go to `D:\Kopie\Marand-Technologia` when D: exists (otherwise to
 then daily at 22:00.
 
 The web app starts in the background at Windows startup. On the server itself,
-open <http://127.0.0.1:8765>. Use `administracja\STOP_SERVER.cmd`,
-`START_SERVER.cmd`, and `STATUS_SERVER.cmd` to control or inspect it.
+open <http://127.0.0.1:8765>. The installer also prints one or more LAN addresses;
+on another computer connected to the same local subnet, open
+`http://SERVER-LAN-IP:8765` (replace `SERVER-LAN-IP` with the address it printed).
+Use `administracja\STOP_SERVER.cmd`, `START_SERVER.cmd`, and
+`STATUS_SERVER.cmd` to control or inspect it.
 
 ## Access from other computers
 
-The installer binds the app to localhost. That keeps the login and data private
-while the server is first set up. To use it from staff devices, put it behind
-HTTPS or a trusted VPN first. Do not change the host to `0.0.0.0` or open port
-8765 to the public Internet. Once the HTTPS/VPN endpoint is known, set
-`https` to `true` in `C:\Marand\Technologia\administracja\server-settings.json`
-when TLS terminates at a reverse proxy, then restart the task.
+The app listens on the server's network interfaces. The installer adds a Windows
+Firewall rule for TCP 8765 that applies only to the **Private** or authenticated
+**Domain** network profile and devices on the **local subnet**. If another
+computer cannot connect, check that Windows classifies the server's LAN
+connection as Private or Domain, then confirm the address with `ipconfig`. Do
+not create a router port-forward for 8765 or expose
+this HTTP service to the Internet. HTTP does not encrypt passwords or session
+cookies on the network; use this only on a trusted LAN. For remote access, use a
+VPN or an HTTPS reverse proxy.
 
 ## GitHub updates
 

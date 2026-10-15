@@ -133,7 +133,7 @@ $Settings = [ordered]@{
     program_dir = $ProgramDir
     data_dir = $DataDir
     node_path = $NodePath
-    host = '127.0.0.1'
+    host = '0.0.0.0'
     port = 8765
     https = $false
     github_repo = $Repo
@@ -199,6 +199,16 @@ $BackupTrigger = New-ScheduledTaskTrigger -Daily -At '22:00'
 $BackupSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 15) -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 Register-ScheduledTask -TaskName $BackupTaskName -Action $BackupAction -Trigger $BackupTrigger -Principal $Principal -Settings $BackupSettings -Description 'Marand Technologia daily SQLite backup' -Force | Out-Null
 
+# Permit access only from the local subnet on Private or authenticated Domain networks.
+# Do not open this port on Public networks or to the public Internet.
+$FirewallRuleName = 'MarandTechnologia-LAN-8765'
+Get-NetFirewallRule -Name $FirewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -Name $FirewallRuleName `
+    -DisplayName 'Marand Technologia (private LAN only)' `
+    -Description 'Allows TCP 8765 only from the local subnet on Private or Domain network profiles.' `
+    -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8765 `
+    -Profile Private,Domain -RemoteAddress LocalSubnet -EdgeTraversalPolicy Block | Out-Null
+
 Remove-Item -LiteralPath (Join-Path $AdminDir 'stop.request') -Force -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName $TaskName
 $HealthUrl = 'http://127.0.0.1:8765/healthz'
@@ -217,13 +227,30 @@ if (!$Healthy) {
 }
 
 Write-Host ''
-Write-Host 'Server address: http://127.0.0.1:8765'
+$LanAddresses = @()
+$UpInterfaceIndexes = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up' | Select-Object -ExpandProperty ifIndex)
+if ($UpInterfaceIndexes.Count -gt 0) {
+    $LanAddresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.InterfaceIndex -in $UpInterfaceIndexes -and $_.AddressState -eq 'Preferred' -and
+            ($_.IPAddress -match '^10\.' -or $_.IPAddress -match '^192\.168\.' -or $_.IPAddress -match '^172\.(1[6-9]|2\d|3[01])\.')
+        } |
+        Select-Object -ExpandProperty IPAddress -Unique)
+}
+Write-Host 'On the server: http://127.0.0.1:8765'
+if ($LanAddresses.Count -gt 0) {
+    Write-Host 'From another computer on the same local subnet:'
+    foreach ($Address in $LanAddresses) { Write-Host "  http://${Address}:8765" -ForegroundColor Green }
+} else {
+    Write-Host 'Could not find a LAN IPv4 address. Run ipconfig on the server to find it.' -ForegroundColor Yellow
+}
 Write-Host "Data: $DataDir"
 Write-Host "Backups: $BackupDir (daily at 22:00)"
 Write-Host "Update page: repo $Repo; releases require a vX.Y.Z tag."
 if (!(Test-Path -LiteralPath (Join-Path $AdminDir 'github-token.dpapi'))) {
     Write-Host 'Private repo token was skipped. The update page cannot read releases until a token is configured.' -ForegroundColor Yellow
 }
-Write-Host 'The app is only available on this server. Configure HTTPS or a trusted VPN before accessing it from other devices.'
+Write-Host 'LAN access is limited by Windows Firewall to the LocalSubnet on Private or Domain network profiles.'
+Write-Host 'Use only on a trusted LAN; do not forward TCP 8765 from your router to the Internet.'
 Write-Host ''
 Read-Host 'Press Enter to close'
