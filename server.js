@@ -253,6 +253,16 @@ async function startGithubUpdate(req) {
     cwd: path.dirname(updater), detached: true, windowsHide: true, stdio: 'ignore',
     env: { ...process.env, MARAND_UPDATE_CONFIG: process.env.MARAND_UPDATE_CONFIG || '' },
   });
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = error => reject(error);
+      child.once('error', onError);
+      child.once('spawn', () => { child.removeListener('error', onError); resolve(); });
+    });
+  } catch (error) {
+    try { await fsp.rm(packagePath, { force: true }); } catch {}
+    throw new Error(`Nie udało się uruchomić aktualizatora: ${error.message}`);
+  }
   child.unref();
   return { version: remoteVersion };
 }

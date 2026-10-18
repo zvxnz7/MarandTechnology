@@ -8,9 +8,18 @@ const crypto = require('node:crypto');
 const ROOT = path.resolve(__dirname, '..');
 const versionArg = process.argv[2] || '';
 const version = versionArg.replace(/^v/, '');
-if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Usage: node tools/build-release.js vX.Y.Z [output-folder]');
-const OUT = path.resolve(process.argv[3] || path.join(ROOT, '.release', version));
-if (OUT === ROOT || !OUT.startsWith(ROOT + path.sep)) throw new Error('Output folder must stay inside this project.');
+if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Usage: node tools/build-release.js vX.Y.Z [release|.release/version]');
+const DEFAULT_OUT = path.join(ROOT, '.release', version);
+const CI_OUT = path.join(ROOT, 'release');
+const OUT = path.resolve(process.argv[3] || DEFAULT_OUT);
+const pathKey = value => process.platform === 'win32' ? value.toLowerCase() : value;
+const allowedOutputs = new Set([DEFAULT_OUT, CI_OUT].map(pathKey));
+if (!allowedOutputs.has(pathKey(OUT))) throw new Error('Output must be the default version folder or the project release folder.');
+for (let current = OUT; current !== ROOT; current = path.dirname(current)) {
+  const relative = path.relative(ROOT, current);
+  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) throw new Error('Output folder must stay inside this project.');
+  if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) throw new Error('Output path cannot contain a symbolic link.');
+}
 const FILES = [
   'server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql',
   'NODE_SETUP.md', 'static/app.css', 'static/app.js', 'static/card.css', 'static/logo.jpg', 'seed/data.json',
@@ -41,11 +50,6 @@ async function main() {
   const packageJson = JSON.parse(await fsp.readFile(packagePath, 'utf8'));
   packageJson.version = version;
   await fsp.writeFile(packagePath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
-  const sources = await filesUnder(path.join(ROOT, 'seed', 'sources'));
-  for (const file of sources) {
-    const relative = path.relative(ROOT, file).split(path.sep).join('/');
-    await copyFile(relative);
-  }
   const packaged = await filesUnder(OUT);
   const manifest = {
     version,

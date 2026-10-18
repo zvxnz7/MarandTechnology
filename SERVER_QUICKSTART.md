@@ -15,8 +15,8 @@ configures the app's GitHub release updater.
    install Node.js LTS manually, then run the installer again.
 3. If you already have a live SQLite database, enter the path to its
    `marand.sqlite3` when asked. Keep `secret.key` beside that database if you want
-   existing user sessions to keep the same signing key. Press Enter to make a new
-   seeded database instead.
+   existing user sessions to keep the same signing key. Press Enter to create a
+   new, empty database instead.
 4. At the first-run prompt, create the app administrator login and password.
 5. The repository is public, so press Enter at the optional GitHub token prompt.
    A token is only needed if the repository is made private later.
@@ -61,5 +61,8 @@ stable release automatically after each push to `main`. Once the action
 finishes, an administrator can open **Aktualizacje GitHub** in the app and
 install the newer version. No token is needed while the repository is public.
 
-The GitHub repository contains code, not production data. Do not commit the
-server's `dane` folder, SQLite database, session key, backups, or token.
+Fresh installs start with an empty project list. Existing database contents are
+kept when updating or reinstalling the program. The current source tree and new
+release packages omit customer records and original source documents. Earlier Git
+commits or published releases may still contain them. Do not commit the server's
+`dane` folder, SQLite database, session key, backups, or token.

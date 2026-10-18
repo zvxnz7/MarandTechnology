@@ -13,19 +13,21 @@
   scheduled tasks, DPAPI-protected settings, backups, and the LAN firewall.
   They do not run Python.
 - Python pilot application files and Jinja templates have been removed from
-  the active repository. The prebuilt JSON seed and its source documents are
-  the data inputs used by the JavaScript initializer.
+  the active repository. Fresh installs start with an empty project list;
+  current releases do not include customer records or original source documents.
 
 ## Update flow
 
 Every push to `main` runs `.github/workflows/release.yml`. GitHub Actions builds
-a clean release archive from the JavaScript runtime files and selected seed
-sources, assigns a monotonically increasing `0.3.N` version, and publishes the
+a clean release archive from the JavaScript runtime files and empty seed,
+assigns a monotonically increasing `0.3.N` version, and publishes the
 archive as the latest GitHub release. The administrator page checks the
 configured repository and offers installation only when a newer release is
 available. Before replacing code, the external updater verifies the archive,
 backs up SQLite, stops the Windows task, swaps program files, checks `/healthz`,
-and restores the previous program if startup fails.
+and restores the previous program if startup fails. It preserves source files
+already stored on installed servers, retains the newest five program snapshots
+and ten pre-update database backups, and removes stale downloaded packages.
 
 ## Data and access safeguards
 
@@ -45,3 +47,7 @@ a short reference code with the SQLite details in
 `administracja/logs/server-*.err.log`. SQL details stay out of the browser.
 For a persistent failure, match the reference code to that server log to find
 the installed database's specific cause.
+
+Earlier Git commits or already-published releases may still contain records and
+source documents removed from the current tree. Treat those historical copies
+as public until the GitHub history and old releases are separately cleaned up.

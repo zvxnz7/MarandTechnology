@@ -27,6 +27,86 @@ function atomicJson(file, value) {
   fs.renameSync(temp, file);
 }
 function sha(bytes) { return crypto.createHash('sha256').update(bytes).digest('hex'); }
+function pidIsRunning(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error.code === 'EPERM'; }
+}
+function recoverStaleLock(lockPath) {
+  let content, stat;
+  try {
+    stat = fs.statSync(lockPath);
+    content = fs.readFileSync(lockPath, 'utf8');
+  } catch (error) { return error.code === 'ENOENT'; }
+  let owner = null;
+  try { owner = JSON.parse(content); } catch {}
+  const stale = owner && Number.isSafeInteger(owner.pid)
+    ? !pidIsRunning(owner.pid)
+    : Date.now() - stat.mtimeMs > 30 * 60 * 1000;
+  if (!stale) return false;
+  try { if (fs.readFileSync(lockPath, 'utf8') !== content) return false; }
+  catch (error) { return error.code === 'ENOENT'; }
+  const quarantine = `${lockPath}.${crypto.randomBytes(8).toString('hex')}.stale`;
+  try { fs.renameSync(lockPath, quarantine); }
+  catch (error) { return error.code === 'ENOENT'; }
+  try {
+    if (fs.readFileSync(quarantine, 'utf8') !== content) {
+      if (!fs.existsSync(lockPath)) fs.renameSync(quarantine, lockPath);
+      return false;
+    }
+    fs.unlinkSync(quarantine);
+    return true;
+  } catch (error) {
+    try { if (fs.existsSync(quarantine) && !fs.existsSync(lockPath)) fs.renameSync(quarantine, lockPath); } catch {}
+    if (error.code === 'ENOENT') return true;
+    throw error;
+  }
+}
+function acquireUpdateLock(lockPath) {
+  const token = crypto.randomBytes(16).toString('hex');
+  const contents = JSON.stringify({ pid: process.pid, token, started_at: new Date().toISOString() });
+  let fd;
+  try { fd = fs.openSync(lockPath, 'wx'); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    if (!recoverStaleLock(lockPath)) throw new Error('Trwa inna aktualizacja. Jeśli nie działa żaden aktualizator, sprawdź operations.lock w folderze danych.');
+    try { fd = fs.openSync(lockPath, 'wx'); }
+    catch (retryError) {
+      if (retryError.code === 'EEXIST') throw new Error('Trwa inna aktualizacja. Spróbuj ponownie później.');
+      throw retryError;
+    }
+  }
+  try { fs.writeFileSync(fd, contents, 'utf8'); fs.fsyncSync(fd); }
+  catch (error) { try { fs.closeSync(fd); } catch {} try { fs.unlinkSync(lockPath); } catch {} throw error; }
+  fs.closeSync(fd);
+  return () => {
+    try {
+      const current = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+      if (current.token === token) fs.unlinkSync(lockPath);
+    } catch {}
+  };
+}
+async function pruneNamedEntries(directory, pattern, keep, kind) {
+  try {
+    const entries = (await fsp.readdir(directory, { withFileTypes: true }))
+      .filter(entry => pattern.test(entry.name) && (kind === 'directory' ? entry.isDirectory() : entry.isFile()))
+      .sort((a, b) => {
+        const stamp = name => (name.match(/(\d{14})(?:\.sqlite3)?$/) || [])[1] || '';
+        return stamp(b.name).localeCompare(stamp(a.name));
+      });
+    for (const entry of entries.slice(keep)) {
+      await fsp.rm(path.join(directory, entry.name), { recursive: kind === 'directory', force: true });
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error(`Could not prune update artifacts in ${directory}: ${error.message}`);
+  }
+}
+async function pruneUpdateArtifacts(config) {
+  await pruneNamedEntries(config.releases_dir, /^\d+\.\d+\.\d+-\d{14}$/, 5, 'directory');
+  await pruneNamedEntries(config.releases_dir, /^FAILED-\d+\.\d+\.\d+-\d{14}$/, 3, 'directory');
+  await pruneNamedEntries(path.join(config.backup_dir, 'przed_aktualizacja'), /^PRE-\d{14}\.sqlite3$/, 10, 'file');
+  await pruneNamedEntries(path.join(config.data_dir, 'updates'), /^marand-node-\d+\.\d+\.\d+-[a-f0-9]{12}\.zip$/i, 3, 'file');
+}
 function versionTuple(value) {
   const match = String(value || '').match(/^(\d+)\.(\d+)\.(\d+)$/);
   return match ? match.slice(1).map(Number) : null;
@@ -152,24 +232,23 @@ async function update(packagePath, version, expectedSha) {
   if (inside(config.program_dir, updaterPath)) throw new Error('Aktualizator musi działać spoza katalogu programu.');
   if (inside(config.program_dir, config.data_dir) || inside(config.data_dir, config.program_dir)) throw new Error('Folder programu i danych nie mogą być zagnieżdżone.');
   if (!fs.existsSync(path.join(config.program_dir, 'release.json'))) throw new Error('Pierwszą instalację Node.js przygotowuje informatyk.');
+  await fsp.mkdir(config.data_dir, { recursive: true });
   if (fs.existsSync(path.join(config.data_dir, 'maintenance.json'))) throw new Error('Jest już aktualizacja w toku albo nieukończona. Sprawdź update_status.json.');
   const oldRelease = JSON.parse(fs.readFileSync(path.join(config.program_dir, 'release.json'), 'utf8'));
   if (!newer(version, oldRelease.version)) throw new Error('Aktualizacja musi mieć wyższą wersję niż zainstalowana.');
   const stamp = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date()).replace(/[-: ]/g, '');
   const lockPath = path.join(config.data_dir, 'operations.lock');
-  let lock;
-  try { lock = fs.openSync(lockPath, 'wx'); }
-  catch { throw new Error('Trwa inna kopia lub aktualizacja. Spróbuj później.'); }
-  fs.closeSync(lock);
-  const tempRoot = await fsp.mkdtemp(path.join(path.dirname(config.program_dir), '.marand-update-'));
-  const stage = path.join(tempRoot, 'new');
+  const releaseLock = acquireUpdateLock(lockPath);
+  let tempRoot = null;
   const previous = path.join(config.releases_dir, `${oldRelease.version}-${stamp}`);
   const backupPath = path.join(config.backup_dir, 'przed_aktualizacja', `PRE-${stamp}.sqlite3`);
-  await fsp.mkdir(stage, { recursive: true });
-  await fsp.mkdir(path.dirname(backupPath), { recursive: true });
-  await fsp.mkdir(config.releases_dir, { recursive: true });
   let swapped = false, stopped = false, maintenance = false;
   try {
+    tempRoot = await fsp.mkdtemp(path.join(path.dirname(config.program_dir), '.marand-update-'));
+    const stage = path.join(tempRoot, 'new');
+    await fsp.mkdir(stage, { recursive: true });
+    await fsp.mkdir(path.dirname(backupPath), { recursive: true });
+    await fsp.mkdir(config.releases_dir, { recursive: true });
     expandZip(packagePath, stage);
     const release = verifyPackage(stage, version, expectedSha);
     if (release.schema !== oldRelease.schema) throw new Error('Zmieniono strukturę bazy. Wymagana osobna migracja; dane nie zostały zmienione.');
@@ -191,27 +270,36 @@ async function update(packagePath, version, expectedSha) {
     await checkHealth(config, version);
     atomicJson(path.join(config.data_dir, 'update_status.json'), { ok: true, version, at: stamp, previous_program: previous, backup: backupPath });
     fs.rmSync(path.join(config.data_dir, 'maintenance.json'), { force: true }); maintenance = false;
-    fs.rmSync(packagePath, { force: true });
+    try { fs.rmSync(packagePath, { force: true }); } catch {}
+    await pruneUpdateArtifacts(config);
     console.log(`Updated to ${version}`);
   } catch (error) {
     let rollbackError = null;
     try {
       if (swapped) {
-        if (!stopped) { powerShellService(config, 'stop', configPath); stopped = true; }
+        powerShellService(config, 'stop', configPath); stopped = true;
         const failed = path.join(config.releases_dir, `FAILED-${version}-${stamp}`);
         if (fs.existsSync(config.program_dir)) await fsp.rename(config.program_dir, failed);
         await fsp.cp(previous, config.program_dir, { recursive: true, errorOnExist: true, force: false, dereference: false });
       }
-      if (stopped) { powerShellService(config, 'start', configPath); stopped = false; }
-      await checkHealth(config, oldRelease.version);
+      if (stopped || maintenance) {
+        powerShellService(config, 'start', configPath);
+        stopped = false;
+        await checkHealth(config, oldRelease.version);
+      }
       if (maintenance) { fs.rmSync(path.join(config.data_dir, 'maintenance.json'), { force: true }); maintenance = false; }
     } catch (restoreError) { rollbackError = restoreError.message; }
-    atomicJson(path.join(config.data_dir, 'update_status.json'), { ok: false, at: stamp, error: error.message, rollback_error: rollbackError, previous_program: previous, backup: fs.existsSync(backupPath) ? backupPath : null });
+    try { atomicJson(path.join(config.data_dir, 'update_status.json'), { ok: false, at: stamp, error: error.message, rollback_error: rollbackError, previous_program: previous, backup: fs.existsSync(backupPath) ? backupPath : null }); } catch {}
+    if (inside(path.join(config.data_dir, 'updates'), packagePath)) {
+      try { fs.rmSync(packagePath, { force: true }); } catch {}
+    }
+    await pruneUpdateArtifacts(config);
     if (rollbackError) throw new Error(`Aktualizacja nie powiodła się i nie udało się przywrócić usługi: ${rollbackError}`);
-    throw new Error(`Aktualizacja nieudana. Przywrócono poprzedni program. ${error.message}`);
+    if (swapped || stopped || maintenance) throw new Error(`Aktualizacja nieudana. Przywrócono poprzedni program. ${error.message}`);
+    throw new Error(`Aktualizacja nieudana przed zmianą programu. ${error.message}`);
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-    try { fs.rmSync(lockPath, { force: true }); } catch {}
+    if (tempRoot) { try { fs.rmSync(tempRoot, { recursive: true, force: true }); } catch {} }
+    releaseLock();
   }
 }
 

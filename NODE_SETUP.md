@@ -20,7 +20,7 @@ for an engineer-managed installation.
 4. Start the app with `node manage.js run --host 127.0.0.1 --port 8765`.
 5. Run it as a Windows service or scheduled task using a wrapper that keeps the process alive. The included installer creates a scheduled task at Windows startup.
 
-The application preserves the existing SQLite schema, seed data, user rows, and password hashes. Existing users sign in with their current passwords. Node.js uses its own signed session cookie, so users sign in again after changing runtimes.
+The application preserves the existing SQLite schema, records, user rows, and password hashes. Fresh databases start with no projects, ready for data entry. Existing users sign in with their current passwords. Node.js uses its own signed session cookie, so users sign in again after changing runtimes.
 
 ## Backups
 
@@ -45,4 +45,8 @@ Set these environment variables for the app process (the included installer sets
 
 The workflow assigns increasing release versions automatically. The updater refuses a release with a changed database schema or invalid file hashes. It takes a SQLite backup before replacing code and restores the previous program if the app fails its health check.
 
-Do not publish production data, `data/secret.key`, live SQLite files, or user passwords to GitHub. Keep `data/` out of the repository.
+The current source tree and newly built release packages contain no customer
+records or original source documents. Earlier Git commits or already-published
+releases may still contain data removed from the current tree. Do not publish
+production data, `data/secret.key`, live SQLite files, or user passwords to
+GitHub. Keep `data/` and `seed/sources/` out of the repository.

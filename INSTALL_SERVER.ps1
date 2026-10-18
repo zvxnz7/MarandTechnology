@@ -92,11 +92,6 @@ foreach ($Relative in $RuntimeFiles) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $To) | Out-Null
     Copy-Item -LiteralPath $From -Destination $To -Force
 }
-$SourceAssets = Join-Path $SourceRoot 'seed\sources'
-if (Test-Path -LiteralPath $SourceAssets -PathType Container) {
-    Copy-Item -LiteralPath $SourceAssets -Destination (Join-Path $ProgramDir 'seed') -Recurse -Force
-}
-
 foreach ($Relative in @('updater.js','control-server.ps1','run-server.ps1','set-github-token.ps1','backup_scheduled.ps1','wykonaj.ps1','KOPIA.cmd','START_SERVER.cmd','STOP_SERVER.cmd','STATUS_SERVER.cmd','SET_GITHUB_TOKEN.cmd')) {
     $From = Join-Path (Join-Path $SourceRoot 'administracja') $Relative
     if (!(Test-Path -LiteralPath $From -PathType Leaf)) { throw "Brakuje pliku administracyjnego: administracja\$Relative" }
@@ -107,7 +102,7 @@ $DatabasePath = Join-Path $DataDir 'marand.sqlite3'
 if (!(Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
     $SourceDatabase = Join-Path $SourceRoot 'data\marand.sqlite3'
     if (!(Test-Path -LiteralPath $SourceDatabase -PathType Leaf)) {
-        $EnteredPath = Read-Host 'If you already have a SQLite database, enter the path to marand.sqlite3. Press Enter to create a new seeded database'
+        $EnteredPath = Read-Host 'If you already have a SQLite database, enter the path to marand.sqlite3. Press Enter to create a new empty database'
         if (![string]::IsNullOrWhiteSpace($EnteredPath)) { $SourceDatabase = [IO.Path]::GetFullPath($EnteredPath) }
     }
     if (Test-Path -LiteralPath $SourceDatabase -PathType Leaf) {
@@ -212,12 +207,17 @@ New-NetFirewallRule -Name $FirewallRuleName `
 Remove-Item -LiteralPath (Join-Path $AdminDir 'stop.request') -Force -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName $TaskName
 $HealthUrl = 'http://127.0.0.1:8765/healthz'
+$ExpectedDataDir = [IO.Path]::GetFullPath($DataDir).ToLowerInvariant()
+$DataTagHasher = [Security.Cryptography.SHA256]::Create()
+try {
+    $ExpectedDataTag = [BitConverter]::ToString($DataTagHasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($ExpectedDataDir))).Replace('-','').ToLowerInvariant()
+} finally { $DataTagHasher.Dispose() }
 $Deadline = (Get-Date).AddSeconds(45)
 $Healthy = $false
 while ((Get-Date) -lt $Deadline) {
     try {
         $Health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 2
-        if ($Health.ok) { $Healthy = $true; break }
+        if ($Health.ok -and $Health.version -eq $VersionInfo.version -and $Health.data_tag -eq $ExpectedDataTag) { $Healthy = $true; break }
     } catch { Start-Sleep -Seconds 1 }
 }
 if (!$Healthy) {
