@@ -17,3 +17,4 @@
 .inline-add span{white-space:nowrap}
 .inline-add select{width:auto;min-width:170px;padding:8px}
 .inline-add-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
+.linked-article-row{display:flex;align-items:center;gap:8px;margin:0 0 8px}.linked-article-row .button{padding:5px 10px}

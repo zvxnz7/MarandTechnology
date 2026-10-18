@@ -427,6 +427,18 @@ async function handle(req, res) {
       transaction(()=>{Catalog.associate(context,pid,form);audit(req.user,'Powiązano artykuł z projektem',null,String(pid));});
       return redirect(req,res,`/projects/${pid}`);
     }
+    const unlinkProjectArticle=p.match(/^\/projects\/(\d+)\/articles\/(\d+)\/unlink$/);
+    if(unlinkProjectArticle && req.method==='POST') {
+      role(req.user,'admin','approver','technologist');
+      const pid=Number(unlinkProjectArticle[1]), articleId=Number(unlinkProjectArticle[2]);
+      project(pid);
+      transaction(()=>{
+        const result=db.prepare('DELETE FROM project_articles WHERE project_id=? AND article_id=?').run(pid,articleId);
+        if(!result.changes)fail(404,'To powiązanie artykułu z projektem już nie istnieje.');
+        audit(req.user,'Odpięto artykuł od projektu',null,`${articleId} / ${pid}`);
+      });
+      return redirect(req,res,`/projects/${pid}`,'Artykuł został odpięty od projektu.');
+    }
     let id = matchId(p, /^\/projects\/(\d+)$/);
     if (id && req.method === 'GET') {
       const pr = project(id);
