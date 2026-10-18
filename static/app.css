@@ -4,3 +4,16 @@
 .brand{height:auto;overflow:visible;display:block;width:100%}.brand img{position:static;width:100%;max-width:180px;height:auto;object-fit:contain}.brand-caption{margin-bottom:20px}.sidebar nav a{margin-bottom:8px}.nav-link{display:block;background:transparent;color:var(--ink);border-left:3px solid transparent;padding:13px 12px;border-radius:4px;font-weight:600}.nav-link:hover{background:#f5f6f7;color:#9e2528}.searchbar{flex-wrap:wrap}.searchbar select{max-width:250px}.photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,240px));gap:16px}.photo-grid figure{margin:0}.photo-grid img{width:100%;height:160px;object-fit:contain;background:#f5f6f7}.photo-grid figcaption{overflow-wrap:anywhere}.change-alert{padding:20px;background:#fff3e0;border:2px solid #b42626;margin:20px}.changed-value{color:#bd1e24;font-weight:bold}.change-alert table{width:100%;border-collapse:collapse}.change-alert td,.change-alert th{border:1px solid #ccc;padding:8px;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:650px){.brand{width:150px}.sidebar nav{display:flex;flex-wrap:wrap;gap:8px}.sidebar nav .nav-hint{display:none}.sidebar nav a{padding:8px}.brand img{max-width:150px}}
 @media print{.change-alert{display:none}}
+.compact-value input{width:10ch;max-width:100%}
+.target-grid{grid-template-columns:minmax(180px,2fr) minmax(10ch,1fr)}
+.target-grid input[name^="targets_"]{width:10ch;max-width:100%}
+.gb-fields-scroll{overflow-x:auto}
+.gb-fields{display:grid;grid-template-columns:58px minmax(180px,2fr) repeat(4,minmax(105px,1fr));gap:10px;align-items:end;min-width:840px}
+.gb-fields h3{margin:0 0 14px;align-self:end}
+.gb-fields label{margin:0;font-size:12px;min-width:0}
+.gb-fields label input{display:block;margin-top:5px;padding:8px 9px;font-size:13px}
+.gb-fields label.compact-gb-field input{width:min(100%,14ch);max-width:14ch}
+.inline-add{display:flex;align-items:center;gap:8px;margin:0 8px 0 0}
+.inline-add span{white-space:nowrap}
+.inline-add select{width:auto;min-width:170px;padding:8px}
+.inline-add-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}

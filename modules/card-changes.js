@@ -3,7 +3,7 @@ const V=require('../views');
 function flatten(v) {
  const rows={};
  for(const [key,label] of [['symbol','Symbol'],['description','Opis'],['knitter_notes','Uwagi dla dziewiarza']])rows[label]=v[key]||'';
- for(const [group,title,fields] of [['tech','Maszyna',V.TECH],['raw','Dzianina surowa',V.METRICS],['targets','Dzianina wykończona',V.METRICS],['tolerances','Tolerancja wykończonej',V.METRICS]])
+ for(const [group,title,fields] of [['tech','Maszyna',V.TECH],['raw','Dzianina surowa',V.RAW_METRICS],['targets','Dzianina wykończona',V.TARGET_METRICS]])
  for(const [key,label]of fields)rows[`${title} — ${label}`]=v[group]?.[key]||'';
  for(const g of v.gb||[])for(const [key,label]of V.GB)if(key!=='number')rows[`GB${g.number} — ${label}`]=g[key]||'';
  rows['Komentarz do surowej']=v.raw_comments||'';

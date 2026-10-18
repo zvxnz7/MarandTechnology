@@ -6,7 +6,7 @@ const path = require('node:path');
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); seedCategories(db); return; }
+  if (!legacy.length) { db.exec(schema); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
   if(version>2)throw new Error('Baza pochodzi z nowszej wersji programu.');
   if(version===2)return;
@@ -29,21 +29,8 @@ function migrate(db, dbPath) {
       UPDATE articles SET created_at=coalesce((SELECT min(created_at) FROM records WHERE article_id=articles.id),(SELECT created_at FROM projects WHERE id=articles.project_id),strftime('%Y-%m-%dT%H:%M:%SZ','now')) WHERE created_at='';
       UPDATE articles SET updated_at=coalesce((SELECT max(updated_at) FROM records WHERE article_id=articles.id),created_at) WHERE updated_at='';`);
     if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Migracja: niespójne powiązania danych. Cofnięto zmiany.');
-    seedCategories(db);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   finally { db.exec('PRAGMA foreign_keys=ON'); }
-}
-function seedCategories(db) {
-  const groups = {
-    Poliamid: ['Ażury','Dzianina elastyczna','Hafty','Inne','Lamówka','Lureks','Markizeta','Małociągliwa','Szermeza','Szyfon','Tiul','Trykot','Welur'],
-    Poliester: ['Ażury','Barkówka','DBT','Dzianina elastyczna','Dzianina gładka','Fartuchowa','Flagowa','Lamówka','Markizeta','Małociągliwa','Nośnikowa','Pętelkowe','Szermeza','Szyfon','Tiul','Trykot','Welur'],
-    'Dzianiny dystansowe': [],
-  };
-  for (const [name, children] of Object.entries(groups)) {
-    db.prepare('INSERT OR IGNORE INTO categories(name) VALUES(?)').run(name);
-    const pid=db.prepare('SELECT id FROM categories WHERE parent_id IS NULL AND name=?').get(name).id;
-    for(const child of children) db.prepare('INSERT OR IGNORE INTO categories(parent_id,name) VALUES(?,?)').run(pid,child);
-  }
 }
 module.exports = { migrate };

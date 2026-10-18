@@ -2,6 +2,13 @@
 let dirty=false,submitting=false;
 document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('input',()=>dirty=true);f.addEventListener('submit',()=>{submitting=true;});});
 window.addEventListener('beforeunload',e=>{if(dirty&&!submitting){e.preventDefault();e.returnValue='';}});
+document.querySelectorAll('[data-project-article-mode]').forEach(select=>{
+  const update=()=>select.form.querySelectorAll('[data-project-article-panel]').forEach(panel=>{
+    const active=panel.dataset.projectArticlePanel===select.value;panel.hidden=!active;
+    panel.querySelectorAll('input,select').forEach(control=>{control.required=active;});
+  });
+  select.addEventListener('change',update);update();
+});
 document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>{
   const alert=document.querySelector('[data-update-alert]');
   if(alert && !window.confirm(alert.innerText+'\n\nCzy zapoznano się ze zmianami i kontynuować drukowanie?'))return;

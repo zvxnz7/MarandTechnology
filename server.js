@@ -35,7 +35,8 @@ const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstrain
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
 const TECH = V.TECH;
-const METRICS = V.METRICS;
+const RAW_METRICS = V.RAW_METRICS;
+const TARGET_METRICS = V.TARGET_METRICS;
 const GB = V.GB;
 const Catalog = require('./modules/catalog');
 const Changes = require('./modules/card-changes');
@@ -55,7 +56,7 @@ function todayWarsaw() {
 function normalize(value) { return String(value || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 function dump(value) { return JSON.stringify(value); }
 function blank() {
-  return { symbol: '', number: '', date: '', client: '', description: '', tech: {}, gb: [], raw: {}, raw_comments: '', finished: [], comments: '', stages: '', targets: {}, tolerances: {}, knitter_notes: '', sources: [] };
+  return { symbol: '', number: '', date: '', client: '', description: '', tech: {}, gb: [], raw: {}, raw_comments: '', finished: [], comments: '', stages: '', targets: {}, knitter_notes: '', sources: [] };
 }
 function parsePayload(row) { return JSON.parse(row.payload); }
 function getUser(id) { return db.prepare('SELECT * FROM users WHERE id=? AND active=1').get(id); }
@@ -102,7 +103,7 @@ function parseForm(form, old) {
   v.source_note = old.source_note || '';
   for (const key of ['symbol', 'number', 'date', 'client', 'description', 'raw_comments', 'comments', 'stages', 'knitter_notes']) v[key] = formText(form, key);
   if (!v.symbol) fail(400, 'Symbol artykułu jest wymagany.');
-  for (const [group, keys] of [['tech', TECH], ['raw', METRICS], ['targets', METRICS], ['tolerances', METRICS]]) {
+  for (const [group, keys] of [['tech', TECH], ['raw', RAW_METRICS], ['targets', TARGET_METRICS]]) {
     v[group] = Object.fromEntries(keys.map(([key]) => [key, formText(form, `${group}_${key}`)]));
   }
   const numbers = new Set();
@@ -389,14 +390,14 @@ async function handle(req, res) {
       const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
       const params = [], clauses=[];
       for(const word of normalize(q).split(/\s+/).filter(Boolean)) {
-        clauses.push("search_text(p.name || ' ' || p.description || ' ' || coalesce((SELECT group_concat(symbol,' ') FROM records WHERE project_id=p.id),'')) LIKE ? ESCAPE '\\'");
+        clauses.push("search_text(p.name || ' ' || p.description || ' ' || coalesce((SELECT group_concat(symbol,' ') FROM records WHERE project_id=p.id),'') || ' ' || coalesce((SELECT group_concat(a.symbol,' ') FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id),'')) LIKE ? ESCAPE '\\'");
         params.push('%'+word.replace(/[\\%_]/g,'\\$&')+'%');
       }
       if(state==='approved')clauses.push('EXISTS(SELECT 1 FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL)');
       if(state==='pending')clauses.push('NOT EXISTS(SELECT 1 FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL)');
       const where=clauses.length?'WHERE '+clauses.join(' AND '):'';
       const total=db.prepare(`SELECT count(*) n FROM projects p ${where}`).get(...params).n;
-      const rows=db.prepare(`SELECT p.*,(SELECT count(*) FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,(SELECT count(*) FROM records WHERE project_id=p.id) total,coalesce((SELECT max(updated_at) FROM records WHERE project_id=p.id),p.created_at) updated FROM projects p ${where} ORDER BY updated DESC,p.id DESC LIMIT 15 OFFSET ?`).all(...params,(page-1)*15);
+      const rows=db.prepare(`SELECT p.*,(SELECT count(*) FROM project_articles pa WHERE pa.project_id=p.id) article_count,(SELECT count(*) FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,(SELECT count(*) FROM records r WHERE r.project_id=p.id OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=p.id AND pa.article_id=r.article_id))) total,coalesce((SELECT max(updated_at) FROM records r WHERE r.project_id=p.id OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=p.id AND pa.article_id=r.article_id))),p.created_at) updated FROM projects p ${where} ORDER BY updated DESC,p.id DESC LIMIT 15 OFFSET ?`).all(...params,(page-1)*15);
       const status = readJsonIfExists(path.join(DATA, 'backup_status.json'));
       if (status) {
         const stamp = status.last_success ? new Date(status.last_success) : null;
@@ -429,9 +430,9 @@ async function handle(req, res) {
     let id = matchId(p, /^\/projects\/(\d+)$/);
     if (id && req.method === 'GET') {
       const pr = project(id);
-      const records = db.prepare('SELECT r.*,CASE WHEN a.active_spec=r.id THEN 1 ELSE 0 END is_current FROM records r LEFT JOIN articles a ON a.id=r.article_id WHERE r.project_id=? ORDER BY r.id DESC').all(id);
-      const cards = db.prepare('SELECT c.*,u.name author FROM cards c JOIN records r ON r.id=c.record_id JOIN users u ON u.id=c.created_by WHERE r.project_id=? ORDER BY c.id DESC').all(id);
-      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, records, cards, linkedArticles: db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=?').all(id), articleInput: Catalog.projectArticleInput(db) }));
+      const records = db.prepare('SELECT r.*,CASE WHEN a.active_spec=r.id THEN 1 ELSE 0 END is_current FROM records r LEFT JOIN articles a ON a.id=r.article_id WHERE r.project_id=? OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=? AND pa.article_id=r.article_id)) ORDER BY r.id DESC').all(id,id);
+      const cards = db.prepare('SELECT c.*,u.name author FROM cards c JOIN records r ON r.id=c.record_id JOIN users u ON u.id=c.created_by WHERE r.project_id=? OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=? AND pa.article_id=r.article_id)) ORDER BY c.id DESC').all(id,id);
+      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, records, cards, linkedArticles: db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=?').all(id), articleInput: Catalog.projectArticleInput(db, { optional: false }) }));
     }
     id = matchId(p, /^\/projects\/(\d+)\/new$/);
     if (id && req.method === 'POST') {
@@ -442,8 +443,7 @@ async function handle(req, res) {
       const rid = transaction(() => {
         const selected = Number(form.article_id);
         let a = selected ? db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE a.id=? AND pa.project_id=?').get(selected,id) : null;
-        if(selected && !a) fail(400,'Artykuł nie należy do projektu.');
-        if(kind==='spec' && !a) fail(400,'Wybierz artykuł dla specyfikacji. Możesz go najpierw dodać lub powiązać z projektem.');
+        if(!a) fail(400,'Wybierz artykuł z kartoteki projektu. Możesz go najpierw dodać w sekcji „Artykuły w projekcie”.');
         v.symbol=a ? a.symbol : pr.name;
         const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,payload,created_at,updated_at,expected_active) VALUES(?,?,?,?,?,?,?,?)').run(id, a ? a.id : null, kind, v.symbol, dump(v), now(), now(), a ? a.active_spec : null);
         const recordId = Number(result.lastInsertRowid);
@@ -500,7 +500,7 @@ async function handle(req, res) {
       const next = transaction(() => {
         const r = record(id), v = parsePayload(r), kind = form.kind || 'trial';
         if (!['trial', 'spec'].includes(kind)) fail(400, 'Nieprawidłowy typ wpisu.');
-        if (kind === 'trial') Object.assign(v, { raw: {}, raw_comments: '', finished: [], comments: '', stages: '', targets: {}, tolerances: {}, number: '', date: todayWarsaw() });
+        if (kind === 'trial') Object.assign(v, { raw: {}, raw_comments: '', finished: [], comments: '', stages: '', targets: {}, number: '', date: todayWarsaw() });
         if(kind==='trial' && !r.project_id) fail(400,'Próbę rozpocznij w projekcie powiązanym z tym artykułem.');
         const a = r.article_id ? db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id) : kind === 'spec' ? makeArticle(r.project_id, r.symbol) : null;
         const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,number,base_id,expected_active,payload,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(r.project_id, a ? a.id : null, kind, r.symbol, v.number || '', id, a ? a.active_spec : null, dump(v), now(), now());
