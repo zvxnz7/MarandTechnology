@@ -16,8 +16,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      RELEASE_VERSION: 0.4.${{ github.run_number }}
-      RELEASE_TAG: v0.4.${{ github.run_number }}
+      # Run 6 is a one-time bridge: v0.3.4 installations accept schema 1 only.
+      # Keep it below v0.4.x so already-updated installations skip this package.
+      RELEASE_VERSION: ${{ github.run_number == 6 && '0.3.5' || format('0.4.{0}', github.run_number) }}
+      RELEASE_TAG: ${{ github.run_number == 6 && 'v0.3.5' || format('v0.4.{0}', github.run_number) }}
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -28,6 +30,8 @@ jobs:
       - name: Verify JavaScript app and save flow
         run: node --test
       - name: Prepare release files
+        env:
+          MARAND_RELEASE_SCHEMA: ${{ github.run_number == 6 && '1' || '2' }}
         run: node tools/build-release.js "$RELEASE_VERSION" release
       - name: Create release archive
         run: |

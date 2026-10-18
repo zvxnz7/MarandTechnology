@@ -219,6 +219,37 @@ async function githubLatest(repo) {
 function readJsonIfExists(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
 }
+async function syncExternalUpdater(updaterPath) {
+  const bundled = path.join(ROOT, 'administracja', 'updater.js');
+  const target = path.resolve(updaterPath);
+  const bundledKey = process.platform === 'win32' ? bundled.toLowerCase() : bundled;
+  const targetKey = process.platform === 'win32' ? target.toLowerCase() : target;
+  if (bundledKey === targetKey) return;
+
+  const source = await fsp.readFile(bundled);
+  const targetStat = await fsp.lstat(target).catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (targetStat?.isSymbolicLink() || (targetStat && !targetStat.isFile())) {
+    throw new Error('Ścieżka zewnętrznego aktualizatora musi wskazywać zwykły plik.');
+  }
+  if (targetStat) {
+    const current = await fsp.readFile(target);
+    const sourceHash = crypto.createHash('sha256').update(source).digest('hex');
+    const currentHash = crypto.createHash('sha256').update(current).digest('hex');
+    if (sourceHash === currentHash) return;
+  }
+
+  const temporary = `${target}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  try {
+    await fsp.writeFile(temporary, source, { flag: 'wx' });
+    await fsp.rename(temporary, target);
+  } catch (error) {
+    try { await fsp.rm(temporary, { force: true }); } catch {}
+    throw new Error(`Nie można zaktualizować zewnętrznego aktualizatora: ${error.message}`);
+  }
+}
 async function startGithubUpdate(req) {
   const repo = process.env.MARAND_GITHUB_REPO || DEFAULT_GITHUB_REPO;
   const updater = process.env.MARAND_UPDATER || '';
@@ -257,6 +288,7 @@ async function startGithubUpdate(req) {
   const bytes = Buffer.concat(chunks, total);
   const actual = crypto.createHash('sha256').update(bytes).digest('hex');
   if (actual.toLowerCase() !== digest[1].toLowerCase()) throw new Error('Suma SHA-256 archiwum jest niezgodna. Aktualizacja została zatrzymana.');
+  await syncExternalUpdater(updater);
   const staging = path.join(DATA, 'updates');
   await fsp.mkdir(staging, { recursive: true });
   const packagePath = path.join(staging, `marand-node-${remoteVersion}-${crypto.randomBytes(6).toString('hex')}.zip`);

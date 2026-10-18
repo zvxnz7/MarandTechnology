@@ -9,6 +9,8 @@ const ROOT = path.resolve(__dirname, '..');
 const versionArg = process.argv[2] || '';
 const version = versionArg.replace(/^v/, '');
 if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Usage: node tools/build-release.js vX.Y.Z [release|.release/version]');
+const schema = Number(process.env.MARAND_RELEASE_SCHEMA || 2);
+if (![1, 2].includes(schema)) throw new Error('MARAND_RELEASE_SCHEMA must be 1 or 2.');
 const DEFAULT_OUT = path.join(ROOT, '.release', version);
 const CI_OUT = path.join(ROOT, 'release');
 const OUT = path.resolve(process.argv[3] || DEFAULT_OUT);
@@ -22,6 +24,7 @@ for (let current = OUT; current !== ROOT; current = path.dirname(current)) {
 }
 const FILES = [
   'server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql',
+  'administracja/updater.js',
   'modules/database.js', 'modules/catalog.js', 'modules/photos.js', 'modules/card-changes.js', 'modules/navigation.js',
   'NODE_SETUP.md', 'static/app.css', 'static/app.js', 'static/card.css', 'static/logo.jpg', 'seed/data.json',
 ];
@@ -54,7 +57,7 @@ async function main() {
   const packaged = await filesUnder(OUT);
   const manifest = {
     version,
-    schema: 2,
+    schema,
     protocol: 2,
     runtime: 'node>=24.15',
     files: Object.fromEntries(await Promise.all(packaged.map(async file => {
