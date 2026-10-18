@@ -262,6 +262,7 @@ async function handle(req, res) {
   if (!req.session.csrf) req.session.csrf = crypto.randomBytes(32).toString('base64url');
   req.user = req.session.uid ? getUser(req.session.uid) : null;
   let form = {};
+  let recovery = null;
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const p = decodeURIComponent(url.pathname);
@@ -386,11 +387,22 @@ async function handle(req, res) {
       let r = record(id);
       if (r.state !== 'draft') fail(409, 'Ta wersja jest zablokowana. Utwórz nową wersję albo wycofaj wniosek o zatwierdzenie.');
       if (req.method === 'POST') {
+        // Keep a copy of a valid form before BEGIN IMMEDIATE. If SQLite cannot
+        // acquire a write lock, render the editor again with the user's work.
+        try {
+          const old = parsePayload(r), values = parseForm(form, old);
+          values.date = old.date || values.date;
+          recovery = { kind: 'record-edit', record: r, values };
+        } catch {
+          // The normal transaction path below returns the actual validation
+          // message. Recovery is only for an otherwise valid submitted form.
+        }
         transaction(() => {
           r = record(id); stale(r, form);
           if (r.state !== 'draft') fail(409, 'Wpis jest już zablokowany.');
           const old = parsePayload(r), v = parseForm(form, old);
           v.date = old.date || v.date;
+          recovery = { kind: 'record-edit', record: r, values: v };
           const a = r.kind === 'spec' ? makeArticle(r.project_id, v.symbol) : null;
           const expected = a && a.id !== r.article_id ? a.active_spec : r.expected_active;
           db.prepare('UPDATE records SET symbol=?,number=?,payload=?,article_id=?,expected_active=?,updated_at=?,revision=revision+1 WHERE id=?').run(v.symbol, v.number, dump(v), a ? a.id : null, expected, now(), id);
@@ -527,9 +539,50 @@ async function handle(req, res) {
     fail(404, 'Nie znaleziono strony.');
   } catch (err) {
     if (err instanceof HttpError) return send(req, res, err.status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: err.message }));
-    if (err && (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED' || err.code === 'ERR_SQLITE_ERROR')) {
-      console.error('Database operation failed:', err.code || 'UNKNOWN', err.errstr || '', err.stack || err.message);
-      return send(req, res, 503, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: 'Nie udało się wykonać zapisu. Odczekaj chwilę i spróbuj ponownie; nie zamykaj formularza.' }));
+    if (err && (String(err.code || '').startsWith('SQLITE_') || err.code === 'ERR_SQLITE_ERROR')) {
+      const reference = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const sqliteCode = Number.isInteger(err.errcode) ? err.errcode & 0xff : null;
+      const busy = sqliteCode === 5 || sqliteCode === 6 || err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED';
+      const readOnly = sqliteCode === 8 || err.errstr === 'attempt to write a readonly database';
+      const diskFull = sqliteCode === 13;
+      const constraint = sqliteCode === 19;
+      const hasRecovery = recovery?.kind === 'record-edit' && recovery.record && recovery.values;
+      console.error(`Database operation failed [${reference}]:`, err.code || 'UNKNOWN', `sqlite=${err.errcode ?? '?'}`, err.errstr || '', err.stack || err.message);
+
+      let status = 500;
+      let message = `Nie udało się wykonać operacji (kod ${reference}). Administrator powinien sprawdzić najnowszy plik server-*.err.log w folderze administracja\\logs.`;
+      if (busy) {
+        status = 503;
+        message = hasRecovery
+          ? `Baza danych jest chwilowo zajęta (kod ${reference}). Twoje dane pozostają w formularzu. Odczekaj chwilę i kliknij „Zapisz zmiany” ponownie.`
+          : `Baza danych jest chwilowo zajęta (kod ${reference}). Odczekaj chwilę i spróbuj ponownie. Administrator powinien sprawdzić najnowszy plik server-*.err.log w folderze administracja\\logs.`;
+      } else if (readOnly) {
+        status = 503;
+        message = hasRecovery
+          ? `Serwer nie ma prawa zapisu do bazy danych (kod ${reference}). Twoje dane pozostają w formularzu. Administrator musi naprawić uprawnienia folderu danych przed ponownym zapisem.`
+          : `Serwer nie ma prawa zapisu do bazy danych (kod ${reference}). Administrator musi naprawić uprawnienia folderu danych.`;
+      } else if (diskFull) {
+        status = 507;
+        message = hasRecovery
+          ? `Na serwerze brakuje miejsca na zapis (kod ${reference}). Twoje dane pozostają w formularzu. Zwolnij miejsce i spróbuj ponownie.`
+          : `Na serwerze brakuje miejsca na zapis (kod ${reference}). Zwolnij miejsce i spróbuj ponownie.`;
+      } else if (constraint) {
+        status = 409;
+        message = hasRecovery
+          ? `Baza odrzuciła zapis z powodu konfliktu danych (kod ${reference}). Twoje dane pozostają w formularzu. Administrator powinien sprawdzić server-*.err.log w folderze administracja\\logs.`
+          : `Baza odrzuciła operację z powodu konfliktu danych (kod ${reference}). Administrator powinien sprawdzić server-*.err.log w folderze administracja\\logs.`;
+      }
+
+      if (hasRecovery) {
+        return send(req, res, status, V.editPage({
+          user: req.user,
+          csrf: req.session.csrf,
+          flashes: [...getFlashes(req), { category: 'error', message }],
+          r: recovery.record,
+          v: recovery.values,
+        }));
+      }
+      return send(req, res, status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: message }));
     }
     console.error(err && err.stack || err);
     return send(req, res, 500, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: 'Wystąpił błąd programu. Skontaktuj się z administratorem.' }));

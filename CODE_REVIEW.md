@@ -36,11 +36,12 @@ database triggers protecting approved records and issued cards. The installer
 limits TCP 8765 to the local subnet on Private or Domain Windows firewall
 profiles. Do not expose the HTTP service directly to the Internet.
 
-## Known operational limitation
+## Save failure handling
 
-The screenshot provided on 18 October 2026 shows a generic SQLite save failure.
-The source code can verify a save on a clean temporary database, but the
-screenshot does not show the corresponding server-side SQLite error. The
-server now writes the SQLite error code, message, and stack to its local error
-log, so a failure tied to the installed database can be diagnosed from that
-log without exposing SQL details to ordinary app users.
+The JavaScript save route now preserves valid submitted edit values if SQLite
+rejects a write, so the editor remains available for a retry. It distinguishes
+database-busy, read-only, disk-full, and constraint errors in the page and logs
+a short reference code with the SQLite details in
+`administracja/logs/server-*.err.log`. SQL details stay out of the browser.
+For a persistent failure, match the reference code to that server log to find
+the installed database's specific cause.
