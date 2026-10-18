@@ -1,4 +1,4 @@
-param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
+﻿param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
 $ErrorActionPreference='Stop'
 $Cfg=Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
 $Node=if ($Cfg.node_path -and (Test-Path -LiteralPath $Cfg.node_path -PathType Leaf)) { [IO.Path]::GetFullPath($Cfg.node_path) } else { (Get-Command node.exe -ErrorAction Stop).Source }

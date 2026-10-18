@@ -1,4 +1,4 @@
-# Uruchom raz jako administrator po skopiowaniu administracja poza program_dir.
+﻿# Uruchom raz jako administrator po skopiowaniu administracja poza program_dir.
 param([string]$At='22:00',[string]$TaskName='Marand-Technologia-Backup')
 $ErrorActionPreference='Stop'
 $Config=Join-Path $PSScriptRoot 'konfiguracja.json'

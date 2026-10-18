@@ -1,4 +1,4 @@
-param([ValidateSet('backup','update')][string]$Operation='backup')
+﻿param([ValidateSet('backup','update')][string]$Operation='backup')
 $ErrorActionPreference='Stop'
 $Config=Join-Path $PSScriptRoot 'konfiguracja.json'
 if (!(Test-Path -LiteralPath $Config -PathType Leaf)) { throw 'Skopiuj konfiguracja.przyklad.json jako konfiguracja.json i uzupełnij ścieżki.' }
