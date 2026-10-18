@@ -1,6 +1,10 @@
 'use strict';
 let dirty=false,submitting=false;
 document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('input',()=>dirty=true);f.addEventListener('submit',()=>{submitting=true;});});
+document.querySelectorAll('form[data-inherited-values]').forEach(form=>form.querySelectorAll('input:not([type=hidden]),textarea').forEach(control=>{
+  if(control.value.trim())control.classList.add('inherited-value');
+  control.addEventListener('input',()=>control.classList.remove('inherited-value'));
+}));
 window.addEventListener('beforeunload',e=>{if(dirty&&!submitting){e.preventDefault();e.returnValue='';}});
 document.querySelectorAll('[data-project-article-mode]').forEach(select=>{
   const update=()=>select.form.querySelectorAll('[data-project-article-panel]').forEach(panel=>{
@@ -21,7 +25,7 @@ if(addGB)addGB.addEventListener('click',()=>{
   const number=Math.max(...rows.map(r=>Number(r.dataset.gbNumber)))+1;
   if(number>32){alert('Osiągnięto maksymalne oznaczenie GB32.');return;}
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
-  next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'?String(number):'';});
+  next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'?String(number):'';c.classList.remove('inherited-value');});
   list.appendChild(next);dirty=true;next.querySelector('input:not([type=hidden])').focus();
 });
 document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('submit',async event=>{

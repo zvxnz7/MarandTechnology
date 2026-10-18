@@ -83,9 +83,10 @@ async function handle(ctx) {
         if(!Number.isSafeInteger(pid)||!db.prepare('SELECT id FROM projects WHERE id=?').get(pid))fail(400,'Wybierz projekt / próbę.');
         db.prepare('INSERT OR IGNORE INTO project_articles VALUES(?,?)').run(pid,id); audit(req.user,'Dodano artykuł do projektu / próby',null,`${id} / ${pid}`);
       } else if(action==='new') {
-        const v=blank();v.symbol=a.symbol;v.date=ctx.todayWarsaw();
-        const rid=db.prepare("INSERT INTO records(article_id,kind,symbol,payload,created_at,updated_at,expected_active) VALUES(?,'spec',?,?,?,?,?)").run(id,a.symbol,JSON.stringify(v),now(),now(),a.active_spec).lastInsertRowid;
-        audit(req.user,'Utworzono specyfikację artykułu',rid);return Number(rid);
+        const source=db.prepare("SELECT * FROM records WHERE article_id=? AND kind='spec' ORDER BY id DESC LIMIT 1").get(id);
+        const v=source?JSON.parse(source.payload):blank();v.symbol=a.symbol;if(!source)v.date=ctx.todayWarsaw();
+        const rid=db.prepare("INSERT INTO records(article_id,kind,symbol,base_id,payload,created_at,updated_at,expected_active) VALUES(?,'spec',?,?,?,?,?,?)").run(id,a.symbol,source?.id||null,JSON.stringify(v),now(),now(),a.active_spec).lastInsertRowid;
+        audit(req.user,'Utworzono specyfikację artykułu',rid,source?`Na podstawie wpisu ${source.id}`:'');return Number(rid);
       } else fail(404,'Nie znaleziono operacji.');
     });redirect(req,res,result?`/records/${result}/edit`:`/articles/${id}`);return true;
   }

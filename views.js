@@ -107,7 +107,8 @@ function editPage({ user, csrf, flashes, r, v }) {
     const fields = FINISH.map(([k, label]) => field(label, `finish_${i}_${k}`, f[k] || '')).join('');
     return `<details class="gb-row" ${Object.values(f).some(Boolean) ? 'open' : ''}><summary>Wariant wykończenia ${i + 1}</summary><div class="form-grid">${fields}</div></details>`;
   }).join('');
-  const form = `<form method="post" class="editor" data-dirty>${hidden('csrf', csrf)}${hidden('revision', r.revision)}
+  const inheritedNotice = r.base_id ? `<div class="notice">Dane skopiowano z <a href="/records/${r.base_id}">wcześniejszego wpisu #${r.base_id}</a>. Wyszarzone wartości można edytować — po zmianie wrócą do zwykłego tła.</div>` : '';
+  const form = `<form method="post" class="editor" data-dirty${r.base_id ? ' data-inherited-values' : ''}>${hidden('csrf', csrf)}${hidden('revision', r.revision)}
 <section class="panel padded"><h2>Artykuł i opis</h2><div class="form-grid">${field('Symbol artykułu', 'symbol', v.symbol || r.symbol, { required: 'required' })}${field('Numer próby / odniesienie', 'number', v.number || '')}${field('Data źródłowa / założenia', 'date', v.date || '', v.date ? { readonly: 'readonly' } : {})}${field('Klient', 'client', v.client || '')}</div>${field('Opis / założenia projektu', 'description', v.description || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Ustawienia maszyny</h2><div class="form-grid">${tech}</div></section>
 <section class="panel padded"><h2>GB — przędze i sploty</h2><p class="muted">Domyślnie GB1 i GB2. Dodaj kolejne w razie potrzeby. Historyczne oznaczenia GB pozostają zachowane.</p><div data-gb-list>${gbRows}</div><button type="button" data-add-gb>+ Dodaj GB</button></section>
@@ -116,7 +117,7 @@ function editPage({ user, csrf, flashes, r, v }) {
 <section class="panel padded"><h2>Dodatkowe warianty wykończenia (opcjonalnie)</h2>${finishRows}</section>
 <section class="panel padded"><h2>Etapy i uwagi</h2>${field('Etapy prób — daty, miejsca, wyniki', 'stages', v.stages || '', { multiline: true, className: 'tall' })}${field('Komentarze dodatkowe', 'comments', v.comments || '', { multiline: true })}${field('Stałe uwagi dla dziewiarza', 'knitter_notes', v.knitter_notes || '', { multiline: true })}<p class="muted">Polecenia do konkretnego uruchomienia, np. 10 belek po 150 m, wpiszesz osobno przy wydaniu karty.</p></section>
 <div class="savebar"><span>Utworzenie wpisu: ${datepl(r.created_at)} · rewizja ${r.revision}</span>${button('Zapisz zmiany', 'primary')}</div></form>`;
-  return layout({ user, csrf, flashes, title: 'Uzupełnij dane · Marand', body: `<a class="breadcrumb" href="/records/${r.id}">← Wróć do wpisu</a><div class="pagehead"><div><span class="eyebrow">${r.kind === 'trial' ? 'PRÓBA' : 'SPECYFIKACJA ROBOCZA'}</span><h1>Uzupełnij dane</h1><p class="muted">Możesz zapisać niepełny wpis i wrócić do niego później.</p></div></div>${form}` });
+  return layout({ user, csrf, flashes, title: 'Uzupełnij dane · Marand', body: `<a class="breadcrumb" href="/records/${r.id}">← Wróć do wpisu</a><div class="pagehead"><div><span class="eyebrow">${r.kind === 'trial' ? 'PRÓBA' : 'SPECYFIKACJA ROBOCZA'}</span><h1>Uzupełnij dane</h1><p class="muted">Możesz zapisać niepełny wpis i wrócić do niego później.</p></div></div>${inheritedNotice}${form}` });
 }
 function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '' }) {
   const canEdit = ['technologist', 'approver', 'admin'].includes(user.role);
