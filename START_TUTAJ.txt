@@ -1,14 +1,13 @@
 MARAND — TECHNOLOGIA I ROZWÓJ
-Wersja Node.js 0.2.0 · 15 października 2026
+Wersja Node.js 0.3.0 · 18 października 2026
 
 CO ZAWIERA PILOT
 Działająca aplikacja z logowaniem i rolami, projektami, próbami i wariantami,
 roboczymi specyfikacjami, zatwierdzaniem, wersjonowaniem, historią zmian
 i niezmiennymi kartami na maszyny. Dane są w SQLite.
 
-Node.js zastępuje Pythona podczas uruchamiania aplikacji i obsługi bazy.
-Istniejącą bazę i hasła użytkowników można zachować. Nie są wymagane pakiety
-NPM ani Python na serwerze. Używaj Node.js 24.15 lub nowszego.
+Aplikacja, baza, kopie zapasowe i aktualizator działają w Node.js. Nie są
+wymagane pakiety NPM ani Python na serwerze. Używaj Node.js 24.15 lub nowszego.
 
 URUCHOMIENIE NA WINDOWS
 1. Zainstaluj Node.js 24.15 lub nowszy.
@@ -24,10 +23,9 @@ istniejącej bazy ani haseł. Zrób zweryfikowaną kopię przed przeniesieniem
 programu na inny komputer.
 
 AKTUALIZACJE Z GITHUB
-Administrator aplikacji otwiera „Sprawdź aktualizacje”. Przycisk pojawi się
-w panelu aktualizacji, gdy informatyk skonfiguruje repozytorium, usługę i
-aktualizator w osobnym folderze administracja. Wydania powstają po wypchnięciu
-tagu vX.Y.Z. Aplikacja pobiera archiwum wydania z GitHub, sprawdza SHA-256,
+Administrator aplikacji wybiera „Aktualizacje GitHub”. Wydanie pojawia się
+automatycznie po każdym wypchnięciu zmian na main. Aplikacja pobiera archiwum
+wydania z GitHub, sprawdza SHA-256,
 wykonuje kopię bazy i w razie błędu wraca do poprzedniego programu.
 
 Nie umieszczaj w repozytorium live bazy SQLite, folderu data ani pliku

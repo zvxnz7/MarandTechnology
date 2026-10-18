@@ -168,7 +168,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Database initialization failed.' }
 } finally { Remove-Item Env:\MARAND_DATA -ErrorAction SilentlyContinue }
 
-$SecureToken = Read-Host 'Optional: paste a fine-grained GitHub token with Contents: Read-only access to this private repo (Enter skips for now)' -AsSecureString
+$SecureToken = Read-Host 'Optional: paste a fine-grained GitHub token with Contents: Read-only access (needed only for a private repo; Enter skips for this public repo)' -AsSecureString
 $TokenCredential = New-Object -TypeName System.Net.NetworkCredential -ArgumentList @('', $SecureToken)
 $Token = $TokenCredential.Password
 if (![string]::IsNullOrWhiteSpace($Token)) {
@@ -246,7 +246,7 @@ if ($LanAddresses.Count -gt 0) {
 }
 Write-Host "Data: $DataDir"
 Write-Host "Backups: $BackupDir (daily at 22:00)"
-Write-Host "Update page: repo $Repo; releases require a vX.Y.Z tag."
+Write-Host "Update page: repo $Repo; GitHub Actions publishes an update after each push to main."
 if (!(Test-Path -LiteralPath (Join-Path $AdminDir 'github-token.dpapi'))) {
     Write-Host 'Private repo token was skipped. The update page cannot read releases until a token is configured.' -ForegroundColor Yellow
 }

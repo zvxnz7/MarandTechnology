@@ -197,7 +197,10 @@ async function githubLatest(repo) {
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Marand-Technologia-Updater' };
   if (process.env.MARAND_GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.MARAND_GITHUB_TOKEN}`;
   const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`GitHub nie zwrócił wydania (${response.status}). Sprawdź repozytorium i dostęp do niego.`);
+  if (!response.ok) {
+    if (response.status === 404) throw new Error('Repozytorium nie ma jeszcze wydania. Po wypchnięciu zmian na main GitHub opublikuje je automatycznie; odśwież tę stronę za chwilę.');
+    throw new Error(`GitHub nie zwrócił wydania (${response.status}). Sprawdź repozytorium i dostęp do niego.`);
+  }
   return response.json();
 }
 function readJsonIfExists(file) {
@@ -512,7 +515,8 @@ async function handle(req, res) {
       const outside = Boolean(updater && rel !== '' && (path.isAbsolute(rel) || rel === '..' || rel.startsWith(`..${path.sep}`)));
       const updateConfig = process.env.MARAND_UPDATE_CONFIG || (updater ? path.join(path.dirname(path.resolve(updater)), 'konfiguracja.json') : '');
       const updateStatus = readJsonIfExists(path.join(DATA, 'update_status.json'));
-      return send(req, res, 200, V.updatePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), current: versionInfo.version, latest, status: updateStatus, repo, canUpdate: Boolean(repo && outside && fs.existsSync(updater) && fs.existsSync(updateConfig)), updateError }));
+      const updateAvailable = Boolean(latest && isNewer(String(latest.tag_name || '').replace(/^v/, ''), versionInfo.version));
+      return send(req, res, 200, V.updatePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), current: versionInfo.version, latest, status: updateStatus, repo, canUpdate: Boolean(repo && outside && fs.existsSync(updater) && fs.existsSync(updateConfig)), updateAvailable, updateError }));
     }
     if (p === '/admin/update' && req.method === 'POST') {
       role(req.user, 'admin');
@@ -524,7 +528,7 @@ async function handle(req, res) {
   } catch (err) {
     if (err instanceof HttpError) return send(req, res, err.status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: err.message }));
     if (err && (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED' || err.code === 'ERR_SQLITE_ERROR')) {
-      console.error('Database operation failed:', err.message);
+      console.error('Database operation failed:', err.code || 'UNKNOWN', err.errstr || '', err.stack || err.message);
       return send(req, res, 503, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: 'Nie udało się wykonać zapisu. Odczekaj chwilę i spróbuj ponownie; nie zamykaj formularza.' }));
     }
     console.error(err && err.stack || err);

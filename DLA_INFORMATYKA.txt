@@ -1,9 +1,11 @@
 MARAND — INSTALACJA NODE.JS, AKTUALIZACJE I KOPIE
-Wersja 0.2.0 | 15.10.2026
+Wersja Node.js 0.3.0 | 18.10.2026
 
 WYMAGANIA
-Windows Server, Node.js 24.15 lub nowszy, dostęp HTTPS albo zaufana sieć VPN.
-Nie jest potrzebny Python ani pakiet npm. SQLite jest częścią Node.js.
+Windows Server i Node.js 24.15 lub nowszy. Aplikacja, obsługa SQLite,
+konta, kopie zapasowe i aktualizator są napisane w JavaScript i działają
+bez Pythona oraz bez pakietów npm. Skrypty PowerShell służą wyłącznie do
+konfiguracji zadań i zapory Windows.
 
 ZALECANY UKŁAD
 C:\Marand\Technologia\program               kod aplikacji
@@ -17,49 +19,40 @@ uruchamia aplikację jako zadanie Windows pod kontem SYSTEM i ogranicza dostęp
 do danych, tokenu GitHub oraz kopii do SYSTEM i administratorów.
 
 PIERWSZA INSTALACJA
-1. Pobierz prywatne repozytorium jako ZIP, rozpakuj je na lokalnym dysku i
+1. Pobierz publiczne repozytorium jako ZIP, rozpakuj je na lokalnym dysku i
    uruchom INSTALL_SERVER.cmd. Skrypt poprosi o uprawnienia administratora.
-2. Instalator zapewnia Node.js 24.15+ przez winget, kopiuje tylko pliki Node.js,
-   uruchamia init, konfiguruje zadanie Windows przy starcie, updater oraz codzienną
-   kopię SQLite. Szczegóły: SERVER_QUICKSTART.md.
-3. Jeśli masz istniejącą bazę, podaj jej ścieżkę podczas instalacji. Skrypt tworzy
-   spójną kopię; nie dodawaj bazy ani secret.key do GitHub.
-4. Ustaw dostęp z innych urządzeń dopiero po skonfigurowaniu HTTPS lub zaufanego
-   VPN. Nie wystawiaj portu 8765 bezpośrednio do publicznego Internetu.
+2. Instalator zapewnia Node.js 24.15+ przez winget, kopiuje pliki programu,
+   uruchamia init, konfiguruje zadanie Windows i codzienną kopię SQLite.
+   Szczegóły: SERVER_QUICKSTART.md.
+3. Jeśli masz istniejącą bazę, podaj jej ścieżkę podczas instalacji. Skrypt
+   tworzy spójną kopię; nie dodawaj bazy ani secret.key do GitHub.
+4. Dostęp z innych urządzeń działa tylko w zaufanej sieci lokalnej. Nie
+   wystawiaj portu 8765 bezpośrednio do publicznego Internetu.
 
 HASŁA I SESJE
-Node.js rozpoznaje hashe scrypt z pilota Python/Werkzeug i zachowuje bieżące
-konta. Hasła nie są przenoszone do plików konfiguracyjnych. Po zmianie runtime
-użytkownicy logują się ponownie; sesje przeglądarek są nowe.
+Node.js zachowuje istniejące konta i hashe haseł. Hasła nie są przenoszone do
+plików konfiguracyjnych. Po zmianie runtime użytkownicy logują się ponownie;
+sesje przeglądarek są nowe.
 
 KOPIE BAZY
-Node manage.js backup --output <nowa-ścieżka.sqlite3> wykonuje spójną kopię
+node manage.js backup --output <nowa-ścieżka.sqlite3> wykonuje spójną kopię
 SQLite i sprawdza jej integralność. INSTALL_SERVER.cmd ustawia zweryfikowaną
 kopię codziennie o 22:00, 14 kopii dziennych i zapis statusu w
 dane\backup_status.json. Kopie nie są szyfrowane; utrzymuj dodatkową kopię
 poza serwerem.
 
 AKTUALIZACJE Z GITHUB
-Repozytorium jest ustawione na zvxnz7/MarandTechnology. Dla prywatnego repo
-uruchom administracja\SET_GITHUB_TOKEN.cmd i wklej fine-grained token z
-uprawnieniem Contents: Read-only. Skrypt szyfruje token DPAPI na serwerze;
-nie zapisuj go w konfiguracja.json ani w Git.
+Repozytorium to zvxnz7/MarandTechnology. Jest publiczne, więc token GitHub nie
+jest potrzebny. Po każdym pushu na main GitHub Actions publikuje wersjonowane
+wydanie z marand-node-release.zip. Administrator aplikacji wybiera
+„Aktualizacje GitHub” i instaluje nową wersję.
 
-Instalator ustawia MARAND_UPDATER i MARAND_UPDATE_CONFIG oraz kopiuje
-aktualizator poza programem. Po wydaniu tagu vX.Y.Z GitHub Actions publikuje
-marand-node-release.zip. Administrator aplikacji otwiera „Sprawdź
-aktualizacje” i wybiera instalację. Aktualizator zatrzymuje i wznawia
-zadanie Windows aplikacji.
-
+Instalator kopiuje aktualizator poza program_dir i ustawia jego konfigurację.
 Aktualizator sprawdza sumę SHA-256 pliku i każdego pliku manifestu, odrzuca
-zmianę schematu bazy, robi kopię SQLite, zatrzymuje zadanie Windows, podmienia kod i
-sprawdza /healthz. Baza i klucz sesji pozostają w osobnym katalogu. Jeżeli
+zmianę schematu bazy, robi kopię SQLite, zatrzymuje zadanie Windows, podmienia
+kod i sprawdza /healthz. Baza i klucz sesji pozostają w osobnym katalogu. Jeżeli
 nowy program nie przejdzie kontroli, aktualizator przywraca poprzedni program.
 Przy błędzie aktualizacji sprawdź dane/update_status.json i maintenance.json.
-
-PANEL PODGLĄDU
-Plik PODGLAD.html jest historycznym widokiem bez zapisu. Używaj aplikacji
-Node.js, aby pracować na aktualnej bazie.
 
 BEZPIECZEŃSTWO REPOZYTORIUM
 Nie dodawaj do GitHub folderu data, secret.key, działającej bazy, tokenów, plików

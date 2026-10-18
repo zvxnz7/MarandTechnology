@@ -14,9 +14,9 @@ Wybierz instalację dostępnego stabilnego wydania. Aktualizator sprawdza
 sumy SHA-256, kopiuje bazę, zatrzymuje usługę, podmienia program i sprawdza
 uruchomienie. W razie błędu przywraca poprzedni program.
 
-Do aktualizacji przez interfejs potrzebna jest zewnętrzna kopia updater.js
-oraz konfiguracja.json w folderze administracja poza program_dir.
+Aktualizator i konfiguracja.json muszą być w folderze administracja poza
+program_dir. Instalator Windows ustawia te ścieżki automatycznie.
 
-Pliki maintenance.py i server.py w repozytorium należą do pilota Python 0.1.1.
-Node.js nie uruchamia tych plików. Serwer korzysta z manage.js, server.js i
-updater.js; nie instaluj Pythona na serwerze dla tej aplikacji.
+Kod aplikacji, SQLite, kopie i aktualizacje działają w JavaScript/Node.js.
+Skrypty PowerShell obsługują wyłącznie zadania i zaporę Windows. Nie instaluj
+Pythona na serwerze dla tej aplikacji.

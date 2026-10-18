@@ -1,1 +1,0 @@
-{% extends 'base.html' %}{% block content %}<h1>Operacja nie została wykonana</h1><div class="notice warning">{{error.description if error.description is defined else error}}</div><p>Jeżeli formularz zawiera Twoje zmiany, użyj przycisku „Wstecz” w przeglądarce i skopiuj je przed odświeżeniem.</p><a class="button" href="{{url_for('home')}}">Wróć do kartoteki</a>{% endblock %}

@@ -20,7 +20,7 @@ for an engineer-managed installation.
 4. Start the app with `node manage.js run --host 127.0.0.1 --port 8765`.
 5. Run it as a Windows service or scheduled task using a wrapper that keeps the process alive. The included installer creates a scheduled task at Windows startup.
 
-The application uses the same `schema.sql`, seed data, user rows, and password hashes as the Python pilot. Existing users sign in with their current passwords. The first Node login creates a Node-specific signed session cookie, so users will sign in again after changing runtimes.
+The application preserves the existing SQLite schema, seed data, user rows, and password hashes. Existing users sign in with their current passwords. Node.js uses its own signed session cookie, so users sign in again after changing runtimes.
 
 ## Backups
 
@@ -32,17 +32,17 @@ node manage.js backup --output D:\Kopie\marand-2026-10-15.sqlite3
 
 Use a new output filename each time. Keep backups outside both the program and live data directories.
 
-## GitHub release updates
+## GitHub updates
 
-The administrator page offers an update button for stable GitHub releases. It downloads the `marand-node-release.zip` asset from the latest release, checks GitHub's SHA-256 asset digest, then hands the package to the external updater. The updater must be copied outside the replaceable program directory and configured with the task/service, data, and backup paths.
+After each push to `main`, GitHub Actions creates a versioned release containing `marand-node-release.zip`. The administrator page has an **Aktualizacje GitHub** link and an update button when a newer release is available. It downloads the package from the configured repository, checks GitHub's SHA-256 digest and the per-file manifest, then hands it to the external updater outside the replaceable program directory.
 
 Set these environment variables for the app process (the included installer sets them through `run-server.ps1`):
 
 - `MARAND_GITHUB_REPO=owner/repository`
-- `MARAND_GITHUB_TOKEN` only for a private repository; use a read-only token with repository contents access.
+- `MARAND_GITHUB_TOKEN` only for a private repository; this repository is public, so no token is needed.
 - `MARAND_UPDATER` to the absolute path of the external `updater.js` copy.
 - `MARAND_UPDATE_CONFIG` to the absolute path of the external updater JSON configuration.
 
-Push a tag such as `v0.2.1` to build and publish an update release. The workflow attaches `marand-node-release.zip`; the updater refuses a release with a changed database schema or invalid file hashes. It takes a SQLite backup before replacing code and restores the previous program if the app fails its health check.
+The workflow assigns increasing release versions automatically. The updater refuses a release with a changed database schema or invalid file hashes. It takes a SQLite backup before replacing code and restores the previous program if the app fails its health check.
 
 Do not publish production data, `data/secret.key`, live SQLite files, or user passwords to GitHub. Keep `data/` out of the repository.

@@ -1,8 +1,9 @@
-.venv/
 data/
 PODGLAD.html
+.venv/
 __pycache__/
 .pytest_cache/
+.codex-remote-attachments/
 *.sqlite3*
 .release/
 release/

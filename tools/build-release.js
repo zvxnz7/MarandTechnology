@@ -37,6 +37,10 @@ async function main() {
   await fsp.rm(OUT, { recursive: true, force: true });
   await fsp.mkdir(OUT, { recursive: true });
   for (const file of FILES) await copyFile(file);
+  const packagePath = path.join(OUT, 'package.json');
+  const packageJson = JSON.parse(await fsp.readFile(packagePath, 'utf8'));
+  packageJson.version = version;
+  await fsp.writeFile(packagePath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
   const sources = await filesUnder(path.join(ROOT, 'seed', 'sources'));
   for (const file of sources) {
     const relative = path.relative(ROOT, file).split(path.sep).join('/');

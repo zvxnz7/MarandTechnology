@@ -1,6 +1,6 @@
 # Put Marand on a Windows Server
 
-This is the one-time setup for the private GitHub repository `zvxnz7/MarandTechnology`.
+This is the one-time setup for the public GitHub repository `zvxnz7/MarandTechnology`.
 The installer creates a background Windows scheduled task, keeps the database
 outside the replaceable program folder, schedules daily database backups, and
 configures the app's GitHub release updater.
@@ -18,10 +18,8 @@ configures the app's GitHub release updater.
    existing user sessions to keep the same signing key. Press Enter to make a new
    seeded database instead.
 4. At the first-run prompt, create the app administrator login and password.
-5. When asked, paste a GitHub fine-grained personal access token restricted to
-   this repository with **Contents: Read-only**. The installer stores it encrypted
-   with Windows DPAPI outside the program folder. Press Enter to configure this
-   later; run `administracja/SET_GITHUB_TOKEN.cmd` and restart the server task.
+5. The repository is public, so press Enter at the optional GitHub token prompt.
+   A token is only needed if the repository is made private later.
 
 The app is installed under `C:\Marand\Technologia`. Its database and session key
 are in `dane`, the updater and protected settings are in `administracja`, and
@@ -48,14 +46,20 @@ this HTTP service to the Internet. HTTP does not encrypt passwords or session
 cookies on the network; use this only on a trusted LAN. For remote access, use a
 VPN or an HTTPS reverse proxy.
 
+## If saving fails
+
+Keep the form open so you can copy your changes. On the server, open
+`C:\Marand\Technologia\administracja\logs` and inspect the newest
+`server-*.err.log`. It records the SQLite error code and message needed to
+diagnose a failure against the server's existing database.
+
 ## GitHub updates
 
 The installer copies `updater.js` outside the program folder and configures it
-to stop/restart the Windows scheduled task safely. The update page can install
-stable GitHub releases published by the repository workflow. After installing
-version 0.2.0, a later version such as `v0.2.1` must be published before the
-button can install an update. The private-repository token must remain valid and
-have read-only contents access.
+to stop/restart the Windows scheduled task safely. GitHub Actions publishes a
+stable release automatically after each push to `main`. Once the action
+finishes, an administrator can open **Aktualizacje GitHub** in the app and
+install the newer version. No token is needed while the repository is public.
 
 The GitHub repository contains code, not production data. Do not commit the
 server's `dane` folder, SQLite database, session key, backups, or token.

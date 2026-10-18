@@ -1,6 +1,6 @@
 {
   "name": "marand-technologia",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Marand technology records application, Node.js runtime",
   "engines": {
@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node manage.js run",
     "init": "node manage.js init",
-    "backup": "node manage.js backup"
+    "backup": "node manage.js backup",
+    "test": "node --test"
   }
 }
