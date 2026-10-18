@@ -24,7 +24,12 @@ function associate(ctx, pid, form) {
     return makeArticle(pid, symbol).id;
   }
   if (form.article_mode === 'existing') {
-    const id = Number(form.article_id);
+    let id = Number(form.article_id);
+    if ((!Number.isSafeInteger(id) || id < 1) && form.existing_symbol) {
+      const matches = db.prepare('SELECT id FROM articles WHERE symbol_key=?').all(String(form.existing_symbol).toUpperCase().replace(/\s/g,''));
+      if (matches.length !== 1) fail(400, 'Wybierz jednoznaczny artykuł z kartoteki.');
+      id = matches[0].id;
+    }
     if (!Number.isSafeInteger(id) || id < 1 || !db.prepare('SELECT id FROM articles WHERE id=?').get(id)) fail(400, 'Wybierz artykuł z kartoteki.');
     if (!pid) fail(400, 'Artykuły można przypisać do projektu z poziomu projektu.');
     db.prepare('INSERT OR IGNORE INTO project_articles VALUES(?,?)').run(pid,id); return id;

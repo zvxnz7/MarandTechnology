@@ -226,15 +226,13 @@ test('independent article, project creation with article and cross-project assoc
  assert.match(r.text(),/04\.03\.2026/);
  db.close();
 });
-test('categories filter, dates and SQL pagination with 500 articles',async()=>{
- const s=await session();let r=await post(s,'/categories',{name:'Poliester-test'});assert.equal(r.status,303,r.text());
- const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));const parent=db.prepare('SELECT id FROM categories WHERE name=?').get('Poliester-test').id;
- r=await post(s,'/categories',{name:'Welur',parent_id:parent});assert.equal(r.status,303,r.text());
- const cid=db.prepare('SELECT id FROM categories WHERE parent_id=?').get(parent).id;
- r=await post(s,'/articles',{symbol:'WELUR-PA',category_id:cid});assert.equal(r.status,303,r.text());
+test('categories are removed; article dates and SQL pagination with 500 articles',async()=>{
+ const s=await session();let r=await post(s,'/categories',{name:'Poliester-test'});assert.equal(r.status,404,r.text());
+ const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));
+ r=await post(s,'/articles',{symbol:'WELUR-PA'});assert.equal(r.status,303,r.text());
  db.exec('BEGIN');const insert=db.prepare('INSERT INTO articles(symbol,symbol_key,created_at,updated_at) VALUES(?,?,?,?)');
  for(let i=0;i<500;i++)insert.run('PERF-'+String(i).padStart(3,'0'),'PERF'+i,`2026-01-01T00:00:${String(i%60).padStart(2,'0')}Z`,'2026-01-01T00:00:00Z');db.exec('COMMIT');
- r=await request(`${baseUrl}/articles?category=${parent}&type=Welur`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/WELUR-PA/);assert.doesNotMatch(r.text(),/PERF-001/);
+ r=await request(`${baseUrl}/articles`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/WELUR-PA/);assert.doesNotMatch(r.text(),/Kategoria/);
  r=await request(`${baseUrl}/articles?q=PERF&sort=oldest&page=2`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.equal((r.text().match(/class="item-title"/g)||[]).length,50);assert.match(r.text(),/Strona 2/);
  r=await request(`${baseUrl}/articles?q=%25`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.doesNotMatch(r.text(),/PERF-001/);db.close();
 });
