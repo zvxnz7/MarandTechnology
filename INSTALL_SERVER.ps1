@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 $ErrorActionPreference = 'Stop'
 $SourceRoot = [IO.Path]::GetFullPath($PSScriptRoot)
@@ -66,8 +66,12 @@ if (!(Test-NodeVersion $NodePath)) {
 }
 
 $VersionInfo = Get-Content -LiteralPath (Join-Path $SourceRoot 'release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($VersionInfo.schema -ne 1 -or $VersionInfo.protocol -ne 2 -or !$VersionInfo.version) {
+if ($VersionInfo.schema -ne 2 -or $VersionInfo.protocol -ne 2 -or !$VersionInfo.version) {
     throw 'release.json does not describe a supported app version.'
+}
+
+if (Test-Path -LiteralPath (Join-Path $DataDir 'marand.sqlite3')) {
+    throw 'Istniejaca instalacja: uzyj procedury AKTUALIZACJA_SCHEMA2.txt. Instalator nie nadpisze programu z istniejaca baza.'
 }
 
 $BackupDir = if (Test-Path -LiteralPath 'D:\' -PathType Container) { 'D:\Kopie\Marand-Technologia' } else { Join-Path $InstallRoot 'kopie' }
@@ -83,6 +87,7 @@ if ($TaskExists -and $TaskExists.State -eq 'Running') {
 
 $RuntimeFiles = @(
     'server.js','views.js','manage.js','package.json','schema.sql','NODE_SETUP.md','release.json',
+    'modules\database.js','modules\catalog.js','modules\photos.js','modules\card-changes.js','modules\navigation.js',
     'static\app.css','static\app.js','static\card.css','static\logo.jpg','seed\data.json'
 )
 foreach ($Relative in $RuntimeFiles) {

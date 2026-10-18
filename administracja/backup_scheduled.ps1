@@ -1,38 +1,62 @@
-﻿param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
+param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
 $ErrorActionPreference='Stop'
 $Cfg=Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
 $Node=if ($Cfg.node_path -and (Test-Path -LiteralPath $Cfg.node_path -PathType Leaf)) { [IO.Path]::GetFullPath($Cfg.node_path) } else { (Get-Command node.exe -ErrorAction Stop).Source }
 $Data=[IO.Path]::GetFullPath($Cfg.data_dir)
 $Program=[IO.Path]::GetFullPath($Cfg.program_dir)
-$BackupRoot=[IO.Path]::GetFullPath($Cfg.backup_dir)
-$Daily=Join-Path $BackupRoot 'dzienne'
-$TempFolder=Join-Path $BackupRoot 'tymczasowe'
-New-Item -ItemType Directory -Force -Path $Daily,$TempFolder | Out-Null
-$Stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
-$TempBackup=Join-Path $TempFolder ("marand-$Stamp.sqlite3")
-$DailyBackup=Join-Path $Daily ("D-"+(Get-Date -Format 'yyyy-MM-dd')+'.sqlite3')
+$Root=[IO.Path]::GetFullPath($Cfg.backup_dir)
+$Daily=Join-Path $Root 'dzienne'
+$Weekly=Join-Path $Root 'tygodniowe'
+$Temp=Join-Path $Root ('tymczasowe\'+[guid]::NewGuid().ToString('N'))
 $StatusPath=Join-Path $Data 'backup_status.json'
 $env:MARAND_DATA=$Data
-try {
-    & $Node (Join-Path $Program 'manage.js') backup --output $TempBackup
-    if ($LASTEXITCODE -ne 0) { throw "Polecenie kopii zakończyło się błędem $LASTEXITCODE." }
-    Move-Item -LiteralPath $TempBackup -Destination $DailyBackup -Force
-    $Keep=[int]$Cfg.daily_keep
-    if ($Keep -lt 1 -or $Keep -gt 1000) { $Keep=14 }
-    $Files=@(Get-ChildItem -LiteralPath $Daily -File | Where-Object { $_.Name -match '^D-\d{4}-\d{2}-\d{2}\.sqlite3$' } | Sort-Object Name -Descending)
+$env:MARAND_DATABASE=Join-Path $Data 'marand.sqlite3'
+function Prune-Copies($Directory,$Pattern,$Keep) {
+    $Files=@(Get-ChildItem -LiteralPath $Directory -File | Where-Object { $_.Name -match $Pattern } | Sort-Object Name -Descending)
     foreach ($Old in $Files | Select-Object -Skip $Keep) { Remove-Item -LiteralPath $Old.FullName -Force }
-    $Result=[ordered]@{ok=$true;last_success=(Get-Date).ToUniversalTime().ToString('o');daily=$DailyBackup;daily_keep=$Keep}
-    $Json=$Result | ConvertTo-Json -Depth 4
-    $TempStatus=$StatusPath+'.tmp'
-    [IO.File]::WriteAllText($TempStatus,$Json,[Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $TempStatus -Destination $StatusPath -Force
+}
+$Previous=$null
+if(Test-Path -LiteralPath $StatusPath) { try { $Previous=Get-Content -Raw $StatusPath | ConvertFrom-Json } catch {} }
+try {
+    New-Item -ItemType Directory -Force -Path $Daily,$Weekly,$Temp | Out-Null
+    $Database=Join-Path $Temp 'marand.sqlite3'
+    & $Node (Join-Path $Program 'manage.js') backup --output $Database
+    if ($LASTEXITCODE -ne 0) { throw "Polecenie kopii zakonczylo sie bledem $LASTEXITCODE." }
+    # manage.js exports the photo files referenced by this exact DB snapshot.
+    if(Test-Path -LiteralPath ($Database+'.photos')) { Move-Item -LiteralPath ($Database+'.photos') -Destination (Join-Path $Temp 'photos') }
+    Copy-Item -LiteralPath (Join-Path $Data 'secret.key') -Destination $Temp
+    $Sources=Join-Path $Program 'seed\sources'
+    if(Test-Path -LiteralPath $Sources) { Copy-Item -LiteralPath $Sources -Destination (Join-Path $Temp 'sources') -Recurse }
+    $Manifest=@()
+    foreach($File in Get-ChildItem -LiteralPath $Temp -Recurse -File) {
+        $Manifest+=@{file=$File.FullName.Substring($Temp.Length+1);sha256=(Get-FileHash -LiteralPath $File.FullName -Algorithm SHA256).Hash}
+    }
+    $Manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Temp 'manifest.json') -Encoding UTF8
+    $Zip=$Temp+'.zip'
+    Compress-Archive -Path (Join-Path $Temp '*') -DestinationPath $Zip
+    # ZIP is only published after successful compression; preserve the old copy on failure.
+    $DailyBackup=Join-Path $Daily ('D-'+(Get-Date -Format 'yyyy-MM-dd')+'.zip')
+    if(Test-Path -LiteralPath $DailyBackup) { [IO.File]::Replace($Zip,$DailyBackup,$null) } else { Move-Item -LiteralPath $Zip -Destination $DailyBackup }
+    $Today=(Get-Date).Date
+    $Monday=$Today.AddDays(-(([int]$Today.DayOfWeek+6)%7))
+    $WeeklyBackup=Join-Path $Weekly ('W-'+$Monday.ToString('yyyy-MM-dd')+'.zip')
+    if(!(Test-Path -LiteralPath $WeeklyBackup)) {
+        Copy-Item -LiteralPath $DailyBackup -Destination ($WeeklyBackup+'.tmp')
+        Move-Item -LiteralPath ($WeeklyBackup+'.tmp') -Destination $WeeklyBackup
+    }
+    $Keep=[int]$Cfg.daily_keep; if($Keep -lt 1 -or $Keep -gt 1000) { $Keep=14 }
+    $Weeks=[int]$Cfg.weekly_keep; if($Weeks -lt 1 -or $Weeks -gt 520) { $Weeks=12 }
+    Prune-Copies $Daily '^D-\d{4}-\d{2}-\d{2}\.zip$' $Keep
+    Prune-Copies $Weekly '^W-\d{4}-\d{2}-\d{2}\.zip$' $Weeks
+    $Result=[ordered]@{ok=$true;last_success=(Get-Date).ToUniversalTime().ToString('o');daily=$DailyBackup;weekly=$WeeklyBackup;daily_keep=$Keep;weekly_keep=$Weeks}
 } catch {
-    $Result=@{ok=$false;last_failure=(Get-Date).ToUniversalTime().ToString('o');error=$_.Exception.Message}
-    $Json=$Result | ConvertTo-Json -Depth 4
-    $TempStatus=$StatusPath+'.tmp'
-    [IO.File]::WriteAllText($TempStatus,$Json,[Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $TempStatus -Destination $StatusPath -Force
+    $Result=@{ok=$false;last_success=$Previous.last_success;last_failure=(Get-Date).ToUniversalTime().ToString('o');error=$_.Exception.Message}
     throw
 } finally {
-    if (Test-Path -LiteralPath $TempBackup) { Remove-Item -LiteralPath $TempBackup -Force }
+    if($Result) {
+        [IO.File]::WriteAllText($StatusPath+'.tmp',($Result|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath ($StatusPath+'.tmp') -Destination $StatusPath -Force
+    }
+    if(Test-Path -LiteralPath $Temp) { Remove-Item -LiteralPath $Temp -Recurse -Force }
+    if(Test-Path -LiteralPath ($Temp+'.zip')) { Remove-Item -LiteralPath ($Temp+'.zip') -Force }
 }

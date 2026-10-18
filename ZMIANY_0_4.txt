@@ -1,0 +1,40 @@
+ZMIANY 0.4 — MARAND TECHNOLOGIA
+Baza prac: main 3dc9f9866be4aef341eb21ddf8bd70f93b86892a.
+
+Zaimplementowano:
+- osobne zakładki Artykuły, Projekty oraz Kategorie;
+- artykuł bez projektu, projekty bez artykułów, powiązania wiele-do-wielu;
+- tworzenie projektu razem z nowym artykułem lub wskazanie istniejącego;
+- katalog z wyszukiwaniem, filtrem grupy/podkategorii i rodzaju niezależnie
+  od surowca, sortowaniem po utworzeniu, aktualizacji i symbolu, stronicowaniem;
+- dodawanie grup/podkategorii; początkowy słownik PA/PES/dystansowe;
+- domyślne 2 GB, przycisk dodawania, automatyczne oznaczenia;
+- jednowierszowe nawleczenie i raport ogniw, Wrobienie (mm/rack);
+- parametry surowej bez „24h”, wykończonej opcjonalne także przy zatwierdzaniu;
+- zdjęcia przy artykule lub próbie/specyfikacji, zapis poza bazą, ograniczenie
+  rozmiaru, zmniejszanie w przeglądarce, brak publicznego dostępu bez logowania;
+- ostrzeżenie przy drukowaniu zmienionej technologii, czerwone wartości w tabeli
+  porównania na ekranie, nazwisko ostatniego edytującego i data; zachowana
+  pełna historia oraz ostrzeżenie na historycznych kartach;
+- pełne logo bez obcinania;
+- podział nowych funkcji na moduły i wspólny rejestr nawigacji;
+- migracja z kopią i zachowaniem ID, historii oraz niezmiennych wydanych kart;
+- kopie z katalogiem zdjęć i tygodniową retencją (wymaga nowego skryptu Windows).
+
+Nie wdrażano: QR, publicznej wysyłki zdjęć, kart klientów, snowalni,
+dziewiarni, wysyłek, pełnego importu archiwów, czerwonego wydruku.
+Zdjęcia są załącznikami; nie są automatycznie częścią wydanej karty.
+Nie scalano automatycznie historycznych duplikatów artykułów.
+Nazwy klientów pozostają w dotychczasowym polu klienta, nie w słowniku rodzajów.
+Dawne projekty pozostają zachowane — program nie zgaduje, które były fikcyjne.
+
+Weryfikacja: node --test — 11 testów, w tym migracja starej bazy z zatwierdzonym
+wpisem i wydaną kartą, dwa projekty dla artykułu, transakcje, 500 artykułów,
+filtry, opcjonalna wykończona, role, konflikty zapisu, alarm karty, zdjęcia
+oraz kopia z plikami zdjęć. Testy używają wyłącznie danych syntetycznych.
+Przygotowanie release 0.4.0 sprawdzone, zawiera nowe moduły.
+Pełnego testu w przeglądarce nie wykonano: środowisko nie ma Chromium,
+a pobranie przeglądarki nie powiodło się. Należy sprawdzić wizualnie logo,
+przycisk GB, zmniejszanie zdjęć i podział wydruku A4 na kopii instalacji.
+PowerShell, harmonogram i restart Windows wymagają testu z informatykiem.
+Instrukcja wdrożenia: AKTUALIZACJA_SCHEMA2.txt.

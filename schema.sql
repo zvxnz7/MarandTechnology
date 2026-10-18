@@ -1,8 +1,8 @@
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,login TEXT UNIQUE NOT NULL,name TEXT NOT NULL,password TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('viewer','technologist','approver','admin')),active INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL DEFAULT '',conflict TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY,project_id INTEGER NOT NULL REFERENCES projects(id),symbol TEXT NOT NULL,symbol_key TEXT NOT NULL,active_spec INTEGER,UNIQUE(project_id,symbol_key));
-CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,project_id INTEGER NOT NULL REFERENCES projects(id),article_id INTEGER REFERENCES articles(id),kind TEXT NOT NULL CHECK(kind IN ('trial','spec')),symbol TEXT NOT NULL,number TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','submitted','approved')),revision INTEGER NOT NULL DEFAULT 1,version INTEGER,base_id INTEGER REFERENCES records(id),expected_active INTEGER,payload TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,approved_at TEXT,approved_by INTEGER REFERENCES users(id),review_note TEXT NOT NULL DEFAULT '',UNIQUE(article_id,version));
+CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY,project_id INTEGER REFERENCES projects(id),symbol TEXT NOT NULL,symbol_key TEXT NOT NULL,active_spec INTEGER,category_id INTEGER REFERENCES categories(id),created_at TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',UNIQUE(project_id,symbol_key));
+CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,project_id INTEGER REFERENCES projects(id),article_id INTEGER REFERENCES articles(id),kind TEXT NOT NULL CHECK(kind IN ('trial','spec')),symbol TEXT NOT NULL,number TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','submitted','approved')),revision INTEGER NOT NULL DEFAULT 1,version INTEGER,base_id INTEGER REFERENCES records(id),expected_active INTEGER,payload TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,approved_at TEXT,approved_by INTEGER REFERENCES users(id),review_note TEXT NOT NULL DEFAULT '',UNIQUE(article_id,version));
 CREATE INDEX IF NOT EXISTS records_project ON records(project_id,kind,state);
 CREATE INDEX IF NOT EXISTS records_symbol ON records(symbol);
 CREATE TABLE IF NOT EXISTS cards(id INTEGER PRIMARY KEY,record_id INTEGER NOT NULL REFERENCES records(id),machine TEXT NOT NULL,instructions TEXT NOT NULL,created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),token TEXT UNIQUE NOT NULL,snapshot TEXT NOT NULL,html TEXT NOT NULL);
@@ -14,3 +14,17 @@ CREATE TRIGGER IF NOT EXISTS card_no_update BEFORE UPDATE ON cards BEGIN SELECT 
 CREATE TRIGGER IF NOT EXISTS card_no_delete BEFORE DELETE ON cards BEGIN SELECT RAISE(ABORT,'Issued card is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES categories(id),name TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS categories_name ON categories(coalesce(parent_id,0),name COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS project_articles(project_id INTEGER NOT NULL REFERENCES projects(id),article_id INTEGER NOT NULL REFERENCES articles(id),PRIMARY KEY(project_id,article_id));
+CREATE INDEX IF NOT EXISTS project_articles_article ON project_articles(article_id);
+CREATE INDEX IF NOT EXISTS articles_category ON articles(category_id);
+CREATE INDEX IF NOT EXISTS articles_created ON articles(created_at,id);
+CREATE INDEX IF NOT EXISTS articles_symbol ON articles(symbol_key);
+CREATE INDEX IF NOT EXISTS records_article ON records(article_id,updated_at);
+CREATE INDEX IF NOT EXISTS cards_record ON cards(record_id,id);
+CREATE TABLE IF NOT EXISTS photos(id INTEGER PRIMARY KEY,article_id INTEGER REFERENCES articles(id),record_id INTEGER REFERENCES records(id),file TEXT NOT NULL UNIQUE,caption TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),CHECK((article_id IS NOT NULL)+(record_id IS NOT NULL)=1));
+CREATE INDEX IF NOT EXISTS photos_article ON photos(article_id);
+CREATE INDEX IF NOT EXISTS photos_record ON photos(record_id);
+PRAGMA user_version=2;

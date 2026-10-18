@@ -1,0 +1,16 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,login TEXT UNIQUE NOT NULL,name TEXT NOT NULL,password TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('viewer','technologist','approver','admin')),active INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL DEFAULT '',conflict TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY,project_id INTEGER NOT NULL REFERENCES projects(id),symbol TEXT NOT NULL,symbol_key TEXT NOT NULL,active_spec INTEGER,UNIQUE(project_id,symbol_key));
+CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,project_id INTEGER NOT NULL REFERENCES projects(id),article_id INTEGER REFERENCES articles(id),kind TEXT NOT NULL CHECK(kind IN ('trial','spec')),symbol TEXT NOT NULL,number TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','submitted','approved')),revision INTEGER NOT NULL DEFAULT 1,version INTEGER,base_id INTEGER REFERENCES records(id),expected_active INTEGER,payload TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,approved_at TEXT,approved_by INTEGER REFERENCES users(id),review_note TEXT NOT NULL DEFAULT '',UNIQUE(article_id,version));
+CREATE INDEX IF NOT EXISTS records_project ON records(project_id,kind,state);
+CREATE INDEX IF NOT EXISTS records_symbol ON records(symbol);
+CREATE TABLE IF NOT EXISTS cards(id INTEGER PRIMARY KEY,record_id INTEGER NOT NULL REFERENCES records(id),machine TEXT NOT NULL,instructions TEXT NOT NULL,created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),token TEXT UNIQUE NOT NULL,snapshot TEXT NOT NULL,html TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,at TEXT NOT NULL,user_id INTEGER REFERENCES users(id),action TEXT NOT NULL,record_id INTEGER,detail TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS login_attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS approved_no_update BEFORE UPDATE ON records WHEN OLD.state='approved' BEGIN SELECT RAISE(ABORT,'Approved record is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS approved_no_delete BEFORE DELETE ON records WHEN OLD.state='approved' BEGIN SELECT RAISE(ABORT,'Approved record is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS card_no_update BEFORE UPDATE ON cards BEGIN SELECT RAISE(ABORT,'Issued card is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS card_no_delete BEFORE DELETE ON cards BEGIN SELECT RAISE(ABORT,'Issued card is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;

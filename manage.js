@@ -80,7 +80,7 @@ async function init({ seed = true } = {}) {
   const db = connect();
   try {
     db.exec('PRAGMA journal_mode=WAL;');
-    db.exec(fs.readFileSync(path.join(ROOT, 'schema.sql'), 'utf8'));
+    require('./modules/database').migrate(db, DB_PATH);
     const projectCount = db.prepare('SELECT count(*) count FROM projects').get().count;
     if (seed && projectCount === 0) {
       const projects = JSON.parse(fs.readFileSync(path.join(ROOT, 'seed', 'data.json'), 'utf8'));
@@ -133,7 +133,20 @@ async function backupCommand(outputPath) {
     const result = verify.prepare('PRAGMA integrity_check').get();
     if (result.integrity_check !== 'ok') throw new Error('Kontrola kopii nie powiodła się.');
   } finally { verify.close(); }
-  console.log(`Kopia bazy gotowa: ${output}`);
+  const snapshot = connect(output);
+  try {
+    if (snapshot.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photos'").get()) {
+      const photos = snapshot.prepare('SELECT file FROM photos').all();
+      if(photos.length) {
+        await fsp.mkdir(output+'.photos', {recursive:true});
+        for(const row of photos) {
+          if(path.basename(row.file)!==row.file) throw new Error('Nieprawidłowa ścieżka zdjęcia w bazie.');
+          await fsp.copyFile(path.join(DATA,'photos',row.file),path.join(output+'.photos',row.file));
+        }
+      }
+    }
+  } finally { snapshot.close(); }
+  console.log(`Kopia bazy gotowa: ${output}. Zdjęcia (jeśli są): ${output}.photos`);
 }
 function optionsFrom(args) {
   const result = { _: [] };
