@@ -1,13 +1,11 @@
 # Server handoff checklist
 
 This checklist is for the next contributor working on the Windows Server deployment.
-The code fixes described below are in the maintainer's local workspace until they
-are pushed to GitHub.
+Use it with the latest code on `main`.
 
 ## Deploy and verify
 
-- [ ] Push the current code changes to `main` and wait for GitHub Actions to publish
-  the release.
+- [ ] Wait for GitHub Actions to publish a release for the latest `main` commit.
 - [ ] On Windows Server, update from the app and confirm the existing SQLite
   database, users, and session key remain intact.
 - [ ] Confirm historical source attachments on an existing server still open after

@@ -339,7 +339,7 @@ async function handle(req, res) {
       const state = url.searchParams.get('state') || '';
       const rawPage = Number(url.searchParams.get('page') || 1);
       const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
-      let rows = db.prepare('SELECT p.*,(SELECT count(*) FROM articles a WHERE a.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,count(r.id) total,max(r.updated_at) updated,group_concat(r.symbol, " | ") symbols FROM projects p LEFT JOIN records r ON p.id=r.project_id GROUP BY p.id ORDER BY updated DESC,p.id DESC').all();
+      let rows = db.prepare(`SELECT p.*,(SELECT count(*) FROM articles a WHERE a.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,count(r.id) total,max(r.updated_at) updated,group_concat(r.symbol, ' | ') symbols FROM projects p LEFT JOIN records r ON p.id=r.project_id GROUP BY p.id ORDER BY updated DESC,p.id DESC`).all();
       rows = rows.filter(r => normalize(q).split(/\s+/).filter(Boolean).every(w => normalize(`${r.name} ${r.symbols || ''} ${r.description}`).includes(w)) && (state !== 'approved' || r.active_spec) && (state !== 'pending' || !r.active_spec));
       const status = readJsonIfExists(path.join(DATA, 'backup_status.json'));
       if (status) {

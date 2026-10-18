@@ -4,7 +4,6 @@
   "protocol": 2,
   "runtime": "node>=24.15",
   "files": {
-    "server.js": "d6a72e704f5412287253c0534ba68b9cf531eb80c0b5b1c1680d037d19f950a0",
     "views.js": "39f8dc8f094ee7041b4aa8ef0f43c4d02ea7b10b29e91ef14b4ff2f3f59c5035",
     "manage.js": "aacdabf99467fa33cb33cead45f4c92fc9613697ba5a0fd7b6635479624118cd",
     "package.json": "98513feb4fed43f0b8594fcc2296e2b60cb20c807b2c9c72288db05c806cf514",
@@ -14,6 +13,7 @@
     "static/app.js": "98cdd6f4692cb952b2548432abb5343b0068460bc95747c80cdbd0506f055007",
     "static/card.css": "68e2fcff4085b2e2d8fcde9d20da9363e7d75d9a9ce7d6a01fabc02f7641ed08",
     "static/logo.jpg": "0f09df11b009f14e2c628bf1ab84bb32f458b79b646a6236ad171e173f3fc86f",
-    "seed/data.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    "seed/data.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "server.js": "7d221425a9b9beb9ca2cdc6c23694442b2c213b76f6e1e753894d40f41164a0d"
   }
 }
