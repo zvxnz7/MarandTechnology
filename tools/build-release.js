@@ -22,6 +22,7 @@ for (let current = OUT; current !== ROOT; current = path.dirname(current)) {
 }
 const FILES = [
   'server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql',
+  'modules/database.js', 'modules/catalog.js', 'modules/photos.js', 'modules/card-changes.js', 'modules/navigation.js',
   'NODE_SETUP.md', 'static/app.css', 'static/app.js', 'static/card.css', 'static/logo.jpg', 'seed/data.json',
 ];
 
@@ -53,7 +54,7 @@ async function main() {
   const packaged = await filesUnder(OUT);
   const manifest = {
     version,
-    schema: 1,
+    schema: 2,
     protocol: 2,
     runtime: 'node>=24.15',
     files: Object.fromEntries(await Promise.all(packaged.map(async file => {

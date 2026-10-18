@@ -1,19 +1,24 @@
 {
-  "version": "0.3.0",
-  "schema": 1,
+  "version": "0.4.0",
+  "schema": 2,
   "protocol": 2,
   "runtime": "node>=24.15",
   "files": {
-    "views.js": "39f8dc8f094ee7041b4aa8ef0f43c4d02ea7b10b29e91ef14b4ff2f3f59c5035",
-    "manage.js": "aacdabf99467fa33cb33cead45f4c92fc9613697ba5a0fd7b6635479624118cd",
-    "package.json": "98513feb4fed43f0b8594fcc2296e2b60cb20c807b2c9c72288db05c806cf514",
-    "schema.sql": "5a3a45c2b89dbc0edc2537f51941369fd33713c08a61ac781831b3288517e864",
     "NODE_SETUP.md": "36fa514a6cbe16f63755f11e35b4bc63863c0dc1cbb60568a80ef6ba62b3eb78",
-    "static/app.css": "33fdb14765b1fecf8f9b1f36c2d06f13b039ee14f594088df8e3a4f983808e9f",
-    "static/app.js": "98cdd6f4692cb952b2548432abb5343b0068460bc95747c80cdbd0506f055007",
-    "static/card.css": "68e2fcff4085b2e2d8fcde9d20da9363e7d75d9a9ce7d6a01fabc02f7641ed08",
-    "static/logo.jpg": "0f09df11b009f14e2c628bf1ab84bb32f458b79b646a6236ad171e173f3fc86f",
+    "manage.js": "431321e52557d2d141f84469167066f0b6cf86918da5fb6b9ac760e51b34eaf4",
+    "modules/card-changes.js": "9545be8c96ddac9551f0911e608e73f497c0a74504c99a91490cd3a34dfdfc5f",
+    "modules/catalog.js": "f1b3ec1527230b2e6fbd38fa678534a785d988ec83bc106f7c8c639d845bd9af",
+    "modules/database.js": "a9204eba9b866ff708e0a552f8b586e2ca5c77695a9e2e84a5c211edae7dc4f4",
+    "modules/navigation.js": "4c63b18c4d3617daff40115145cb3db1ec93bf9df60c3332585e9fdad3a421fb",
+    "modules/photos.js": "e3d03b7945eb3d485a0173bbc14ba1f225eb8607f117c9dfdb7b7f6791019def",
+    "package.json": "ae16023b3f53966d9934fc532740330ea1e92c003e66756853d408372f931647",
+    "schema.sql": "0684b7bddbe1caa163d8f337893c6aa00c2d1c8a84487716c3d8077ec55ed136",
     "seed/data.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
-    "server.js": "7d221425a9b9beb9ca2cdc6c23694442b2c213b76f6e1e753894d40f41164a0d"
+    "server.js": "0d85491028abf669a2616ed57bf72e56a2dfd494b42b93ff7519527eea217b39",
+    "static/app.css": "63b34cb11bcf3892708a56c4ef3497fa8b7f925607745b1b85ca9606fb03b5d6",
+    "static/app.js": "1c78ac6546b774e4cc2be441954b7731de88916cd1aa73c434da79ad3f21640f",
+    "static/card.css": "4c4f004b4ca37f3bb45ef401593d51fc2179436ff061e4c94c0453dee38285f6",
+    "static/logo.jpg": "0f09df11b009f14e2c628bf1ab84bb32f458b79b646a6236ad171e173f3fc86f",
+    "views.js": "e48bca7f847458238a1bbbc39a3d033b039e92426cee1558d35abd622702f4cb"
   }
 }

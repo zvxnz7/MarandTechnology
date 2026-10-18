@@ -196,3 +196,88 @@ test('administrator sees the GitHub update link and install button only for a ne
 });
 
 
+
+async function session(login='admin') {
+ const cookie=await loginAs(login);const page=await request(`${baseUrl}/projects`,{headers:{cookie}});
+ const match=page.text().match(/name="csrf" value="([^"]+)"/);assert.ok(match,page.text());
+ return {cookie,csrf:match[1]};
+}
+async function post(s,url,fields={}) {return request(baseUrl+url,{method:'POST',headers:{cookie:s.cookie,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:s.csrf,...fields})});}
+async function createArticle(s,symbol) {
+ const r=await post(s,'/articles',{symbol});assert.equal(r.status,303,r.text());return Number(r.headers.location.split('/').pop());
+}
+test('independent article, project creation with article and cross-project association',async()=>{
+ const s=await session();const aid=await createArticle(s,'INDEPENDENT');
+ const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));
+ assert.equal(db.prepare('SELECT project_id FROM articles WHERE id=?').get(aid).project_id,null);
+ let r=await post(s,'/projects',{name:'PROJECT-A',article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ const pid=Number(r.headers.location.split('/').pop());
+ r=await post(s,'/projects',{name:'PROJECT-B',article_mode:'new',symbol:'NEW-ARTICLE'});assert.equal(r.status,303,r.text());
+ const pid2=Number(r.headers.location.split('/').pop());
+ r=await post(s,`/projects/${pid2}/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ assert.equal(db.prepare('SELECT count(*) n FROM project_articles WHERE article_id=?').get(aid).n,2);
+ const before=db.prepare('SELECT count(*) n FROM projects').get().n;
+ r=await post(s,'/projects',{name:'INVALID-ROLLBACK',article_mode:'new',symbol:'INDEPENDENT'});assert.equal(r.status,409);
+ assert.equal(db.prepare('SELECT count(*) n FROM projects').get().n,before);
+ r=await post(s,`/projects/${pid}/new`,{kind:'trial',article_id:aid});assert.equal(r.status,303,r.text());
+ const trialId=Number(r.headers.location.split('/')[2]);assert.equal(db.prepare('SELECT article_id FROM records WHERE id=?').get(trialId).article_id,aid);
+ db.prepare('UPDATE records SET updated_at=? WHERE id=?').run('2026-03-04T10:00:00Z',trialId);
+ r=await request(`${baseUrl}/articles/${aid}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200);assert.match(r.text(),/PROJECT-A/);assert.match(r.text(),/PROJECT-B/);
+ assert.match(r.text(),/04\.03\.2026/);
+ db.close();
+});
+test('categories filter, dates and SQL pagination with 500 articles',async()=>{
+ const s=await session();let r=await post(s,'/categories',{name:'Poliester-test'});assert.equal(r.status,303,r.text());
+ const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));const parent=db.prepare('SELECT id FROM categories WHERE name=?').get('Poliester-test').id;
+ r=await post(s,'/categories',{name:'Welur',parent_id:parent});assert.equal(r.status,303,r.text());
+ const cid=db.prepare('SELECT id FROM categories WHERE parent_id=?').get(parent).id;
+ r=await post(s,'/articles',{symbol:'WELUR-PA',category_id:cid});assert.equal(r.status,303,r.text());
+ db.exec('BEGIN');const insert=db.prepare('INSERT INTO articles(symbol,symbol_key,created_at,updated_at) VALUES(?,?,?,?)');
+ for(let i=0;i<500;i++)insert.run('PERF-'+String(i).padStart(3,'0'),'PERF'+i,`2026-01-01T00:00:${String(i%60).padStart(2,'0')}Z`,'2026-01-01T00:00:00Z');db.exec('COMMIT');
+ r=await request(`${baseUrl}/articles?category=${parent}&type=Welur`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/WELUR-PA/);assert.doesNotMatch(r.text(),/PERF-001/);
+ r=await request(`${baseUrl}/articles?q=PERF&sort=oldest&page=2`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.equal((r.text().match(/class="item-title"/g)||[]).length,50);assert.match(r.text(),/Strona 2/);
+ r=await request(`${baseUrl}/articles?q=%25`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.doesNotMatch(r.text(),/PERF-001/);db.close();
+});
+test('GB auto numbering, finished parameters optional, approvals and immutable cards',async()=>{
+ const s=await session();const aid=await createArticle(s,'READY-ARTICLE');let r=await post(s,`/articles/${aid}/new`);assert.equal(r.status,303,r.text());
+ const rid=Number(r.headers.location.split('/')[2]);
+ const values={revision:1,symbol:'READY-ARTICLE',tech_machine_type:'HKS',tech_gauge:'E24',tech_density:'15',tech_working_width:'130',tech_panels:'1',gb_0_yarn:'PES',gb_0_threads:'100',gb_0_run_in:'1200',gb_0_threading:'pełne',gb_0_pattern:'10/23',gb_0_number:'31'};
+ r=await post(s,`/records/${rid}/edit`,values);assert.equal(r.status,303,r.text());
+ const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));assert.equal(JSON.parse(db.prepare('SELECT payload FROM records WHERE id=?').get(rid).payload).gb[0].number,'1');
+ r=await post(s,`/records/${rid}/submit`,{revision:2});assert.equal(r.status,303,r.text());
+ r=await post(s,`/records/${rid}/approve`,{revision:3,checked:'on',review_note:'Sprawdzono ustawienia maszyny.'});assert.equal(r.status,303,r.text());
+ assert.throws(()=>db.prepare("UPDATE records SET symbol='X' WHERE id=?").run(rid),/immutable/);
+ r=await post(s,`/records/${rid}/issue`,{token:crypto.randomBytes(24).toString('hex'),machine:'12',instructions:'test'});assert.equal(r.status,303,r.text());const first=r.headers.location;
+ r=await post(s,`/records/${rid}/copy`,{kind:'spec'});assert.equal(r.status,303,r.text());const next=Number(r.headers.location.split('/')[2]);
+ r=await post(s,`/records/${next}/edit`,{...values,gb_0_run_in:'1400'});assert.equal(r.status,303,r.text());
+ r=await request(`${baseUrl}/records/${next}/preview`,{headers:{cookie:s.cookie}});assert.match(r.text(),/data-update-alert/);assert.match(r.text(),/1400/);assert.match(r.text(),/1200/);assert.match(r.text(),/Test Admin/);
+ r=await post(s,`/records/${next}/submit`,{revision:2});assert.equal(r.status,303,r.text());
+ r=await post(s,`/records/${next}/approve`,{revision:3,checked:'on',review_note:'Sprawdzono nową technologię.'});assert.equal(r.status,303,r.text());
+ r=await request(baseUrl+first,{headers:{cookie:s.cookie}});assert.match(r.text(),/historyczna karta/);
+ assert.doesNotMatch(db.prepare('SELECT html FROM cards WHERE record_id=?').get(rid).html,/historyczna karta/);
+ r=await post(s,`/records/${next}/issue`,{token:crypto.randomBytes(24).toString('hex'),machine:'12',instructions:'test'});assert.equal(r.status,303,r.text());
+ r=await request(baseUrl+r.headers.location,{headers:{cookie:s.cookie}});assert.match(r.text(),/data-update-alert/);assert.match(r.text(),/changed-value/);db.close();
+});
+test('photo upload is optional, authenticated, append-only and validates the format',async()=>{
+ const s=await session();const aid=await createArticle(s,'PHOTO-ARTICLE');
+ let r=await post(s,'/photos',{kind:'article',id:aid,image:'data:image/jpeg;base64,PHNjcmlwdD4='});assert.equal(r.status,400);
+ // Small JPEG fixture used only in tests; raster decoding happens in the browser.
+ const bytes=Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAEAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDi6KKK+ZP3E//Z','base64');
+ r=await post(s,'/photos',{kind:'article',id:aid,image:'data:image/jpeg;base64,'+bytes.toString('base64'),caption:'<script>alert(1)</script>'});assert.equal(r.status,303,r.text());
+ const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));const photo=db.prepare('SELECT * FROM photos WHERE article_id=?').get(aid);
+ assert.ok(fs.existsSync(path.join(DATA,'photos',photo.file)));
+ r=await request(`${baseUrl}/articles/${aid}`,{headers:{cookie:s.cookie}});assert.match(r.text(),/&lt;script&gt;/);
+ r=await request(`${baseUrl}/photos/${photo.id}`);assert.equal(r.status,303);
+ const viewer=await session('viewer');r=await post(viewer,'/photos',{kind:'article',id:aid});assert.equal(r.status,403);db.close();
+});
+test('editor has two initial GB rows and retains historical sparse GB numbers',()=>{
+ const v={symbol:'X',gb:[],finished:[],sources:[]};const r={id:1,kind:'trial',revision:1};const user={name:'x',role:'admin'};
+ let html=V.editPage({user,csrf:'x',r,v});assert.equal((html.match(/data-gb-index=/g)||[]).length,2);assert.match(html,/data-add-gb/);assert.doesNotMatch(html,/<textarea name="gb_0_(threading|pattern)"/);
+ html=V.editPage({user,csrf:'x',r,v:{...v,gb:[{number:'6',yarn:'PES'}]}});assert.match(html,/GB6/);assert.match(html,/GB7/);
+});
+test('backup captures photo files belonging to the database snapshot',async()=>{
+ const output=path.join(DATA,'snapshot.sqlite3');
+ const job=spawn(process.execPath,[path.join(ROOT,'manage.js'),'backup','--output',output],{env:{...process.env,MARAND_DATA:DATA,MARAND_DATABASE:path.join(DATA,'marand.sqlite3')},stdio:['ignore','pipe','pipe']});
+ let log='';job.stdout.on('data',d=>log+=d);job.stderr.on('data',d=>log+=d);const [code]=await once(job,'exit');assert.equal(code,0,log);
+ const saved=new DatabaseSync(output);for(const photo of saved.prepare('SELECT file FROM photos').all())assert.deepEqual(fs.readFileSync(path.join(output+'.photos',photo.file)),fs.readFileSync(path.join(DATA,'photos',photo.file)));saved.close();
+});

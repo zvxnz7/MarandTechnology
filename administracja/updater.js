@@ -146,7 +146,7 @@ function verifyPackage(stage, expectedVersion, expectedSha) {
   const releasePath = path.join(stage, 'release.json');
   if (!fs.existsSync(releasePath)) throw new Error('Paczka nie zawiera release.json.');
   const release = JSON.parse(fs.readFileSync(releasePath, 'utf8'));
-  if (release.protocol !== 2 || release.schema !== 1 || release.version !== expectedVersion || !versionTuple(release.version)) throw new Error('Paczka ma nieobsługiwany protokół, strukturę bazy lub wersję.');
+  if (release.protocol !== 2 || ![1,2].includes(release.schema) || release.version !== expectedVersion || !versionTuple(release.version)) throw new Error('Paczka ma nieobsługiwany protokół, strukturę bazy lub wersję.');
   if (!release.files || typeof release.files !== 'object' || Array.isArray(release.files)) throw new Error('Manifest plików jest nieprawidłowy.');
   for (const [name, digest] of Object.entries(release.files)) {
     if (!safeManifestPath(name) || !/^[a-f0-9]{64}$/i.test(digest)) throw new Error('Manifest zawiera nieprawidłową ścieżkę lub sumę.');
@@ -242,7 +242,7 @@ async function update(packagePath, version, expectedSha) {
   let tempRoot = null;
   const previous = path.join(config.releases_dir, `${oldRelease.version}-${stamp}`);
   const backupPath = path.join(config.backup_dir, 'przed_aktualizacja', `PRE-${stamp}.sqlite3`);
-  let swapped = false, stopped = false, maintenance = false;
+  let swapped = false, stopped = false, maintenance = false, schemaUpgrade = false;
   try {
     tempRoot = await fsp.mkdtemp(path.join(path.dirname(config.program_dir), '.marand-update-'));
     const stage = path.join(tempRoot, 'new');
@@ -251,14 +251,15 @@ async function update(packagePath, version, expectedSha) {
     await fsp.mkdir(config.releases_dir, { recursive: true });
     expandZip(packagePath, stage);
     const release = verifyPackage(stage, version, expectedSha);
-    if (release.schema !== oldRelease.schema) throw new Error('Zmieniono strukturę bazy. Wymagana osobna migracja; dane nie zostały zmienione.');
+    schemaUpgrade = oldRelease.schema === 1 && release.schema === 2;
+    if (release.schema !== oldRelease.schema && !schemaUpgrade) throw new Error('Nieobsługiwana migracja struktury bazy.');
     const oldPackage = JSON.parse(fs.readFileSync(path.join(config.program_dir, 'package.json'), 'utf8'));
     const newPackage = JSON.parse(fs.readFileSync(path.join(stage, 'package.json'), 'utf8'));
     if (JSON.stringify(oldPackage.dependencies || {}) !== JSON.stringify(newPackage.dependencies || {})) throw new Error('Zmieniono zależności Node.js. Tę aktualizację musi przygotować informatyk.');
     await preserveHistoricalSources(config.program_dir, stage);
-    await backupDatabase(config, backupPath);
     atomicJson(path.join(config.data_dir, 'maintenance.json'), { since: stamp, target: version }); maintenance = true;
     powerShellService(config, 'stop', configPath); stopped = true;
+    await backupDatabase(config, backupPath);
     rejectSymlinks(config.program_dir);
     await fsp.cp(config.program_dir, previous, { recursive: true, errorOnExist: true, force: false, dereference: false });
     const oldWorking = path.join(tempRoot, 'old');
@@ -281,6 +282,13 @@ async function update(packagePath, version, expectedSha) {
         const failed = path.join(config.releases_dir, `FAILED-${version}-${stamp}`);
         if (fs.existsSync(config.program_dir)) await fsp.rename(config.program_dir, failed);
         await fsp.cp(previous, config.program_dir, { recursive: true, errorOnExist: true, force: false, dereference: false });
+        if (schemaUpgrade) {
+          // No user writes were accepted while maintenance was active.
+          // Restore the consistent pre-migration DB only after stopping the app.
+          const database = path.join(config.data_dir, 'marand.sqlite3');
+          await fsp.copyFile(backupPath, database);
+          for(const suffix of ['-wal','-shm']) await fsp.rm(database+suffix,{force:true});
+        }
       }
       if (stopped || maintenance) {
         powerShellService(config, 'start', configPath);

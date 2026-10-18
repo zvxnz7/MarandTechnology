@@ -1,0 +1,52 @@
+MARAND — ARTYKUŁY I PROJEKTY, WERSJA 0.4 / SCHEMAT BAZY 2
+
+Ta aktualizacja zmienia strukturę bazy. Najpierw wykonaj ją na kopii danych.
+Nie używaj starego instalatora do nadpisywania działającego serwera.
+Stary aktualizator odmówi instalacji paczki ze schematem 2 — to zamierzone.
+
+JEDNORAZOWO — INFORMATYK
+1. Zachowaj kopię programu, konfiguracji, katalogu danych i administracja.
+2. Podmień TYLKO zewnętrzne administracja/updater.js oraz backup_scheduled.ps1
+   na pliki z tej wersji. Nie zmieniaj konfiguracja.json ani danych logowania.
+3. Zbuduj paczkę wydania z aktualnego repozytorium (workflow GitHub lub
+   node tools/build-release.js 0.4.0). ZIP ma zawierać release.json bezpośrednio
+   w głównym katalogu. Dobierz numer wyższy od zainstalowanego wydania.
+4. Uruchom istniejące administracja/AKTUALIZUJ.cmd z paczką lub aktualizację
+   w aplikacji po opublikowaniu nowego wydania GitHub.
+5. Aktualizator zatrzyma aplikację, wykona spójną kopię bazy i podmieni program.
+   Pierwszy start migruje dane transakcyjnie. Zachowuje ID, zatwierdzenia,
+   wydane karty, konta i powiązania. Dodatkowy snapshot *.before-schema2-*
+   powstaje obok bazy. Kategorie istniejących artykułów ustaw ręcznie;
+   nie zgadujemy ich ze symbolu. Historyczne duplikaty nie są scalane.
+6. Gdy nowa wersja nie przejdzie kontroli zdrowia, nowy aktualizator przywróci
+   poprzedni program i bazę sprzed migracji. Aplikacja pozostaje w trybie
+   konserwacji do zakończenia kontroli; w tym czasie nie przyjmuje zapisów.
+7. Sprawdź logowanie, stary wpis, starą kartę, dodanie artykułu i projektu,
+   zdjęcie, filtry i zapis próby. Uruchom ręcznie zadanie kopii i sprawdź ZIP.
+
+W razie przerwania zasilania podczas aktualizacji: nie kasuj maintenance.json
+bez sprawdzenia stanu. Informatyk powinien odtworzyć spójną parę programu i bazy
+z kopii wykonanych przy zatrzymanej aplikacji.
+
+KOPIE I ZDJĘCIA
+Zdjęcia są poza bazą: dane/photos. Aktualizacja programu ich nie usuwa.
+Nowy harmonogram tworzy ZIP: marand.sqlite3, photos, secret.key, sources
+(jeśli istnieją), manifest SHA-256. Domyślnie 14 kopii dziennych i pierwsza
+udana kopia z każdego tygodnia, 12 tygodni. Stare kopie *.sqlite3 pozostają.
+Kopie ZIP zawierają dane firmowe oraz klucz sesji: ogranicz dostęp NTFS.
+Przy odtwarzaniu: zatrzymaj aplikację; odtwórz marand.sqlite3, photos i secret.key
+w katalogu danych, sources w program/seed/sources; zachowaj kopię zastępowanych
+plików i usuń stare pliki -wal/-shm po zatrzymaniu procesu. Sprawdź sumy manifestu.
+Sam SQLite bez katalogu zdjęć nie jest pełną kopią nowej aplikacji.
+
+GRANICE TEJ WERSJI
+Zdjęcia dodajemy z komputera, bez QR i bez automatycznego dołączania do kart.
+Zmiany karty są czerwone w tabeli porównania na ekranie, bez czerwieni na papierze.
+Wydruk oznacza wydanie dokumentu w programie; nie potwierdza fizycznego druku.
+Alert pozostaje przy ponownym otwarciu danego egzemplarza.
+GB: 2 domyślnie, do 12 wierszy; historyczne numery (do 32) pozostają zachowane.
+Moduły snowalni, produkcji, wysyłek i karty klientów są przygotowanym kierunkiem,
+ale nie są funkcjami tego wydania.
+
+Testy wykonano lokalnie na Node.js. Harmonogram PowerShell i podmianę procesu
+na Windows Server 2019 informatyk musi zweryfikować na kopii instalacji.

@@ -17,7 +17,7 @@ const SECRET_PATH = path.join(DATA, 'secret.key');
 const HOST = process.env.MARAND_HOST || '127.0.0.1';
 const PORT = Number(process.env.MARAND_PORT || 8765);
 const DEFAULT_GITHUB_REPO = 'zvxnz7/MarandTechnology';
-const MAX_BODY = 1024 * 1024;
+const MAX_BODY = 3 * 1024 * 1024;
 const SESSION_SECONDS = 8 * 60 * 60;
 const nodeVersion = process.versions.node.split('.').map(Number);
 if (nodeVersion[0] < 24 || (nodeVersion[0] === 24 && nodeVersion[1] < 15)) throw new Error('Wymagany jest Node.js 24.15 lub nowszy.');
@@ -33,9 +33,15 @@ if (!fs.existsSync(DB_PATH)) throw new Error('Brak bazy danych. Uruchom najpierw
 
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
+require('./modules/database').migrate(db, DB_PATH);
 const TECH = V.TECH;
 const METRICS = V.METRICS;
 const GB = V.GB;
+const Catalog = require('./modules/catalog');
+const Changes = require('./modules/card-changes');
+db.function('search_text', { deterministic: true }, normalize);
+const Photos = require('./modules/photos').create({db,DATA,fail,role,transaction,audit,now,send,redirect});
+
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -59,14 +65,21 @@ function project(id) {
   return row;
 }
 function record(id) {
-  const row = db.prepare('SELECT r.*,p.name project_name,a.active_spec,p.conflict FROM records r JOIN projects p ON p.id=r.project_id LEFT JOIN articles a ON a.id=r.article_id WHERE r.id=?').get(id);
+  const row = db.prepare('SELECT r.*,p.name project_name,a.active_spec,p.conflict FROM records r LEFT JOIN projects p ON p.id=r.project_id LEFT JOIN articles a ON a.id=r.article_id WHERE r.id=?').get(id);
   if (!row) fail(404, 'Nie znaleziono wpisu.');
   return row;
 }
 function makeArticle(projectId, symbol) {
   const key = String(symbol).toUpperCase().replace(/\s/g, '');
-  db.prepare('INSERT OR IGNORE INTO articles(project_id,symbol,symbol_key) VALUES(?,?,?)').run(projectId, symbol, key);
-  return db.prepare('SELECT * FROM articles WHERE project_id=? AND symbol_key=?').get(projectId, key);
+  const matches = db.prepare('SELECT * FROM articles WHERE symbol_key=?').all(key);
+  if (matches.length > 1) fail(409, 'Istnieje kilka historycznych artykułów z tym symbolem. Wybierz artykuł w jego kartotece.');
+  let a = matches[0];
+  if (!a) {
+    const id = db.prepare('INSERT INTO articles(symbol,symbol_key,created_at,updated_at) VALUES(?,?,?,?)').run(symbol, key, now(), now()).lastInsertRowid;
+    a = db.prepare('SELECT * FROM articles WHERE id=?').get(id);
+  }
+  if (projectId) db.prepare('INSERT OR IGNORE INTO project_articles VALUES(?,?)').run(projectId, a.id);
+  return a;
 }
 function transaction(action) {
   db.exec('BEGIN IMMEDIATE');
@@ -95,7 +108,8 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
-    if (Object.values(row).some(Boolean)) {
+    if (Object.entries(row).some(([k,v]) => k !== 'number' && v)) {
+      row.number = old.gb?.[i]?.number || String(Math.max(0,...(old.gb||[]).map(g=>Number(g.number))) + i - (old.gb||[]).length + 1);
       if (!/^\d+$/.test(row.number) || Number(row.number) < 1 || Number(row.number) > 32) fail(400, 'Numer GB musi być liczbą od 1 do 32.');
       if (numbers.has(row.number)) fail(400, 'Numer GB nie może się powtarzać.');
       numbers.add(row.number);
@@ -115,7 +129,6 @@ function validateReady(row) {
   if (!row.symbol || !v.gb.length) fail(400, 'Uzupełnij symbol i przynajmniej jedną GB.');
   if (['machine_type', 'gauge', 'density', 'working_width', 'panels'].some(k => !v.tech[k])) fail(400, 'Uzupełnij typ i podział maszyny, ścisłość, szerokość roboczą i liczbę szali.');
   if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]))) fail(400, 'Uzupełnij przędzę, liczbę nici, wrobienie, nawleczenie i raport dla każdej używanej GB.');
-  if (['weight', 'width'].some(k => !v.targets[k] || !v.tolerances[k])) fail(400, 'Uzupełnij docelową gramaturę, szerokość luźną i ich tolerancje. Nie przepisujemy automatycznie pomiarów z prób.');
 }
 function signedCookie(session) {
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
@@ -334,19 +347,30 @@ async function handle(req, res) {
       return redirect(req, res, '/login');
     }
 
-    if (p === '/' && req.method === 'GET') {
+    const context = {db,req,res,p,url,form,send,redirect,fail,transaction,audit,now,blank,role,normalize,makeArticle,project,todayWarsaw,getFlashes,photos:Photos,readBackup:()=>readJsonIfExists(path.join(DATA,'backup_status.json'))};
+    if (Photos.handle(context) || await Catalog.handle(context)) return;
+
+    if (p === '/projects' && req.method === 'GET') {
       const q = (url.searchParams.get('q') || '').trim();
       const state = url.searchParams.get('state') || '';
       const rawPage = Number(url.searchParams.get('page') || 1);
       const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
-      let rows = db.prepare(`SELECT p.*,(SELECT count(*) FROM articles a WHERE a.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,count(r.id) total,max(r.updated_at) updated,group_concat(r.symbol, ' | ') symbols FROM projects p LEFT JOIN records r ON p.id=r.project_id GROUP BY p.id ORDER BY updated DESC,p.id DESC`).all();
-      rows = rows.filter(r => normalize(q).split(/\s+/).filter(Boolean).every(w => normalize(`${r.name} ${r.symbols || ''} ${r.description}`).includes(w)) && (state !== 'approved' || r.active_spec) && (state !== 'pending' || !r.active_spec));
+      const params = [], clauses=[];
+      for(const word of normalize(q).split(/\s+/).filter(Boolean)) {
+        clauses.push("search_text(p.name || ' ' || p.description || ' ' || coalesce((SELECT group_concat(symbol,' ') FROM records WHERE project_id=p.id),'')) LIKE ? ESCAPE '\\'");
+        params.push('%'+word.replace(/[\\%_]/g,'\\$&')+'%');
+      }
+      if(state==='approved')clauses.push('EXISTS(SELECT 1 FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL)');
+      if(state==='pending')clauses.push('NOT EXISTS(SELECT 1 FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL)');
+      const where=clauses.length?'WHERE '+clauses.join(' AND '):'';
+      const total=db.prepare(`SELECT count(*) n FROM projects p ${where}`).get(...params).n;
+      const rows=db.prepare(`SELECT p.*,(SELECT count(*) FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,(SELECT count(*) FROM records WHERE project_id=p.id) total,coalesce((SELECT max(updated_at) FROM records WHERE project_id=p.id),p.created_at) updated FROM projects p ${where} ORDER BY updated DESC,p.id DESC LIMIT 15 OFFSET ?`).all(...params,(page-1)*15);
       const status = readJsonIfExists(path.join(DATA, 'backup_status.json'));
       if (status) {
         const stamp = status.last_success ? new Date(status.last_success) : null;
         status.stale = !stamp || Number.isNaN(stamp.getTime()) || (Date.now() - stamp.getTime() > 36 * 3600 * 1000);
       }
-      return send(req, res, 200, V.homePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), projects: rows.slice((page - 1) * 15, page * 15), total: rows.length, page, q, state, backupState: status }));
+      return send(req, res, 200, V.homePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), projects: rows, total, articleInput: Catalog.projectArticleInput(db), page, q, state, backupState: status }));
     }
 
     if (p === '/projects' && req.method === 'POST') {
@@ -355,19 +379,27 @@ async function handle(req, res) {
       if (!name || name.length > 150) fail(400, 'Podaj nazwę projektu (do 150 znaków).');
       const pid = transaction(() => {
         if (db.prepare('SELECT 1 FROM projects WHERE lower(name)=lower(?)').get(name)) fail(409, 'Taki projekt już istnieje.');
-        const result = db.prepare('INSERT INTO projects(name,created_at) VALUES(?,?)').run(name, now());
+        const result = db.prepare('INSERT INTO projects(name,description,created_at) VALUES(?,?,?)').run(name, String(form.description||'').slice(0,6000), now());
+        Catalog.associate(context, Number(result.lastInsertRowid), form);
         audit(req.user, 'Utworzono projekt', null, name);
         return Number(result.lastInsertRowid);
       });
       return redirect(req, res, `/projects/${pid}`);
     }
 
+    const linkProject=p.match(/^\/projects\/(\d+)\/articles$/);
+    if(linkProject && req.method==='POST') {
+      role(req.user,'admin','approver','technologist');
+      const pid=Number(linkProject[1]);project(pid);
+      transaction(()=>{Catalog.associate(context,pid,form);audit(req.user,'Powiązano artykuł z projektem',null,String(pid));});
+      return redirect(req,res,`/projects/${pid}`);
+    }
     let id = matchId(p, /^\/projects\/(\d+)$/);
     if (id && req.method === 'GET') {
       const pr = project(id);
       const records = db.prepare('SELECT r.*,CASE WHEN a.active_spec=r.id THEN 1 ELSE 0 END is_current FROM records r LEFT JOIN articles a ON a.id=r.article_id WHERE r.project_id=? ORDER BY r.id DESC').all(id);
       const cards = db.prepare('SELECT c.*,u.name author FROM cards c JOIN records r ON r.id=c.record_id JOIN users u ON u.id=c.created_by WHERE r.project_id=? ORDER BY c.id DESC').all(id);
-      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, records, cards }));
+      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, records, cards, linkedArticles: db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=?').all(id), articleInput: Catalog.projectArticleInput(db) }));
     }
     id = matchId(p, /^\/projects\/(\d+)\/new$/);
     if (id && req.method === 'POST') {
@@ -376,8 +408,12 @@ async function handle(req, res) {
       if (!['trial', 'spec'].includes(kind)) fail(400, 'Nieprawidłowy typ wpisu.');
       const v = blank(); v.date = todayWarsaw();
       const rid = transaction(() => {
-        const a = kind === 'spec' ? makeArticle(id, pr.name) : null;
-        const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,payload,created_at,updated_at,expected_active) VALUES(?,?,?,?,?,?,?,?)').run(id, a ? a.id : null, kind, pr.name, dump(v), now(), now(), a ? a.active_spec : null);
+        const selected = Number(form.article_id);
+        let a = selected ? db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE a.id=? AND pa.project_id=?').get(selected,id) : null;
+        if(selected && !a) fail(400,'Artykuł nie należy do projektu.');
+        if(kind==='spec' && !a) fail(400,'Wybierz artykuł dla specyfikacji. Możesz go najpierw dodać lub powiązać z projektem.');
+        v.symbol=a ? a.symbol : pr.name;
+        const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,payload,created_at,updated_at,expected_active) VALUES(?,?,?,?,?,?,?,?)').run(id, a ? a.id : null, kind, v.symbol, dump(v), now(), now(), a ? a.active_spec : null);
         const recordId = Number(result.lastInsertRowid);
         audit(req.user, 'Utworzono wpis', recordId);
         return recordId;
@@ -388,7 +424,7 @@ async function handle(req, res) {
     id = matchId(p, /^\/records\/(\d+)$/);
     if (id && req.method === 'GET') {
       const r = record(id), history = db.prepare('SELECT a.*,u.name author FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE record_id=? ORDER BY a.id DESC').all(id);
-      return send(req, res, 200, V.recordPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, v: parsePayload(r), history }));
+      return send(req, res, 200, V.recordPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, v: parsePayload(r), history, photoPanel: Photos.panel('record',id,req) }));
     }
 
     id = matchId(p, /^\/records\/(\d+)\/edit$/);
@@ -413,9 +449,12 @@ async function handle(req, res) {
           const old = parsePayload(r), v = parseForm(form, old);
           v.date = old.date || v.date;
           recovery = { kind: 'record-edit', record: r, values: v };
-          const a = r.kind === 'spec' ? makeArticle(r.project_id, v.symbol) : null;
+          let a = r.article_id ? db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id) : null;
+          if (a && a.symbol !== v.symbol) fail(400,'Symbol powiązanego artykułu pozostaje stały. Dla innego artykułu utwórz osobny wpis.');
+          if (!a && r.kind === 'spec') a = makeArticle(r.project_id,v.symbol);
           const expected = a && a.id !== r.article_id ? a.active_spec : r.expected_active;
           db.prepare('UPDATE records SET symbol=?,number=?,payload=?,article_id=?,expected_active=?,updated_at=?,revision=revision+1 WHERE id=?').run(v.symbol, v.number, dump(v), a ? a.id : null, expected, now(), id);
+          if(a)db.prepare('UPDATE articles SET updated_at=? WHERE id=?').run(new Date().toISOString(),a.id);
           audit(req.user, 'Zapisano zmiany', id, dump({ before: old, after: v }));
         });
         return redirect(req, res, `/records/${id}`, 'Zapisano zmiany.');
@@ -430,7 +469,8 @@ async function handle(req, res) {
         const r = record(id), v = parsePayload(r), kind = form.kind || 'trial';
         if (!['trial', 'spec'].includes(kind)) fail(400, 'Nieprawidłowy typ wpisu.');
         if (kind === 'trial') Object.assign(v, { raw: {}, raw_comments: '', finished: [], comments: '', stages: '', targets: {}, tolerances: {}, number: '', date: todayWarsaw() });
-        const a = kind === 'spec' ? makeArticle(r.project_id, r.symbol) : null;
+        if(kind==='trial' && !r.project_id) fail(400,'Próbę rozpocznij w projekcie powiązanym z tym artykułem.');
+        const a = r.article_id ? db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id) : kind === 'spec' ? makeArticle(r.project_id, r.symbol) : null;
         const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,number,base_id,expected_active,payload,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(r.project_id, a ? a.id : null, kind, r.symbol, v.number || '', id, a ? a.active_spec : null, dump(v), now(), now());
         const newId = Number(result.lastInsertRowid);
         audit(req.user, `Utworzono ${kind === 'trial' ? 'wariant próby' : 'roboczą specyfikację'}`, newId, `Na podstawie wpisu ${id}`);
@@ -475,7 +515,7 @@ async function handle(req, res) {
     id = matchId(p, /^\/records\/(\d+)\/preview$/);
     if (id && req.method === 'GET') {
       const r = record(id), v = parsePayload(r);
-      const html = V.cardPage({ r, v, machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
+      const html = V.cardPage({ r, v, changeNotice: Changes.notice(db,r,v), machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
       return send(req, res, 200, html);
     }
 
@@ -500,7 +540,7 @@ async function handle(req, res) {
         if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Można wydać wyłącznie aktualną zatwierdzoną wersję. Otwórz aktualną kartę artykułu.');
         const v = parsePayload(r), stamp = now();
         const cardno = `K-${stamp.slice(0, 10)}-${token.slice(0, 8)}`;
-        const html = V.cardPage({ r, v, machine, instructions, cardno, issuedAt: stamp, author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
+        const html = V.cardPage({ r, v, changeNotice: Changes.notice(db,r,v), machine, instructions, cardno, issuedAt: stamp, author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
         const result = db.prepare('INSERT INTO cards(record_id,machine,instructions,created_at,created_by,token,snapshot,html) VALUES(?,?,?,?,?,?,?,?)').run(id, machine, instructions, stamp, req.user.id, token, dump({ record: r, data: v, author: req.user.name }), html);
         const newId = Number(result.lastInsertRowid);
         audit(req.user, 'Wydano kartę na maszynę', id, `Karta ${newId} / ${machine} / ${instructions}`);
@@ -511,9 +551,11 @@ async function handle(req, res) {
 
     id = matchId(p, /^\/cards\/(\d+)$/);
     if (id && req.method === 'GET') {
-      const card = db.prepare('SELECT html FROM cards WHERE id=?').get(id);
+      const card = db.prepare('SELECT c.html,r.article_id,r.id record_id,a.active_spec FROM cards c JOIN records r ON r.id=c.record_id LEFT JOIN articles a ON a.id=r.article_id WHERE c.id=?').get(id);
       if (!card) fail(404, 'Nie znaleziono karty.');
-      return send(req, res, 200, card.html);
+      const obsolete = card.active_spec && card.active_spec !== card.record_id;
+      const banner = obsolete ? '<style>.change-alert{padding:20px;background:#fff3e0;border:2px solid #b42626;margin:20px;color:#a21c22}@media print{.change-alert{display:none}}</style><section class="change-alert" data-update-alert><h2>Uwaga — historyczna karta. Artykuł ma nowszą zatwierdzoną technologię.</h2><a href="/records/'+card.active_spec+'">Otwórz obowiązującą technologię</a></section>' : '';
+      return send(req,res,200,card.html.replace('<body>','<body>'+banner));
     }
 
     const sourceMatch = p.match(/^\/sources\/([^/]+)$/);
