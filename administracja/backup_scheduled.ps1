@@ -1,4 +1,4 @@
-param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
+﻿param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
 $ErrorActionPreference='Stop'
 $Cfg=Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
 $Step='odczyt konfiguracji kopii'

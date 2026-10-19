@@ -1,4 +1,4 @@
-param([ValidateSet('backup','update','update-latest')][string]$Operation='backup')
+﻿param([ValidateSet('backup','update','update-latest')][string]$Operation='backup')
 
 $ErrorActionPreference = 'Stop'
 trap {
