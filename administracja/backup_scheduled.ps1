@@ -42,7 +42,15 @@ try {
     # ZIP is only published after successful compression; preserve the old copy on failure.
     $Step='zapisywanie dziennej kopii'
     $DailyBackup=Join-Path $Daily ('D-'+(Get-Date -Format 'yyyy-MM-dd')+'.zip')
-    if(Test-Path -LiteralPath $DailyBackup) { [IO.File]::Replace($Zip,$DailyBackup,$null) } else { Move-Item -LiteralPath $Zip -Destination $DailyBackup }
+    if(Test-Path -LiteralPath $DailyBackup -PathType Leaf) {
+        $PreviousDailyBackup=$DailyBackup+'.previous-'+[guid]::NewGuid().ToString('N')
+        [IO.File]::Replace($Zip,$DailyBackup,$PreviousDailyBackup)
+        Remove-Item -LiteralPath $PreviousDailyBackup -Force -ErrorAction SilentlyContinue
+    } elseif(Test-Path -LiteralPath $DailyBackup) {
+        throw "Ścieżka dziennej kopii istnieje i nie jest plikiem: $DailyBackup"
+    } else {
+        [IO.File]::Move($Zip,$DailyBackup)
+    }
     $Today=(Get-Date).Date
     $Monday=$Today.AddDays(-(([int]$Today.DayOfWeek+6)%7))
     $WeeklyBackup=Join-Path $Weekly ('W-'+$Monday.ToString('yyyy-MM-dd')+'.zip')
