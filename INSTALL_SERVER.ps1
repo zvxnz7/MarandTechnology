@@ -1,6 +1,11 @@
 ﻿param()
 
 $ErrorActionPreference = 'Stop'
+trap {
+    Write-Host "Instalator przerwany: $($_.Exception.Message)" -ForegroundColor Red
+    Read-Host 'Naciśnij Enter, aby zamknąć instalator'
+    exit 1
+}
 $SourceRoot = [IO.Path]::GetFullPath($PSScriptRoot)
 $InstallRoot = 'C:\Marand\Technologia'
 $ProgramDir = Join-Path $InstallRoot 'program'
@@ -19,8 +24,8 @@ function Test-IsAdministrator {
 
 if (!(Test-IsAdministrator)) {
     $Arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $Arguments
-    exit
+    $ElevatedProcess = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $Arguments -Wait -PassThru
+    exit $ElevatedProcess.ExitCode
 }
 
 foreach ($Required in @('server.js','manage.js','release.json','tools\build-release.js')) {
@@ -85,11 +90,16 @@ if ($TaskExists -and $TaskExists.State -eq 'Running') {
     & (Join-Path $AdminDir 'control-server.ps1') -Action stop -ConfigPath (Join-Path $AdminDir 'konfiguracja.json')
 }
 
+$ModulesDir = Join-Path $SourceRoot 'modules'
+if (!(Test-Path -LiteralPath $ModulesDir -PathType Container)) { throw 'Brakuje katalogu modules w pobranym projekcie.' }
+$ModuleFiles = @(Get-ChildItem -LiteralPath $ModulesDir -File -Filter '*.js' | Sort-Object Name)
+if ($ModuleFiles.Count -eq 0 -or $ModuleFiles.Name -notcontains 'database.js' -or $ModuleFiles.Name -notcontains 'archive-cleanup.js') {
+    throw 'Pobrany projekt jest niekompletny: wymagane moduły aplikacji nie są dostępne.'
+}
 $RuntimeFiles = @(
     'server.js','views.js','manage.js','package.json','schema.sql','NODE_SETUP.md','release.json',
-    'modules\database.js','modules\catalog.js','modules\photos.js','modules\card-changes.js','modules\navigation.js',
     'static\app.css','static\app.js','static\card.css','static\logo.jpg','seed\data.json'
-)
+) + @($ModuleFiles | ForEach-Object { Join-Path 'modules' $_.Name })
 foreach ($Relative in $RuntimeFiles) {
     $From = Join-Path $SourceRoot $Relative
     if (!(Test-Path -LiteralPath $From -PathType Leaf)) { throw "Brakuje pliku programu: $Relative" }
@@ -168,20 +178,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Database initialization failed.' }
 } finally { Remove-Item Env:\MARAND_DATA -ErrorAction SilentlyContinue }
 
-$SecureToken = Read-Host 'Optional: paste a fine-grained GitHub token with Contents: Read-only access (needed only for a private repo; Enter skips for this public repo)' -AsSecureString
-$TokenCredential = New-Object -TypeName System.Net.NetworkCredential -ArgumentList @('', $SecureToken)
-$Token = $TokenCredential.Password
-if (![string]::IsNullOrWhiteSpace($Token)) {
-    Add-Type -AssemblyName System.Security
-    $TokenBytes = [Text.Encoding]::UTF8.GetBytes($Token)
-    $ProtectedToken = [Security.Cryptography.ProtectedData]::Protect(
-        $TokenBytes, $null, [Security.Cryptography.DataProtectionScope]::LocalMachine
-    )
-    [IO.File]::WriteAllBytes((Join-Path $AdminDir 'github-token.dpapi'), $ProtectedToken)
-    [Array]::Clear($TokenBytes, 0, $TokenBytes.Length)
-    $Token = $null
-    $TokenCredential = $null
-}
+Write-Host 'Repozytorium GitHub jest publiczne. Token nie jest potrzebny.' -ForegroundColor Green
 
 $PowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $RunScript = Join-Path $AdminDir 'run-server.ps1'
@@ -210,6 +207,7 @@ New-NetFirewallRule -Name $FirewallRuleName `
     -Profile Private,Domain -RemoteAddress LocalSubnet -EdgeTraversalPolicy Block | Out-Null
 
 Remove-Item -LiteralPath (Join-Path $AdminDir 'stop.request') -Force -ErrorAction SilentlyContinue
+Write-Host 'Uruchamiam aplikację jako zadanie Windows...' -ForegroundColor Cyan
 Start-ScheduledTask -TaskName $TaskName
 $HealthUrl = 'http://127.0.0.1:8765/healthz'
 $ExpectedDataDir = [IO.Path]::GetFullPath($DataDir).ToLowerInvariant()
@@ -219,6 +217,7 @@ try {
 } finally { $DataTagHasher.Dispose() }
 $Deadline = (Get-Date).AddSeconds(45)
 $Healthy = $false
+Write-Host 'Sprawdzam uruchomienie aplikacji (maksymalnie 45 sekund)...' -ForegroundColor Cyan
 while ((Get-Date) -lt $Deadline) {
     try {
         $Health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 2
@@ -226,7 +225,15 @@ while ((Get-Date) -lt $Deadline) {
     } catch { Start-Sleep -Seconds 1 }
 }
 if (!$Healthy) {
-    Write-Warning "The app has not responded yet. Check logs: $(Join-Path $AdminDir 'logs')"
+    $LogDir = Join-Path $AdminDir 'logs'
+    Write-Warning "Aplikacja nie odpowiedziała. Najnowszy log błędów: $LogDir"
+    $LatestErrorLog = Get-ChildItem -LiteralPath $LogDir -Filter 'server-*.err.log' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($LatestErrorLog) {
+        Write-Host "Ostatni komunikat serwera ($($LatestErrorLog.Name)):" -ForegroundColor Yellow
+        Get-Content -LiteralPath $LatestErrorLog.FullName -Tail 30
+    }
+    throw 'Konfiguracja została zapisana, ale aplikacja nie przeszła kontroli uruchomienia. Zachowaj log powyżej i nie usuwaj katalogu dane.'
 } else {
     Write-Host 'The app is running in the background and will start with Windows.' -ForegroundColor Green
 }
@@ -252,9 +259,6 @@ if ($LanAddresses.Count -gt 0) {
 Write-Host "Data: $DataDir"
 Write-Host "Backups: $BackupDir (daily at 22:00)"
 Write-Host "Update page: repo $Repo; GitHub Actions publishes an update after each push to main."
-if (!(Test-Path -LiteralPath (Join-Path $AdminDir 'github-token.dpapi'))) {
-    Write-Host 'Private repo token was skipped. The update page cannot read releases until a token is configured.' -ForegroundColor Yellow
-}
 Write-Host 'LAN access is limited by Windows Firewall to the LocalSubnet on Private or Domain network profiles.'
 Write-Host 'Use only on a trusted LAN; do not forward TCP 8765 from your router to the Internet.'
 Write-Host ''

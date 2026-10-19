@@ -7,8 +7,10 @@ configures the app's GitHub release updater.
 
 ## One-time setup
 
-1. On the server, sign in to GitHub and download the repository as a ZIP. Extract
-   the full project folder to a local drive.
+1. On the server, open the latest GitHub release and download the
+   `marand-node-release.zip` asset (not GitHub's automatically generated
+   `Source code` archive). Extract it to a local drive. This release asset
+   contains both the installer and the runtime files.
 2. Open that folder and double-click `INSTALL_SERVER.cmd`. Approve the Windows
    administrator prompt. The installer will use `winget` to install/update Node.js
    LTS if needed; it requires Node.js 24.15 or newer. If `winget` is unavailable,
@@ -18,8 +20,8 @@ configures the app's GitHub release updater.
    existing user sessions to keep the same signing key. Press Enter to create a
    new, empty database instead.
 4. At the first-run prompt, create the app administrator login and password.
-5. The repository is public, so press Enter at the optional GitHub token prompt.
-   A token is only needed if the repository is made private later.
+5. The repository is public, so no GitHub token is needed during setup. If the
+   repository is made private later, use `administracja\SET_GITHUB_TOKEN.cmd`.
 
 The app is installed under `C:\Marand\Technologia`. Its database and session key
 are in `dane`, the updater and protected settings are in `administracja`, and

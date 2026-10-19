@@ -26,6 +26,11 @@ const FILES = [
   'server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql',
   'administracja/updater.js',
   ...fs.readdirSync(path.join(ROOT, 'modules')).filter(file => file.endsWith('.js')).sort().map(file => path.posix.join('modules', file)),
+  'INSTALL_SERVER.cmd', 'INSTALL_SERVER.ps1', 'SERVER_QUICKSTART.md', 'tools/build-release.js',
+  'administracja/control-server.ps1', 'administracja/run-server.ps1', 'administracja/set-github-token.ps1',
+  'administracja/backup_scheduled.ps1', 'administracja/wykonaj.ps1', 'administracja/KOPIA.cmd',
+  'administracja/START_SERVER.cmd', 'administracja/STOP_SERVER.cmd', 'administracja/STATUS_SERVER.cmd',
+  'administracja/SET_GITHUB_TOKEN.cmd', 'administracja/konfiguracja.przyklad.json',
   'NODE_SETUP.md', 'static/app.css', 'static/app.js', 'static/card.css', 'static/logo.jpg', 'seed/data.json',
 ];
 
