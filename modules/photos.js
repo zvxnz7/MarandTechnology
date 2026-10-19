@@ -29,7 +29,7 @@ function create({db,DATA,fail,role,transaction,audit,now,send,redirect}) {
   const column=kind=>kind==='article'?'article_id':'record_id';
   function panel(kind,id,req) {
     const rows=db.prepare(`SELECT p.*,u.name author FROM photos p JOIN users u ON u.id=p.created_by WHERE ${column(kind)}=? ORDER BY p.id DESC LIMIT 100`).all(id);
-    const canEdit=['admin','approver','technologist'].includes(req.user.role);
+    const canEdit=['admin','approver','technologist'].includes(req.user.role)&&!req.readOnly;
     return `<section class="panel padded"><h2>Zdjęcia (opcjonalnie)</h2><div class="photo-grid">${rows.map(p=>`<figure><a href="/photos/${p.id}" target="_blank" rel="noopener"><img src="/photos/${p.id}" loading="lazy" alt="${e(p.caption||'Zdjęcie dzianiny')}"></a><figcaption>${e(p.caption)}<br><small>${e(p.author)} · ${date(p.created_at)}</small></figcaption></figure>`).join('')||'<p>Brak zdjęć.</p>'}</div>${canEdit?`<form method="post" action="/photos" data-photo><input type="hidden" name="csrf" value="${e(req.session.csrf)}"><input type="hidden" name="kind" value="${kind}"><input type="hidden" name="id" value="${id}"><input type="hidden" name="image"><label>Zdjęcie z komputera<input type="file" accept="image/jpeg,image/png,image/webp" data-photo-file required></label><label>Opis zdjęcia<input name="caption" maxlength="500"></label><p class="muted">Zdjęcie zostanie zmniejszone przed wysłaniem. Nie jest automatycznie dodawane do wydruku karty.</p><button class="primary">Dodaj zdjęcie</button><p data-photo-status role="status"></p></form>`:''}</section>`;
   }
   function handle({req,res,p,form}) {
@@ -44,6 +44,7 @@ function create({db,DATA,fail,role,transaction,audit,now,send,redirect}) {
     if(!['article','record'].includes(form.kind))fail(400,'Nieprawidłowe powiązanie zdjęcia.');
     const id=Number(form.id), table=form.kind==='article'?'articles':'records';
     if(!Number.isSafeInteger(id)||!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id))fail(404,'Nie znaleziono wpisu.');
+    if(form.kind==='record'&&db.prepare('SELECT archived_at FROM records WHERE id=?').get(id).archived_at)fail(409,'Nie można dodawać zdjęć do zarchiwizowanej próby lub specyfikacji.');
     // Append-only attachments never alter an approved specification or issued card.
     if(db.prepare(`SELECT count(*) n FROM photos WHERE ${column(form.kind)}=?`).get(id).n>=100)fail(400,'Limit 100 zdjęć dla jednego wpisu.');
     const match=String(form.image||'').match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);

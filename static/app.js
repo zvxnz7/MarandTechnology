@@ -13,6 +13,11 @@ document.querySelectorAll('[data-project-article-mode]').forEach(select=>{
   });
   select.addEventListener('change',update);update();
 });
+document.querySelectorAll('[data-open-dialog]').forEach(button=>button.addEventListener('click',()=>{
+ const dialog=document.getElementById(button.dataset.openDialog);
+ if(dialog&&typeof dialog.showModal==='function')dialog.showModal();
+}));
+document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>{
   const alert=document.querySelector('[data-update-alert]');
   if(alert && !window.confirm(alert.innerText+'\n\nCzy zapoznano się ze zmianami i kontynuować drukowanie?'))return;

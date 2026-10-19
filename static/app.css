@@ -7,15 +7,36 @@
 .compact-value input{width:10ch;max-width:100%}
 .target-grid{grid-template-columns:minmax(180px,2fr) minmax(10ch,1fr)}
 .target-grid input[name^="targets_"]{width:10ch;max-width:100%}
+.target-grid input[name="targets_sample_batch"]{width:100%;max-width:32ch}
+.raw-grid input[name^="raw_"]{width:10ch;max-width:100%}
 .gb-fields-scroll{overflow-x:auto}
 .gb-fields{display:grid;grid-template-columns:58px minmax(180px,2fr) repeat(4,minmax(105px,1fr));gap:10px;align-items:end;min-width:840px}
 .gb-fields h3{margin:0 0 14px;align-self:end}
 .gb-fields label{margin:0;font-size:12px;min-width:0}
 .gb-fields label input{display:block;margin-top:5px;padding:8px 9px;font-size:13px}
 .gb-fields label.compact-gb-field input{width:min(100%,14ch);max-width:14ch}
+.new-article-fields .gb-fields label.compact-gb-field input{width:min(100%,21ch);max-width:21ch}
 .inline-add{display:flex;align-items:center;gap:8px;margin:0 8px 0 0}
 .inline-add span{white-space:nowrap}
 .inline-add select{width:auto;min-width:170px;padding:8px}
 .inline-add-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
 .linked-article-row{display:flex;align-items:center;gap:8px;margin:0 0 8px}.linked-article-row .button{padding:5px 10px}
 .inherited-value{background:#f1f2f3!important;color:#656b71!important}
+.page-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.danger{color:#a22528;border-color:#e3b7b8}
+.badge.archived{background:#f3ecec;color:#7a4244}
+.current-spec,.draft-specs,.spec-history{margin:18px 0 28px}
+.current-spec>h2,.draft-specs>h2{margin-bottom:12px}
+.draft-specs{border-left:3px solid #d6a64d;padding-left:18px}
+.spec-history{padding:18px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.spec-history summary{font-size:16px}
+.spec-history .grid{margin-top:16px}
+.form-dialog{width:min(640px,calc(100vw - 32px));max-height:90vh;border:1px solid var(--line);border-radius:10px;padding:0;color:var(--ink);box-shadow:0 20px 70px #0003}
+.form-dialog::backdrop{background:#1117}
+.dialog-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--line);font-size:18px}
+.dialog-head button{font-size:22px;padding:2px 10px}
+.dialog-body{padding:22px;max-height:calc(90vh - 70px);overflow:auto}
+.confirm-panel h2,.archive-heading{padding:18px 22px;margin:0;border-bottom:1px solid var(--line)}
+.confirm-panel h2{padding:0;border:0;margin-bottom:18px}
+.confirm-panel .actions{margin-top:22px}
+.archive-heading{font-size:17px}
