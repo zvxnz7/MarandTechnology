@@ -3,6 +3,11 @@
 This checklist is for the next contributor working on the Windows Server deployment.
 Use it with the latest code on `main`.
 
+## Application improvements
+
+- [ ] Allow a GB row to be removed after accidental insertion, with a clear
+  confirmation step so the row is not deleted accidentally.
+
 ## Deploy and verify
 
 - [ ] Wait for GitHub Actions to publish a release for the latest `main` commit.

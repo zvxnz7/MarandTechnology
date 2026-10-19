@@ -1,5 +1,10 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const LOGO_CACHE_VERSION = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'static', 'logo.jpg'))).digest('hex').slice(0, 16);
+
 const TECH = [
   ['machine_type', 'Typ maszyny'], ['gauge', 'Podział maszyny'], ['density', 'Ścisłość dziania (ocz/cm)'],
   ['working_width', 'Szerokość robocza (cale)'], ['panels', 'Liczba szali'],
@@ -53,7 +58,7 @@ function layout({ title = 'Marand · Technologia', user, csrf, body, flashes = [
   const userBox = user ? `<div class="user">${esc(user.name)} <small>${esc(ROLE[user.role] || user.role)}</small>${csrfForm(csrf, '/logout', '<button class="link">Wyloguj</button>')}</div>` : '';
   const adminNav = user && user.role === 'admin' ? '<a class="nav-link" href="/admin/update">Aktualizacje GitHub</a>' : '';
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/app.js"></script></head><body>
-<aside class="sidebar"><a class="brand" href="/"><img src="/static/logo.jpg" alt="Marand Technical textiles"></a><div class="brand-caption">TECHNOLOGIA I ROZWÓJ</div><nav>${require('./modules/navigation').filter(m=>!m.roles || (user && m.roles.includes(user.role))).map(m=>`<a class="nav-link" href="${m.href}">${esc(m.label)}</a>`).join('')}<div class="nav-hint">Próby · Specyfikacje · Karty na maszyny</div>${adminNav}</nav><div class="sidebar-bottom">Wersja ${esc(process.env.MARAND_VERSION || '0.3.0')}<br><small>Dokumentacja technologiczna</small></div></aside>
+<aside class="sidebar"><a class="brand" href="/"><img src="/static/logo.jpg?v=${LOGO_CACHE_VERSION}" alt="Marand Technical textiles"></a><div class="brand-caption">TECHNOLOGIA I ROZWÓJ</div><nav>${require('./modules/navigation').filter(m=>!m.roles || (user && m.roles.includes(user.role))).map(m=>`<a class="nav-link" href="${m.href}">${esc(m.label)}</a>`).join('')}<div class="nav-hint">Próby · Specyfikacje · Karty na maszyny</div>${adminNav}</nav><div class="sidebar-bottom">Wersja ${esc(process.env.MARAND_VERSION || '0.3.0')}<br><small>Dokumentacja technologiczna</small></div></aside>
 <div class="workspace"><header class="topbar"><span>Marand / Dokumentacja technologiczna</span>${userBox}</header><main>${notices}${body}</main></div></body></html>`;
 }
 function errorPage({ error, status = 400, ...base }) {
@@ -200,4 +205,4 @@ function updatePage({ user, csrf, flashes, current, latest, status, repo, canUpd
   return layout({ user, csrf, flashes, title: 'Aktualizacje · Marand', body: `<a class="breadcrumb" href="/">← Artykuły i projekty</a><div class="pagehead"><div><span class="eyebrow">ADMINISTRACJA</span><h1>Aktualizacje programu</h1><p class="muted">Wersja zainstalowana: ${esc(current)}</p></div></div><div class="panel padded"><h2>Źródło aktualizacji</h2><p>${repo ? `Repozytorium GitHub: <strong>${esc(repo)}</strong>` : 'Repozytorium GitHub nie jest skonfigurowane.'}</p>${latestInfo}${updateError ? `<div class="notice warning">${esc(updateError)}</div>` : ''}${statusInfo}${updateForm}<p class="muted small">Po każdym wypchnięciu zmian na main GitHub przygotowuje wydanie. Aktualizacja sprawdza sumy SHA-256, wykonuje kopię bazy i w razie problemu przywraca poprzedni program. Dane pozostają osobno.</p></div>` });
 }
 
-module.exports = { TECH, RAW_METRICS, TARGET_METRICS, GB, FINISH, STATE, esc, datepl, layout, errorPage, loginPage, homePage, projectPage, editPage, recordPage, issuePage, cardPage, confirmArchiveRecordPage, confirmArchiveProjectPage, archivePage, updatePage };
+module.exports = { TECH, RAW_METRICS, TARGET_METRICS, GB, FINISH, STATE, LOGO_CACHE_VERSION, esc, datepl, layout, errorPage, loginPage, homePage, projectPage, editPage, recordPage, issuePage, cardPage, confirmArchiveRecordPage, confirmArchiveProjectPage, archivePage, updatePage };
