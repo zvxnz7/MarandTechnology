@@ -59,6 +59,7 @@ async function main() {
   const packageJson = JSON.parse(await fsp.readFile(packagePath, 'utf8'));
   packageJson.version = version;
   await fsp.writeFile(packagePath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
+  await fsp.writeFile(path.join(OUT, version), `${version}\n`, 'utf8');
   const packaged = await filesUnder(OUT);
   const manifest = {
     version,
