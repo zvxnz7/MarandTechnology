@@ -104,7 +104,7 @@ if ($ModuleFiles.Count -eq 0 -or $ModuleFiles.Name -notcontains 'database.js' -o
 }
 $RuntimeFiles = @(
     'server.js','views.js','manage.js','package.json','schema.sql','NODE_SETUP.md','release.json',
-    'static\app.css','static\app.js','static\card.css','static\logo.jpg','seed\data.json'
+    'administracja\updater.js','static\app.css','static\app.js','static\card.css','static\logo.jpg','seed\data.json'
 ) + @($ModuleFiles | ForEach-Object { Join-Path 'modules' $_.Name })
 foreach ($Relative in $RuntimeFiles) {
     $From = Join-Path $SourceRoot $Relative

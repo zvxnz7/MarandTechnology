@@ -237,7 +237,14 @@ async function syncExternalUpdater(updaterPath) {
   const targetKey = process.platform === 'win32' ? target.toLowerCase() : target;
   if (bundledKey === targetKey) return;
 
-  const source = await fsp.readFile(bundled);
+  let source;
+  try { source = await fsp.readFile(bundled); }
+  catch (error) {
+    // Older installs keep only the external updater. They can still launch it
+    // to install this release, which adds the bundled copy for future syncs.
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
   const targetStat = await fsp.lstat(target).catch(error => {
     if (error.code === 'ENOENT') return null;
     throw error;
