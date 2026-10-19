@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][ValidateSet('start','stop','status')][string]$Action,
     [string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json')
 )

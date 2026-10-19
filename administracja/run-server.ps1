@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $ConfigPath = Join-Path $PSScriptRoot 'server-settings.json'
 $Cfg = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $Program = [IO.Path]::GetFullPath([string]$Cfg.program_dir)

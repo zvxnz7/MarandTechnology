@@ -27,6 +27,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify PowerShell scripts
+        shell: pwsh
+        run: |
+          $scripts = Get-ChildItem -Path . -Filter *.ps1 -File -Recurse | Where-Object {
+            $_.FullName -notmatch '[\\/](\.git|node_modules|release|\.release)[\\/]'
+          }
+          $utf8Strict = [System.Text.UTF8Encoding]::new($false, $true)
+          foreach ($file in $scripts) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            if ($bytes.Length -lt 3 -or $bytes[0] -ne 239 -or $bytes[1] -ne 187 -or $bytes[2] -ne 191) {
+              throw "PowerShell script must be UTF-8 with BOM for Windows PowerShell 5.1: $($file.FullName)"
+            }
+            try {
+              $null = $utf8Strict.GetString($bytes, 3, $bytes.Length - 3)
+            } catch {
+              throw "PowerShell script is not valid UTF-8: $($file.FullName)"
+            }
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $details = $parseErrors | ForEach-Object { "$($file.FullName):$($_.Extent.StartLineNumber): $($_.Message)" }
+              throw ($details -join [Environment]::NewLine)
+            }
+          }
+          Write-Host "Verified $($scripts.Count) PowerShell scripts: UTF-8 BOM and syntax are valid."
       - name: Verify JavaScript app and save flow
         run: node --test
       - name: Prepare release files

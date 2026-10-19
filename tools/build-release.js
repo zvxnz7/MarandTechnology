@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
 const ROOT = path.resolve(__dirname, '..');
 const versionArg = process.argv[2] || '';
@@ -37,6 +38,17 @@ const FILES = [
 async function copyFile(relative) {
   const from = path.join(ROOT, relative), to = path.join(OUT, relative);
   if (!fs.existsSync(from) || !fs.statSync(from).isFile()) throw new Error(`Required release file is missing: ${relative}`);
+  if (path.extname(relative).toLowerCase() === '.ps1') {
+    const contents = await fsp.readFile(from);
+    if (!contents.subarray(0, UTF8_BOM.length).equals(UTF8_BOM)) {
+      throw new Error(`PowerShell release scripts must be saved as UTF-8 with BOM for Windows PowerShell 5.1: ${relative}`);
+    }
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(contents.subarray(UTF8_BOM.length));
+    } catch {
+      throw new Error(`PowerShell release script is not valid UTF-8: ${relative}`);
+    }
+  }
   await fsp.mkdir(path.dirname(to), { recursive: true });
   await fsp.copyFile(from, to);
 }
