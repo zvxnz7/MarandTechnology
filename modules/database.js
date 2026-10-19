@@ -26,15 +26,26 @@ function ensureStarterArticles(db) {
     }
   }
 }
+function migrateStarterArticles(db) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    ensureStarterArticles(db);
+    db.exec('PRAGMA user_version=4; COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); ensureStarterArticles(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>3)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===3) { db.exec(schema); ensureStarterArticles(db); return; }
+  if(version>4)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===4) { db.exec(schema); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -54,7 +65,7 @@ function migrate(db, dbPath) {
     const recordColumns = db.prepare('PRAGMA table_info(records)').all();
     if (!recordColumns.some(c => c.name === 'archived_at')) db.exec('ALTER TABLE records ADD COLUMN archived_at TEXT');
     db.exec(schema);
-    db.exec('CREATE INDEX IF NOT EXISTS projects_archived ON projects(archived_at,id); CREATE INDEX IF NOT EXISTS records_archived ON records(archived_at,id); PRAGMA user_version=3;');
+    db.exec('CREATE INDEX IF NOT EXISTS projects_archived ON projects(archived_at,id); CREATE INDEX IF NOT EXISTS records_archived ON records(archived_at,id); PRAGMA user_version=4;');
     db.exec(`INSERT OR IGNORE INTO project_articles SELECT project_id,id FROM articles WHERE project_id IS NOT NULL;
       UPDATE articles SET created_at=coalesce((SELECT min(created_at) FROM records WHERE article_id=articles.id),(SELECT created_at FROM projects WHERE id=articles.project_id),strftime('%Y-%m-%dT%H:%M:%SZ','now')) WHERE created_at='';
       UPDATE articles SET updated_at=coalesce((SELECT max(updated_at) FROM records WHERE article_id=articles.id),created_at) WHERE updated_at='';`);
