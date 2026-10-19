@@ -122,31 +122,56 @@ async function addUserCommand(options) {
 async function backupCommand(outputPath) {
   if (!outputPath) throw new Error('Podaj --output ścieżka.sqlite3.');
   const output = path.resolve(outputPath);
-  if (fs.existsSync(output)) throw new Error('Plik docelowy już istnieje. Podaj nową nazwę.');
+  const photosOutput = `${output}.photos`;
+  if (fs.existsSync(output) || fs.existsSync(photosOutput)) throw new Error('Plik docelowy lub jego folder zdjęć już istnieje. Podaj nową nazwę.');
   if (!fs.existsSync(DB_PATH)) throw new Error('Nie ma bazy do skopiowania.');
   await fsp.mkdir(path.dirname(output), { recursive: true });
-  const source = connect(DB_PATH);
-  try { await backup(source, output); }
-  finally { source.close(); }
-  const verify = connect(output);
+  const stagingSuffix = `.partial-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+  const stagedDatabase = `${output}${stagingSuffix}`;
+  const stagedPhotos = `${stagedDatabase}.photos`;
+  let publishedPhotos = false;
   try {
-    const result = verify.prepare('PRAGMA integrity_check').get();
-    if (result.integrity_check !== 'ok') throw new Error('Kontrola kopii nie powiodła się.');
-  } finally { verify.close(); }
-  const snapshot = connect(output);
-  try {
-    if (snapshot.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photos'").get()) {
-      const photos = snapshot.prepare('SELECT file FROM photos').all();
-      if(photos.length) {
-        await fsp.mkdir(output+'.photos', {recursive:true});
-        for(const row of photos) {
-          if(path.basename(row.file)!==row.file) throw new Error('Nieprawidłowa ścieżka zdjęcia w bazie.');
-          await fsp.copyFile(path.join(DATA,'photos',row.file),path.join(output+'.photos',row.file));
+    const source = connect(DB_PATH);
+    try { await backup(source, stagedDatabase); }
+    finally { source.close(); }
+    const verify = connect(stagedDatabase);
+    try {
+      const result = verify.prepare('PRAGMA integrity_check').get();
+      if (result.integrity_check !== 'ok') throw new Error('Kontrola kopii nie powiodła się.');
+    } finally { verify.close(); }
+    const snapshot = connect(stagedDatabase);
+    try {
+      if (snapshot.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photos'").get()) {
+        const photos = snapshot.prepare('SELECT file FROM photos').all();
+        if (photos.length) {
+          await fsp.mkdir(stagedPhotos, { recursive: true });
+          for (const row of photos) {
+            if (typeof row.file !== 'string' || path.basename(row.file) !== row.file) {
+              throw new Error(`Nieprawidłowa ścieżka zdjęcia w bazie: ${String(row.file)}.`);
+            }
+            const sourcePhoto = path.join(DATA, 'photos', row.file);
+            try { await fsp.copyFile(sourcePhoto, path.join(stagedPhotos, row.file)); }
+            catch (error) {
+              if (error.code === 'ENOENT') throw new Error(`Brakuje pliku zdjęcia "${row.file}" w folderze ${path.join(DATA, 'photos')}.`);
+              throw error;
+            }
+          }
         }
       }
+    } finally { snapshot.close(); }
+    if (fs.existsSync(stagedPhotos)) {
+      await fsp.rename(stagedPhotos, photosOutput);
+      publishedPhotos = true;
     }
-  } finally { snapshot.close(); }
-  console.log(`Kopia bazy gotowa: ${output}. Zdjęcia (jeśli są): ${output}.photos`);
+    await fsp.rename(stagedDatabase, output);
+  } catch (error) {
+    if (publishedPhotos) await fsp.rm(photosOutput, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await fsp.rm(stagedDatabase, { force: true });
+    await fsp.rm(stagedPhotos, { recursive: true, force: true });
+  }
+  console.log(`Kopia bazy gotowa: ${output}. Zdjęcia (jeśli są): ${photosOutput}`);
 }
 function optionsFrom(args) {
   const result = { _: [] };

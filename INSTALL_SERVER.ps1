@@ -2,7 +2,13 @@
 
 $ErrorActionPreference = 'Stop'
 trap {
-    Write-Host "Instalator przerwany: $($_.Exception.Message)" -ForegroundColor Red
+    $Failure = $_
+    Write-Host "Instalator przerwany: $($Failure.Exception.Message)" -ForegroundColor Red
+    if ($Failure.InvocationInfo.ScriptName -or $Failure.InvocationInfo.ScriptLineNumber) {
+        $FailureScript = if ($Failure.InvocationInfo.ScriptName) { Split-Path -Leaf $Failure.InvocationInfo.ScriptName } else { 'INSTALL_SERVER.ps1' }
+        Write-Host "Miejsce błędu: $FailureScript, wiersz $($Failure.InvocationInfo.ScriptLineNumber)" -ForegroundColor Yellow
+    }
+    if ($Failure.ScriptStackTrace) { Write-Host $Failure.ScriptStackTrace -ForegroundColor DarkYellow }
     Read-Host 'Naciśnij Enter, aby zamknąć instalator'
     exit 1
 }
@@ -115,17 +121,19 @@ foreach ($Relative in @('updater.js','control-server.ps1','run-server.ps1','set-
 
 $DatabasePath = Join-Path $DataDir 'marand.sqlite3'
 if (!(Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
-    $SourceDatabase = Join-Path $SourceRoot 'data\marand.sqlite3'
-    if (!(Test-Path -LiteralPath $SourceDatabase -PathType Leaf)) {
-        $EnteredPath = Read-Host 'Jeśli masz istniejącą bazę SQLite, wklej ścieżkę do marand.sqlite3. Możesz wkleić ścieżkę w cudzysłowie. Naciśnij Enter, aby utworzyć pustą bazę'
-        if (![string]::IsNullOrWhiteSpace($EnteredPath)) {
-            $EnteredPath = [Environment]::ExpandEnvironmentVariables($EnteredPath.Trim().Trim('"').Trim("'"))
-            try { $SourceDatabase = [IO.Path]::GetFullPath($EnteredPath) }
-            catch { throw "Podana ścieżka do bazy ma nieprawidłowy format: $EnteredPath" }
-            if (!(Test-Path -LiteralPath $SourceDatabase -PathType Leaf)) { throw "Nie znaleziono pliku bazy SQLite: $SourceDatabase" }
-        }
+    $SourceDatabase = $null
+    $BundledDatabase = Join-Path $SourceRoot 'data\marand.sqlite3'
+    if (Test-Path -LiteralPath $BundledDatabase -PathType Leaf) {
+        Write-Host 'W folderze instalatora znajduje się lokalna baza. Nie zostanie użyta bez podania jej ścieżki.' -ForegroundColor Yellow
     }
-    if (Test-Path -LiteralPath $SourceDatabase -PathType Leaf) {
+    $EnteredPath = Read-Host 'Jeśli chcesz zaimportować istniejącą bazę SQLite, wklej ścieżkę do marand.sqlite3. Enter tworzy nową bazę bez importu danych ani zdjęć'
+    if (![string]::IsNullOrWhiteSpace($EnteredPath)) {
+        $EnteredPath = [Environment]::ExpandEnvironmentVariables($EnteredPath.Trim().Trim('"').Trim("'"))
+        try { $SourceDatabase = [IO.Path]::GetFullPath($EnteredPath) }
+        catch { throw "Podana ścieżka do bazy ma nieprawidłowy format: $EnteredPath" }
+        if (!(Test-Path -LiteralPath $SourceDatabase -PathType Leaf)) { throw "Nie znaleziono pliku bazy SQLite: $SourceDatabase" }
+    }
+    if ($SourceDatabase) {
         Write-Host 'Creating a consistent copy of the selected database...'
         $env:MARAND_DATA = Split-Path -Parent $SourceDatabase
         $env:MARAND_DATABASE = $SourceDatabase
@@ -140,6 +148,8 @@ if (!(Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
         if (Test-Path -LiteralPath $SourceSecret -PathType Leaf) {
             Copy-Item -LiteralPath $SourceSecret -Destination (Join-Path $DataDir 'secret.key') -Force
         }
+    } else {
+        Write-Host 'Pominięto import bazy i zdjęć. Instalator utworzy nową bazę.' -ForegroundColor Cyan
     }
 }
 

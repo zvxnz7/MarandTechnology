@@ -1,6 +1,7 @@
 param([string]$ConfigPath=(Join-Path $PSScriptRoot 'konfiguracja.json'))
 $ErrorActionPreference='Stop'
 $Cfg=Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
+$Step='odczyt konfiguracji kopii'
 $Node=if ($Cfg.node_path -and (Test-Path -LiteralPath $Cfg.node_path -PathType Leaf)) { [IO.Path]::GetFullPath($Cfg.node_path) } else { (Get-Command node.exe -ErrorAction Stop).Source }
 $Data=[IO.Path]::GetFullPath($Cfg.data_dir)
 $Program=[IO.Path]::GetFullPath($Cfg.program_dir)
@@ -18,8 +19,10 @@ function Prune-Copies($Directory,$Pattern,$Keep) {
 $Previous=$null
 if(Test-Path -LiteralPath $StatusPath) { try { $Previous=Get-Content -Raw $StatusPath | ConvertFrom-Json } catch {} }
 try {
+    $Step='tworzenie katalogów kopii'
     New-Item -ItemType Directory -Force -Path $Daily,$Weekly,$Temp | Out-Null
     $Database=Join-Path $Temp 'marand.sqlite3'
+    $Step='kopiowanie bazy i powiązanych zdjęć'
     & $Node (Join-Path $Program 'manage.js') backup --output $Database
     if ($LASTEXITCODE -ne 0) { throw "Polecenie kopii zakonczylo sie bledem $LASTEXITCODE." }
     # manage.js exports the photo files referenced by this exact DB snapshot.
@@ -33,8 +36,11 @@ try {
     }
     $Manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Temp 'manifest.json') -Encoding UTF8
     $Zip=$Temp+'.zip'
-    Compress-Archive -Path (Join-Path $Temp '*') -DestinationPath $Zip
+    $Step='pakowanie kopii do archiwum ZIP'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($Temp,$Zip,[IO.Compression.CompressionLevel]::Optimal,$false)
     # ZIP is only published after successful compression; preserve the old copy on failure.
+    $Step='zapisywanie dziennej kopii'
     $DailyBackup=Join-Path $Daily ('D-'+(Get-Date -Format 'yyyy-MM-dd')+'.zip')
     if(Test-Path -LiteralPath $DailyBackup) { [IO.File]::Replace($Zip,$DailyBackup,$null) } else { Move-Item -LiteralPath $Zip -Destination $DailyBackup }
     $Today=(Get-Date).Date
@@ -46,10 +52,12 @@ try {
     }
     $Keep=[int]$Cfg.daily_keep; if($Keep -lt 1 -or $Keep -gt 1000) { $Keep=14 }
     $Weeks=[int]$Cfg.weekly_keep; if($Weeks -lt 1 -or $Weeks -gt 520) { $Weeks=12 }
+    $Step='usuwanie najstarszych kopii zgodnie z limitem'
     Prune-Copies $Daily '^D-\d{4}-\d{2}-\d{2}\.zip$' $Keep
     Prune-Copies $Weekly '^W-\d{4}-\d{2}-\d{2}\.zip$' $Weeks
     $Result=[ordered]@{ok=$true;last_success=(Get-Date).ToUniversalTime().ToString('o');daily=$DailyBackup;weekly=$WeeklyBackup;daily_keep=$Keep;weekly_keep=$Weeks}
 } catch {
+    Write-Host "Niepowodzenie etapu: $Step (backup_scheduled.ps1, wiersz $($_.InvocationInfo.ScriptLineNumber)): $($_.Exception.Message)" -ForegroundColor Red
     $Result=@{ok=$false;last_success=$Previous.last_success;last_failure=(Get-Date).ToUniversalTime().ToString('o');error=$_.Exception.Message}
     throw
 } finally {

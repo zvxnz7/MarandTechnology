@@ -15,10 +15,10 @@ configures the app's GitHub release updater.
    administrator prompt. The installer will use `winget` to install/update Node.js
    LTS if needed; it requires Node.js 24.15 or newer. If `winget` is unavailable,
    install Node.js LTS manually, then run the installer again.
-3. If you already have a live SQLite database, enter the path to its
-   `marand.sqlite3` when asked. Keep `secret.key` beside that database if you want
-   existing user sessions to keep the same signing key. Press Enter to create a
-   new, empty database instead.
+3. To import an existing SQLite database, enter the path to its `marand.sqlite3`
+   when asked. Keep `secret.key` beside that database if you want existing user
+   sessions to keep the same signing key. Press Enter to create a new database;
+   this skips importing any database or photos found in the extracted folder.
 4. At the first-run prompt, create the app administrator login and password.
 5. The repository is public, so no GitHub token is needed during setup. If the
    repository is made private later, use `administracja\SET_GITHUB_TOKEN.cmd`.
