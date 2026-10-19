@@ -157,7 +157,7 @@ function verifyPackage(stage, expectedVersion, expectedSha) {
   const expected = new Set([...Object.keys(release.files), 'release.json']);
   const actual = new Set(allFiles(stage).map(file => path.relative(stage, file).split(path.sep).join('/')));
   if (actual.size !== expected.size || [...actual].some(name => !expected.has(name))) throw new Error('Archiwum ma pliki spoza manifestu.');
-  for (const required of ['server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql', 'static/app.css', 'static/app.js', 'seed/data.json']) {
+  for (const required of ['server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql', 'modules/archive-cleanup.js', 'static/app.css', 'static/app.js', 'seed/data.json']) {
     if (!Object.hasOwn(release.files, required)) throw new Error(`Manifest nie zawiera pliku programu: ${required}`);
   }
   return release;
@@ -242,7 +242,7 @@ async function update(packagePath, version, expectedSha) {
   let tempRoot = null;
   const previous = path.join(config.releases_dir, `${oldRelease.version}-${stamp}`);
   const backupPath = path.join(config.backup_dir, 'przed_aktualizacja', `PRE-${stamp}.sqlite3`);
-  let swapped = false, stopped = false, maintenance = false, schemaUpgrade = false;
+  let swapped = false, stopped = false, maintenance = false;
   try {
     tempRoot = await fsp.mkdtemp(path.join(path.dirname(config.program_dir), '.marand-update-'));
     const stage = path.join(tempRoot, 'new');
@@ -251,7 +251,7 @@ async function update(packagePath, version, expectedSha) {
     await fsp.mkdir(config.releases_dir, { recursive: true });
     expandZip(packagePath, stage);
     const release = verifyPackage(stage, version, expectedSha);
-    schemaUpgrade = oldRelease.schema === 1 && release.schema === 2;
+    const schemaUpgrade = oldRelease.schema === 1 && release.schema === 2;
     if (release.schema !== oldRelease.schema && !schemaUpgrade) throw new Error('Nieobsługiwana migracja struktury bazy.');
     const oldPackage = JSON.parse(fs.readFileSync(path.join(config.program_dir, 'package.json'), 'utf8'));
     const newPackage = JSON.parse(fs.readFileSync(path.join(stage, 'package.json'), 'utf8'));
@@ -282,13 +282,12 @@ async function update(packagePath, version, expectedSha) {
         const failed = path.join(config.releases_dir, `FAILED-${version}-${stamp}`);
         if (fs.existsSync(config.program_dir)) await fsp.rename(config.program_dir, failed);
         await fsp.cp(previous, config.program_dir, { recursive: true, errorOnExist: true, force: false, dereference: false });
-        if (schemaUpgrade) {
-          // No user writes were accepted while maintenance was active.
-          // Restore the consistent pre-migration DB only after stopping the app.
-          const database = path.join(config.data_dir, 'marand.sqlite3');
-          await fsp.copyFile(backupPath, database);
-          for(const suffix of ['-wal','-shm']) await fsp.rm(database+suffix,{force:true});
-        }
+        // No user writes were accepted while maintenance was active. Restore
+        // the pre-update database for every failed swap, even when release
+        // metadata did not announce a schema change.
+        const database = path.join(config.data_dir, 'marand.sqlite3');
+        await fsp.copyFile(backupPath, database);
+        for(const suffix of ['-wal','-shm']) await fsp.rm(database+suffix,{force:true});
       }
       if (stopped || maintenance) {
         powerShellService(config, 'start', configPath);

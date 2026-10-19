@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const V = require('./views');
+const ArchiveCleanup = require('./modules/archive-cleanup');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -34,7 +35,6 @@ if (!fs.existsSync(DB_PATH)) throw new Error('Brak bazy danych. Uruchom najpierw
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
-const ArchiveCleanup = require('./modules/archive-cleanup');
 function purgeExpiredArchive() {
   try {
     const removed = ArchiveCleanup.purgeExpired(db, path.join(DATA, 'photos'));

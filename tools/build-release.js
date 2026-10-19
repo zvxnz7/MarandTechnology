@@ -25,7 +25,7 @@ for (let current = OUT; current !== ROOT; current = path.dirname(current)) {
 const FILES = [
   'server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql',
   'administracja/updater.js',
-  'modules/database.js', 'modules/catalog.js', 'modules/photos.js', 'modules/card-changes.js', 'modules/navigation.js',
+  ...fs.readdirSync(path.join(ROOT, 'modules')).filter(file => file.endsWith('.js')).sort().map(file => path.posix.join('modules', file)),
   'NODE_SETUP.md', 'static/app.css', 'static/app.js', 'static/card.css', 'static/logo.jpg', 'seed/data.json',
 ];
 
