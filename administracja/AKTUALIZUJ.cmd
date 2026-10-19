@@ -1,6 +1,7 @@
 @echo off
+setlocal
 chcp 65001 >nul
-cd /d "%~dp0"
-echo Wszyscy uzytkownicy powinni zapisac zmiany i zakonczyc prace.
-powershell.exe -NoProfile -File "%~dp0wykonaj.ps1" -Operation update
-pause
+echo Wszyscy uzytkownicy powinni zapisać zmiany i zakończyć pracę.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0wykonaj.ps1" -Operation update-latest
+set "UPDATE_EXIT=%ERRORLEVEL%"
+endlocal & exit /b %UPDATE_EXIT%

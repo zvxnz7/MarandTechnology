@@ -107,7 +107,7 @@ foreach ($Relative in $RuntimeFiles) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $To) | Out-Null
     Copy-Item -LiteralPath $From -Destination $To -Force
 }
-foreach ($Relative in @('updater.js','control-server.ps1','run-server.ps1','set-github-token.ps1','backup_scheduled.ps1','wykonaj.ps1','KOPIA.cmd','START_SERVER.cmd','STOP_SERVER.cmd','STATUS_SERVER.cmd','SET_GITHUB_TOKEN.cmd')) {
+foreach ($Relative in @('updater.js','control-server.ps1','run-server.ps1','set-github-token.ps1','backup_scheduled.ps1','wykonaj.ps1','AKTUALIZUJ.cmd','KOPIA.cmd','START_SERVER.cmd','STOP_SERVER.cmd','STATUS_SERVER.cmd','SET_GITHUB_TOKEN.cmd')) {
     $From = Join-Path (Join-Path $SourceRoot 'administracja') $Relative
     if (!(Test-Path -LiteralPath $From -PathType Leaf)) { throw "Brakuje pliku administracyjnego: administracja\$Relative" }
     Copy-Item -LiteralPath $From -Destination (Join-Path $AdminDir $Relative) -Force
@@ -117,8 +117,13 @@ $DatabasePath = Join-Path $DataDir 'marand.sqlite3'
 if (!(Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
     $SourceDatabase = Join-Path $SourceRoot 'data\marand.sqlite3'
     if (!(Test-Path -LiteralPath $SourceDatabase -PathType Leaf)) {
-        $EnteredPath = Read-Host 'If you already have a SQLite database, enter the path to marand.sqlite3. Press Enter to create a new empty database'
-        if (![string]::IsNullOrWhiteSpace($EnteredPath)) { $SourceDatabase = [IO.Path]::GetFullPath($EnteredPath) }
+        $EnteredPath = Read-Host 'Jeśli masz istniejącą bazę SQLite, wklej ścieżkę do marand.sqlite3. Możesz wkleić ścieżkę w cudzysłowie. Naciśnij Enter, aby utworzyć pustą bazę'
+        if (![string]::IsNullOrWhiteSpace($EnteredPath)) {
+            $EnteredPath = [Environment]::ExpandEnvironmentVariables($EnteredPath.Trim().Trim('"').Trim("'"))
+            try { $SourceDatabase = [IO.Path]::GetFullPath($EnteredPath) }
+            catch { throw "Podana ścieżka do bazy ma nieprawidłowy format: $EnteredPath" }
+            if (!(Test-Path -LiteralPath $SourceDatabase -PathType Leaf)) { throw "Nie znaleziono pliku bazy SQLite: $SourceDatabase" }
+        }
     }
     if (Test-Path -LiteralPath $SourceDatabase -PathType Leaf) {
         Write-Host 'Creating a consistent copy of the selected database...'
@@ -168,6 +173,12 @@ $DataAcl = & icacls.exe $DataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '
 if ($LASTEXITCODE -ne 0) { throw 'Could not restrict access to the data folder.' }
 $AdminAcl = & icacls.exe $AdminDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
 if ($LASTEXITCODE -ne 0) { throw 'Could not restrict access to the administration folder.' }
+$AdminTraverseAcl = & icacls.exe $AdminDir /grant '*S-1-5-32-545:(X)'
+if ($LASTEXITCODE -ne 0) { throw 'Could not allow users to launch the standalone updater.' }
+foreach ($Launcher in @('AKTUALIZUJ.cmd','wykonaj.ps1')) {
+    $LauncherAcl = & icacls.exe (Join-Path $AdminDir $Launcher) /grant '*S-1-5-32-545:(RX)'
+    if ($LASTEXITCODE -ne 0) { throw "Could not allow users to launch $Launcher." }
+}
 $BackupAcl = & icacls.exe $BackupDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
 if ($LASTEXITCODE -ne 0) { throw 'Could not restrict access to the backup folder.' }
 
@@ -259,6 +270,7 @@ if ($LanAddresses.Count -gt 0) {
 Write-Host "Data: $DataDir"
 Write-Host "Backups: $BackupDir (daily at 22:00)"
 Write-Host "Update page: repo $Repo; GitHub Actions publishes an update after each push to main."
+Write-Host "Standalone GitHub updater: $(Join-Path $AdminDir 'AKTUALIZUJ.cmd')"
 Write-Host 'LAN access is limited by Windows Firewall to the LocalSubnet on Private or Domain network profiles.'
 Write-Host 'Use only on a trusted LAN; do not forward TCP 8765 from your router to the Internet.'
 Write-Host ''

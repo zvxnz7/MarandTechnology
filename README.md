@@ -8,4 +8,5 @@ For a fresh Windows Server installation, download the latest release asset
 package includes the installer and runtime files. Follow
 [SERVER_QUICKSTART.md](SERVER_QUICKSTART.md).
 After each push to `main`, GitHub Actions publishes a versioned update that an
-administrator can install from the app's **Aktualizacje GitHub** page.
+administrator can install from the app's **Aktualizacje GitHub** page or by
+running `administracja\AKTUALIZUJ.cmd` from the installed administration folder.

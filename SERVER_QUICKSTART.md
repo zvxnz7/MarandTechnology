@@ -61,7 +61,12 @@ The installer copies `updater.js` outside the program folder and configures it
 to stop/restart the Windows scheduled task safely. GitHub Actions publishes a
 stable release automatically after each push to `main`. Once the action
 finishes, an administrator can open **Aktualizacje GitHub** in the app and
-install the newer version. No token is needed while the repository is public.
+install the newer version. You can also run
+`C:\Marand\Technologia\administracja\AKTUALIZUJ.cmd`; it fetches the latest
+release package from GitHub, verifies GitHub's SHA-256 digest, and installs it
+using the same rollback-capable updater. Windows asks for administrator access;
+the updater preserves the database. No token is needed while the repository is
+public.
 
 Fresh installs start with an empty project list. Existing database contents are
 kept when updating or reinstalling the program. The current source tree and new
