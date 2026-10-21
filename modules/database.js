@@ -36,16 +36,77 @@ function migrateStarterArticles(db) {
     throw error;
   }
 }
+function migrateV5(db) {
+  const version = db.prepare('PRAGMA user_version').get().user_version;
+  if (version >= 5) {
+    if (!db.prepare('PRAGMA table_info(audit)').all().some(column => column.name === 'article_id')) db.exec('ALTER TABLE audit ADD COLUMN article_id INTEGER');
+    db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+    db.exec('UPDATE audit SET article_id=(SELECT article_id FROM records WHERE records.id=audit.record_id) WHERE article_id IS NULL AND record_id IS NOT NULL;');
+    return;
+  }
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const addColumn = (table, name, definition) => {
+      if (!db.prepare(`PRAGMA table_info(${table})`).all().some(column => column.name === name)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+      }
+    };
+    addColumn('projects', 'trial_number', 'TEXT');
+    addColumn('projects', 'short_description', "TEXT NOT NULL DEFAULT ''");
+    addColumn('projects', 'goal', "TEXT NOT NULL DEFAULT ''");
+    addColumn('projects', 'assumptions', "TEXT NOT NULL DEFAULT ''");
+    addColumn('projects', 'status', "TEXT NOT NULL DEFAULT 'in_progress' CHECK(status IN ('in_progress','accepted','failed','client_declined'))");
+    addColumn('projects', 'updated_at', "TEXT NOT NULL DEFAULT ''");
+    addColumn('articles', 'archived_at', 'TEXT');
+    addColumn('articles', 'purged_at', 'TEXT');
+    addColumn('audit', 'article_id', 'INTEGER');
+    db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+    db.exec('UPDATE audit SET article_id=(SELECT article_id FROM records WHERE records.id=audit.record_id) WHERE article_id IS NULL AND record_id IS NOT NULL;');
+
+    const projects = db.prepare('SELECT id,name,description,created_at,trial_number,short_description,goal,updated_at FROM projects ORDER BY created_at,id').all();
+    const counters = new Map();
+    const update = db.prepare('UPDATE projects SET trial_number=?,short_description=?,goal=?,updated_at=? WHERE id=?');
+    for (const row of projects) {
+      const created=new Date(row.created_at||'');
+      const year = Number.isNaN(created.getTime()) ? String(new Date().getFullYear()) : new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Warsaw',year:'numeric'}).format(created);
+      const counter = (counters.get(year) || 0) + 1;
+      counters.set(year, counter);
+      const number = row.trial_number || `${counter}/${year}`;
+      const nextCounter = Math.max(counter, Number(number.split('/')[0]) || 0);
+      counters.set(year, nextCounter);
+      update.run(number, row.short_description || row.name, row.goal || row.description || '', row.updated_at || row.created_at, row.id);
+    }
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS projects_trial_number ON projects(trial_number) WHERE trial_number IS NOT NULL;');
+    const sequence = db.prepare('INSERT INTO project_trial_sequences(year,last_value) VALUES(?,?) ON CONFLICT(year) DO UPDATE SET last_value=max(last_value,excluded.last_value)');
+    for (const [year, last] of counters) sequence.run(Number(year), last);
+
+    const legacyTrials = db.prepare("SELECT r.id,r.project_id,r.article_id,r.payload,r.created_at FROM records r WHERE r.kind='trial' AND r.project_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM project_stages s WHERE s.record_id=r.id) ORDER BY r.project_id,r.created_at,r.id").all();
+    const nextStage = db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?');
+    const insertStage = db.prepare("INSERT INTO project_stages(project_id,stage_no,description,article_id,record_id,stage_date,status,comment,updated_at) VALUES(?,?,?,?,?,?,'in_progress','',?)");
+    for (const row of legacyTrials) {
+      const payload = JSON.parse(row.payload || '{}');
+      const stageNo = nextStage.get(row.project_id).n;
+      insertStage.run(row.project_id, stageNo, payload.description || `Etap ${stageNo}`, row.article_id, row.id, payload.date || (row.created_at || '').slice(0, 10), row.created_at);
+    }
+    const projectsWithoutStages = db.prepare('SELECT id,created_at FROM projects p WHERE NOT EXISTS(SELECT 1 FROM project_stages s WHERE s.project_id=p.id)').all();
+    for (const row of projectsWithoutStages) insertStage.run(row.id, 1, '', null, null, (row.created_at || '').slice(0, 10), row.created_at);
+    db.exec('PRAGMA user_version=5; COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>4)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===4) { db.exec(schema); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); return; }
+  if(version>5)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===5) { db.exec(schema); migrateV5(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -74,5 +135,6 @@ function migrate(db, dbPath) {
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   finally { db.exec('PRAGMA foreign_keys=ON'); }
+  migrateV5(db);
 }
 module.exports = { migrate };

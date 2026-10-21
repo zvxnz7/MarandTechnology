@@ -62,4 +62,35 @@ function purgeExpired(db, photosDirectory, { now = Date.now(), removeFile = fs.r
   return expired.length;
 }
 
-module.exports = { purgeExpired, RETENTION_MS };
+function purgeArticle(db, articleId, photosDirectory, { at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), removeFile = fs.rmSync, logger = console.error } = {}) {
+  const files=[];
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const article=db.prepare('SELECT archived_at,purged_at FROM articles WHERE id=?').get(articleId);
+    if(!article||!article.archived_at||article.purged_at)throw new Error('Artykuł nie jest dostępny do usunięcia z archiwum.');
+    files.push(...db.prepare('SELECT file FROM photos WHERE article_id=?').all(articleId).map(row=>row.file));
+    db.prepare('DELETE FROM photos WHERE article_id=?').run(articleId);
+    // Keep the article row as a historical anchor for immutable specifications,
+    // issued cards, project stages and links. Hide it from active and archive lists.
+    db.prepare('UPDATE articles SET purged_at=? WHERE id=?').run(at,articleId);
+    db.exec('COMMIT');
+  } catch(error) { try{db.exec('ROLLBACK');}catch{} throw error; }
+  for(const file of files) {
+    try { removeFile(path.join(photosDirectory,path.basename(file)),{force:true}); }
+    catch(error) { logger(`Nie udało się usunąć zdjęcia artykułu z archiwum: ${file}`,error); }
+  }
+  return 1;
+}
+
+function purgeExpiredArticles(db, photosDirectory, { now = Date.now(), removeFile = fs.rmSync, logger = console.error } = {}) {
+  const cutoff=new Date(now-RETENTION_MS).toISOString().replace(/\.\d{3}Z$/,'Z');
+  const rows=db.prepare('SELECT id FROM articles WHERE archived_at IS NOT NULL AND archived_at<=? AND purged_at IS NULL ORDER BY id').all(cutoff);
+  let count=0;
+  for(const row of rows) {
+    try { count+=purgeArticle(db,row.id,photosDirectory,{at:new Date(now).toISOString().replace(/\.\d{3}Z$/,'Z'),removeFile,logger}); }
+    catch(error) { logger(`Nie udało się oczyścić zarchiwizowanego artykułu #${row.id}:`,error); }
+  }
+  return count;
+}
+
+module.exports = { purgeExpired, purgeArticle, purgeExpiredArticles, RETENTION_MS };

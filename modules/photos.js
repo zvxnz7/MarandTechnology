@@ -45,6 +45,8 @@ function create({db,DATA,fail,role,transaction,audit,now,send,redirect}) {
     const id=Number(form.id), table=form.kind==='article'?'articles':'records';
     if(!Number.isSafeInteger(id)||!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id))fail(404,'Nie znaleziono wpisu.');
     if(form.kind==='record'&&db.prepare('SELECT archived_at FROM records WHERE id=?').get(id).archived_at)fail(409,'Nie można dodawać zdjęć do zarchiwizowanej próby lub specyfikacji.');
+    if(form.kind==='article'&&db.prepare('SELECT archived_at,purged_at FROM articles WHERE id=?').get(id)?.archived_at)fail(409,'Nie można dodawać zdjęć do zarchiwizowanego artykułu.');
+    if(form.kind==='article'&&db.prepare('SELECT purged_at FROM articles WHERE id=?').get(id)?.purged_at)fail(409,'Artykuł został usunięty z kartoteki.');
     // Append-only attachments never alter an approved specification or issued card.
     if(db.prepare(`SELECT count(*) n FROM photos WHERE ${column(form.kind)}=?`).get(id).n>=100)fail(400,'Limit 100 zdjęć dla jednego wpisu.');
     const match=String(form.image||'').match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
@@ -61,6 +63,6 @@ function create({db,DATA,fail,role,transaction,audit,now,send,redirect}) {
     });}catch(err){fs.unlinkSync(file);throw err;}
     redirect(req,res,`/${form.kind==='article'?'articles':'records'}/${id}`,'Dodano zdjęcie.');return true;
   }
-  return {panel,handle};
+  return {panel,handle,directory};
 }
 module.exports={create};

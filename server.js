@@ -37,8 +37,9 @@ db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
 function purgeExpiredArchive() {
   try {
-    const removed = ArchiveCleanup.purgeExpired(db, path.join(DATA, 'photos'));
-    if (removed) console.log(`Archiwum: usunięto ${removed} wygasłych roboczych wpisów.`);
+    const removedRecords = ArchiveCleanup.purgeExpired(db, path.join(DATA, 'photos'));
+    const removedArticles = ArchiveCleanup.purgeExpiredArticles(db, path.join(DATA, 'photos'));
+    if (removedRecords || removedArticles) console.log(`Archiwum: oczyszczono ${removedRecords} wpisów roboczych i ${removedArticles} artykułów.`);
   } catch (error) {
     console.error('Nie udało się oczyścić wygasłych wpisów archiwum:', error);
   }
@@ -63,6 +64,14 @@ function todayWarsaw() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(p => [p.type, p.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
+function nextTrialNumber() {
+  const year=Number(todayWarsaw().slice(0,4));
+  const saved=db.prepare('SELECT last_value FROM project_trial_sequences WHERE year=?').get(year)?.last_value||0;
+  const existing=db.prepare("SELECT max(CAST(substr(trial_number,1,instr(trial_number,'/')-1) AS INTEGER)) n FROM projects WHERE trial_number LIKE ?").get(`%/${year}`).n||0;
+  const number=Math.max(Number(saved),Number(existing))+1;
+  db.prepare('INSERT INTO project_trial_sequences(year,last_value) VALUES(?,?) ON CONFLICT(year) DO UPDATE SET last_value=excluded.last_value').run(year,number);
+  return `${number}/${year}`;
+}
 function normalize(value) { return String(value || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 function dump(value) { return JSON.stringify(value); }
 function blank() {
@@ -76,7 +85,7 @@ function project(id) {
   return row;
 }
 function record(id) {
-  const row = db.prepare('SELECT r.*,p.name project_name,p.archived_at project_archived_at,a.active_spec,p.conflict FROM records r LEFT JOIN projects p ON p.id=r.project_id LEFT JOIN articles a ON a.id=r.article_id WHERE r.id=?').get(id);
+  const row = db.prepare('SELECT r.*,p.name project_name,p.archived_at project_archived_at,p.trial_number project_trial_number,a.active_spec,a.archived_at article_archived_at,p.conflict FROM records r LEFT JOIN projects p ON p.id=r.project_id LEFT JOIN articles a ON a.id=r.article_id WHERE r.id=?').get(id);
   if (!row) fail(404, 'Nie znaleziono wpisu.');
   return row;
 }
@@ -97,8 +106,16 @@ function transaction(action) {
   try { const result = action(); db.exec('COMMIT'); return result; }
   catch (error) { try { db.exec('ROLLBACK'); } catch {} throw error; }
 }
-function audit(user, action, recordId = null, detail = '') {
-  db.prepare('INSERT INTO audit(at,user_id,action,record_id,detail) VALUES(?,?,?,?,?)').run(now(), user ? user.id : null, action, recordId, detail);
+function audit(user, action, recordId = null, detail = '', articleId = undefined) {
+  const linkedArticleId=articleId===undefined&&recordId?db.prepare('SELECT article_id FROM records WHERE id=?').get(recordId)?.article_id||null:articleId||null;
+  db.prepare('INSERT INTO audit(at,user_id,action,record_id,article_id,detail) VALUES(?,?,?,?,?,?)').run(now(), user ? user.id : null, action, recordId, linkedArticleId, detail);
+}
+function auditProjectChange(user, projectId, action, detail) {
+  const records = db.prepare(`SELECT pa.article_id,
+      (SELECT max(s.record_id) FROM project_stages s WHERE s.project_id=pa.project_id AND s.article_id=pa.article_id AND s.record_id IS NOT NULL) record_id
+    FROM project_articles pa WHERE pa.project_id=?`).all(projectId);
+  if (!records.length) { audit(user, action, null, detail); return; }
+  for (const row of records) audit(user, action, row.record_id, detail, row.article_id);
 }
 function stale(row, form) {
   if (String(row.revision) !== String(form.revision || '')) fail(409, 'Ktoś zapisał nowszą wersję. Wróć do formularza, zachowaj własne uwagi i wczytaj aktualne dane.');
@@ -404,46 +421,121 @@ async function handle(req, res) {
     if (p === '/archive' && req.method === 'GET') {
       const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().replace(/\.\d{3}Z$/, 'Z');
       const records = db.prepare('SELECT r.id,r.kind,r.symbol,r.archived_at,p.name project_name FROM records r LEFT JOIN projects p ON p.id=r.project_id WHERE r.archived_at IS NOT NULL AND r.archived_at>=? ORDER BY r.archived_at DESC,r.id DESC').all(cutoff);
-      const projects = db.prepare('SELECT id,name,archived_at FROM projects WHERE archived_at IS NOT NULL AND archived_at>=? ORDER BY archived_at DESC,id DESC').all(cutoff);
-      return send(req,res,200,V.archivePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),records,projects}));
+      const projects = db.prepare('SELECT id,name,trial_number,short_description,archived_at FROM projects WHERE archived_at IS NOT NULL AND archived_at>=? ORDER BY archived_at DESC,id DESC').all(cutoff);
+      const articles = db.prepare('SELECT id,symbol,archived_at FROM articles WHERE archived_at IS NOT NULL AND archived_at>=? AND purged_at IS NULL ORDER BY archived_at DESC,id DESC').all(cutoff);
+      return send(req,res,200,V.archivePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),records,projects,articles}));
     }
     if (Photos.handle(context) || await Catalog.handle(context)) return;
 
     if (p === '/projects' && req.method === 'GET') {
       const q = (url.searchParams.get('q') || '').trim();
-      const state = url.searchParams.get('state') || '';
+      const legacyState = url.searchParams.get('state') || '';
+      const statusFilter = url.searchParams.get('status') || (legacyState==='approved'?'accepted':legacyState==='pending'?'in_progress':'');
+      const validStatuses=['in_progress','accepted','failed','client_declined'];
+      const status=validStatuses.includes(statusFilter)?statusFilter:'';
+      const sortOptions={updated:'updated DESC,p.id DESC',created_desc:'p.created_at DESC,p.id DESC',created_asc:'p.created_at,p.id',number:"CAST(substr(p.trial_number,instr(p.trial_number,'/')+1) AS INTEGER),CAST(substr(p.trial_number,1,instr(p.trial_number,'/')-1) AS INTEGER)",name:'p.short_description COLLATE NOCASE,p.id'};
+      const sort=sortOptions[url.searchParams.get('sort')]?url.searchParams.get('sort'):'updated';
+      const dateFrom=/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date_from')||'')?url.searchParams.get('date_from'):'';
+      const dateTo=/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date_to')||'')?url.searchParams.get('date_to'):'';
       const rawPage = Number(url.searchParams.get('page') || 1);
       const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
       const params = [], clauses=['p.archived_at IS NULL'];
       for(const word of normalize(q).split(/\s+/).filter(Boolean)) {
-        clauses.push("search_text(p.name || ' ' || p.description || ' ' || coalesce((SELECT group_concat(symbol,' ') FROM records WHERE project_id=p.id AND archived_at IS NULL),'') || ' ' || coalesce((SELECT group_concat(a.symbol,' ') FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id),'')) LIKE ? ESCAPE '\\'");
+        clauses.push("search_text(p.trial_number || ' ' || p.short_description || ' ' || p.goal || ' ' || p.assumptions || ' ' || coalesce((SELECT group_concat(a.symbol,' ') FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id),'') || ' ' || coalesce((SELECT group_concat(a.symbol,' ') FROM project_stages s JOIN articles a ON a.id=s.article_id WHERE s.project_id=p.id),'')) LIKE ? ESCAPE '\\'");
         params.push('%'+word.replace(/[\\%_]/g,'\\$&')+'%');
       }
-      if(state==='approved')clauses.push('EXISTS(SELECT 1 FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL)');
-      if(state==='pending')clauses.push('NOT EXISTS(SELECT 1 FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL)');
-      const where=clauses.length?'WHERE '+clauses.join(' AND '):'';
+      if(status){clauses.push('p.status=?');params.push(status);}
+      if(dateFrom){clauses.push('substr(p.created_at,1,10)>=?');params.push(dateFrom);}
+      if(dateTo){clauses.push('substr(p.created_at,1,10)<=?');params.push(dateTo);}
+      const where='WHERE '+clauses.join(' AND ');
       const total=db.prepare(`SELECT count(*) n FROM projects p ${where}`).get(...params).n;
-      const rows=db.prepare(`SELECT p.*,(SELECT count(*) FROM project_articles pa WHERE pa.project_id=p.id) article_count,(SELECT count(*) FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id AND a.active_spec IS NOT NULL) active_spec,(SELECT count(*) FROM records r WHERE r.archived_at IS NULL AND (r.project_id=p.id OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=p.id AND pa.article_id=r.article_id)))) total,coalesce((SELECT max(updated_at) FROM records r WHERE r.archived_at IS NULL AND (r.project_id=p.id OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=p.id AND pa.article_id=r.article_id)))),p.created_at) updated FROM projects p ${where} ORDER BY updated DESC,p.id DESC LIMIT 15 OFFSET ?`).all(...params,(page-1)*15);
-      const status = readJsonIfExists(path.join(DATA, 'backup_status.json'));
-      if (status) {
-        const stamp = status.last_success ? new Date(status.last_success) : null;
-        status.stale = !stamp || Number.isNaN(stamp.getTime()) || (Date.now() - stamp.getTime() > 36 * 3600 * 1000);
+      const rows=db.prepare(`SELECT p.*,(SELECT count(DISTINCT pa.article_id) FROM project_articles pa WHERE pa.project_id=p.id) article_count,(SELECT count(*) FROM project_stages s WHERE s.project_id=p.id) total,max(coalesce((SELECT max(updated_at) FROM project_stages s WHERE s.project_id=p.id),''),coalesce(p.updated_at,''),p.created_at) updated FROM projects p ${where} ORDER BY ${sortOptions[sort]} LIMIT 15 OFFSET ?`).all(...params,(page-1)*15);
+      const backupStatus = readJsonIfExists(path.join(DATA, 'backup_status.json'));
+      if (backupStatus) {
+        const stamp = backupStatus.last_success ? new Date(backupStatus.last_success) : null;
+        backupStatus.stale = !stamp || Number.isNaN(stamp.getTime()) || (Date.now() - stamp.getTime() > 36 * 3600 * 1000);
       }
-      return send(req, res, 200, V.homePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), projects: rows, total, articleInput: Catalog.projectArticleInput(db), page, q, state, backupState: status }));
+      return send(req, res, 200, V.homePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), projects: rows, total, articleInput: Catalog.projectArticleInput(db), page, q, status, sort, dateFrom, dateTo, backupState: backupStatus }));
     }
 
     if (p === '/projects' && req.method === 'POST') {
       role(req.user, 'technologist', 'approver', 'admin');
-      const name = formText(form, 'name');
-      if (!name || name.length > 150) fail(400, 'Podaj nazwę projektu (do 150 znaków).');
+      const shortDescription = formText(form, 'name');
+      if (!shortDescription || shortDescription.length > 150) fail(400, 'Podaj krótki opis próby (do 150 znaków).');
+      const goal=String(form.goal||form.description||'').trim().slice(0,6000), assumptions=String(form.assumptions||'').trim().slice(0,6000);
       const pid = transaction(() => {
-        if (db.prepare('SELECT 1 FROM projects WHERE lower(name)=lower(?)').get(name)) fail(409, 'Taki projekt już istnieje.');
-        const result = db.prepare('INSERT INTO projects(name,description,created_at) VALUES(?,?,?)').run(name, String(form.description||'').slice(0,6000), now());
-        Catalog.associate(context, Number(result.lastInsertRowid), form);
-        audit(req.user, 'Utworzono projekt', null, name);
-        return Number(result.lastInsertRowid);
+        const stamp=now(),number=nextTrialNumber(),name=`${number} · ${shortDescription}`;
+        const result = db.prepare("INSERT INTO projects(name,description,created_at,trial_number,short_description,goal,assumptions,status,updated_at) VALUES(?,?,?,?,?,?,?,'in_progress',?)").run(name,goal,stamp,number,shortDescription,goal,assumptions,stamp);
+        const projectId=Number(result.lastInsertRowid),articleId=Catalog.associate(context,projectId,form);
+        let recordId=null;
+        if(articleId){
+          const article=db.prepare('SELECT * FROM articles WHERE id=?').get(articleId),payload=blank();payload.symbol=article.symbol;payload.number=number;payload.date=todayWarsaw();
+          recordId=Number(db.prepare("INSERT INTO records(project_id,article_id,kind,symbol,number,payload,created_at,updated_at,expected_active) VALUES(?,?,'trial',?,?,?,?,?,?)").run(projectId,articleId,article.symbol,number,dump(payload),stamp,stamp,article.active_spec).lastInsertRowid);
+        }
+        db.prepare("INSERT INTO project_stages(project_id,stage_no,article_id,record_id,stage_date,status,updated_at) VALUES(?,1,?,?,?,'in_progress',?)").run(projectId,articleId,recordId,todayWarsaw(),stamp);
+        audit(req.user, 'Utworzono próbę', recordId, `${number} · ${shortDescription}`);
+        return projectId;
       });
       return redirect(req, res, `/projects/${pid}`);
+    }
+
+    const projectAction=p.match(/^\/projects\/(\d+)\/(update|status|stages)(?:\/(\d+))?$/);
+    if(projectAction&&req.method==='POST') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectAction[1]),action=projectAction[2],stageId=projectAction[3]?Number(projectAction[3]):null,pr=project(pid);
+      if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
+      if(action==='update'||action==='status') {
+        const shortDescription=action==='status'?pr.short_description:String(form.short_description||pr.short_description||pr.name).trim().slice(0,150);
+        const goal=action==='status'?pr.goal:String(form.goal||'').trim().slice(0,6000),assumptions=action==='status'?pr.assumptions:String(form.assumptions||'').trim().slice(0,6000),status=String(form.status||pr.status);
+        if(!['in_progress','accepted','failed','client_declined'].includes(status))fail(400,'Nieprawidłowy status próby.');
+        transaction(()=>{
+          const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
+          const before={short_description:current.short_description||current.name,goal:current.goal||current.description||'',assumptions:current.assumptions||'',status:current.status};
+          const after={short_description:shortDescription,goal,assumptions,status};
+          const changeComment=formText(form,'change_comment').slice(0,1000);
+          if(action==='status')db.prepare('UPDATE projects SET status=?,updated_at=? WHERE id=?').run(status,now(),pid);
+          else db.prepare('UPDATE projects SET name=?,short_description=?,description=?,goal=?,assumptions=?,status=?,updated_at=? WHERE id=?').run(`${current.trial_number} · ${shortDescription}`,shortDescription,goal,goal,assumptions,status,now(),pid);
+          auditProjectChange(req.user,pid,action==='status'?'Zmieniono status próby':'Zmieniono opis próby',JSON.stringify({trial:current.trial_number,before,after,comment:changeComment}));
+        });
+        return redirect(req,res,`/projects/${pid}`,'Zapisano zmiany próby.');
+      }
+      if(!stageId) {
+        const description=formText(form,'description').slice(0,300),stageDate=formText(form,'stage_date')||todayWarsaw(),articleId=Number(form.article_id);
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(stageDate))fail(400,'Podaj poprawną datę etapu.');
+        const stageNumber=transaction(()=>{
+          const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
+          const article=db.prepare('SELECT * FROM articles WHERE id=?').get(articleId);
+          if(!article||article.archived_at||article.purged_at)fail(400,'Wybierz aktywny artykuł.');
+          db.prepare('INSERT OR IGNORE INTO project_articles(project_id,article_id) VALUES(?,?)').run(pid,articleId);
+          const stamp=now(),payload=blank();payload.symbol=article.symbol;payload.number=current.trial_number;payload.date=stageDate;
+          const recordId=Number(db.prepare("INSERT INTO records(project_id,article_id,kind,symbol,number,payload,created_at,updated_at,expected_active) VALUES(?,?,'trial',?,?,?,?,?,?)").run(pid,articleId,article.symbol,current.trial_number,dump(payload),stamp,stamp,article.active_spec).lastInsertRowid);
+          const number=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(pid).n;
+          db.prepare("INSERT INTO project_stages(project_id,stage_no,description,article_id,record_id,stage_date,status,updated_at) VALUES(?,?,?,?,?,?,'in_progress',?)").run(pid,number,description,articleId,recordId,stageDate,stamp);
+          db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
+          audit(req.user,'Dodano etap próby',recordId,JSON.stringify({stage:number,description,article:article.symbol,date:stageDate}));
+          return number;
+        });
+        return redirect(req,res,`/projects/${pid}`,`Dodano etap ${stageNumber}.`);
+      }
+      const description=formText(form,'description').slice(0,300),stageDate=formText(form,'stage_date'),status=formText(form,'status'),comment=String(form.comment||'').trim().slice(0,3000),articleId=Number(form.article_id);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(stageDate)||!['in_progress','sent_finishing','sample_at_client','accepted_internal','accepted_client'].includes(status))fail(400,'Sprawdź datę i status etapu.');
+      transaction(()=>{
+        const current=project(pid),stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+        if(!stage)fail(404,'Nie znaleziono etapu.');
+        let linkedArticleId=stage.article_id,recordId=stage.record_id;
+        if(!recordId) {
+          const article=db.prepare('SELECT * FROM articles WHERE id=?').get(articleId);
+          if(!article||article.archived_at||article.purged_at)fail(400,'Wybierz aktywny artykuł, aby rozpocząć etap.');
+          linkedArticleId=article.id;db.prepare('INSERT OR IGNORE INTO project_articles(project_id,article_id) VALUES(?,?)').run(pid,article.id);
+          const stamp=now(),payload=blank();payload.symbol=article.symbol;payload.number=current.trial_number;payload.date=stageDate;
+          recordId=Number(db.prepare("INSERT INTO records(project_id,article_id,kind,symbol,number,payload,created_at,updated_at,expected_active) VALUES(?,?,'trial',?,?,?,?,?,?)").run(pid,article.id,article.symbol,current.trial_number,dump(payload),stamp,stamp,article.active_spec).lastInsertRowid);
+        }
+        db.prepare('UPDATE project_stages SET description=?,article_id=?,record_id=?,stage_date=?,status=?,comment=?,updated_at=? WHERE id=?').run(description,linkedArticleId,recordId,stageDate,status,comment,now(),stageId);
+        if(status==='accepted_client'||status==='accepted_internal')db.prepare("UPDATE projects SET status='accepted',updated_at=? WHERE id=?").run(now(),pid);
+        else db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now(),pid);
+        audit(req.user,'Zapisano etap próby',recordId,JSON.stringify({stage:stage.stage_no,before:{description:stage.description,date:stage.stage_date,status:stage.status,comment:stage.comment},after:{description,date:stageDate,status,comment},comment}));
+      });
+      return redirect(req,res,`/projects/${pid}`,'Zapisano etap próby.');
     }
 
     const projectArchiveMatch = p.match(/^\/projects\/(\d+)\/(delete|restore)$/);
@@ -470,7 +562,7 @@ async function handle(req, res) {
     if(linkProject && req.method==='POST') {
       role(req.user,'admin','approver','technologist');
       const pid=Number(linkProject[1]),pr=project(Number(linkProject[1]));if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanego projektu/próby.');
-      transaction(()=>{Catalog.associate(context,pid,form);audit(req.user,'Powiązano artykuł z projektem',null,String(pid));});
+      transaction(()=>{Catalog.associate(context,pid,form);db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now(),pid);audit(req.user,'Powiązano artykuł z projektem',null,String(pid));});
       return redirect(req,res,`/projects/${pid}`);
     }
     const unlinkProjectArticle=p.match(/^\/projects\/(\d+)\/articles\/(\d+)\/unlink$/);
@@ -481,6 +573,7 @@ async function handle(req, res) {
       transaction(()=>{
         const result=db.prepare('DELETE FROM project_articles WHERE project_id=? AND article_id=?').run(pid,articleId);
         if(!result.changes)fail(404,'To powiązanie artykułu z projektem już nie istnieje.');
+        db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now(),pid);
         audit(req.user,'Odpięto artykuł od projektu',null,`${articleId} / ${pid}`);
       });
       return redirect(req,res,`/projects/${pid}`,'Artykuł został odpięty od projektu.');
@@ -490,7 +583,10 @@ async function handle(req, res) {
       const pr = project(id);
       const records = db.prepare("SELECT r.*,CASE WHEN a.active_spec=r.id THEN 1 ELSE 0 END is_current FROM records r LEFT JOIN articles a ON a.id=r.article_id WHERE r.archived_at IS NULL AND (r.project_id=? OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=? AND pa.article_id=r.article_id))) ORDER BY CASE WHEN a.active_spec=r.id THEN 0 WHEN r.kind='spec' AND r.state!='approved' THEN 1 ELSE 2 END,r.id DESC").all(id,id);
       const cards = db.prepare('SELECT c.*,u.name author FROM cards c JOIN records r ON r.id=c.record_id JOIN users u ON u.id=c.created_by WHERE r.project_id=? OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=? AND pa.article_id=r.article_id)) ORDER BY c.id DESC').all(id,id);
-      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, records, cards, linkedArticles: db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=?').all(id), articleInput: Catalog.projectArticleInput(db, { optional: false }) }));
+      const stages=db.prepare('SELECT s.*,a.symbol article_symbol,r.payload FROM project_stages s LEFT JOIN articles a ON a.id=s.article_id LEFT JOIN records r ON r.id=s.record_id WHERE s.project_id=? ORDER BY s.stage_no').all(id);
+      const linkedArticles=db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=? ORDER BY a.symbol_key,a.id').all(id);
+      const allArticles=db.prepare('SELECT id,symbol FROM articles WHERE archived_at IS NULL AND purged_at IS NULL ORDER BY symbol_key,id').all();
+      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, records, cards, stages, linkedArticles, allArticles, articleInput: Catalog.projectArticleInput(db, { optional: false }) }));
     }
     id = matchId(p, /^\/projects\/(\d+)\/new$/);
     if (id && req.method === 'POST') {
@@ -498,16 +594,22 @@ async function handle(req, res) {
       const pr = project(id), kind = form.kind || 'trial';
       if(pr.archived_at) fail(409,'Nie można dodawać prób ani specyfikacji do zarchiwizowanego projektu/próby.');
       if (!['trial', 'spec'].includes(kind)) fail(400, 'Nieprawidłowy typ wpisu.');
-      const v = blank(); v.date = todayWarsaw();
+      const v = blank(); v.date = todayWarsaw(); v.number=pr.trial_number||'';
       let newArticleFields=false;
       const rid = transaction(() => {
         const selected = Number(form.article_id);
         let a = selected ? db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE a.id=? AND pa.project_id=?').get(selected,id) : null;
-        if(!a) fail(400,'Wybierz artykuł z kartoteki projektu. Możesz go najpierw dodać w sekcji „Artykuły w projekcie”.');
+        if(!a||a.archived_at||a.purged_at) fail(400,'Wybierz aktywny artykuł z kartoteki projektu.');
         newArticleFields=kind==='spec'&&!db.prepare('SELECT 1 FROM records WHERE article_id=? AND archived_at IS NULL LIMIT 1').get(a.id);
         v.symbol=a ? a.symbol : pr.name;
-        const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,payload,created_at,updated_at,expected_active) VALUES(?,?,?,?,?,?,?,?)').run(id, a ? a.id : null, kind, v.symbol, dump(v), now(), now(), a ? a.active_spec : null);
+        const stamp=now();
+        const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,number,payload,created_at,updated_at,expected_active) VALUES(?,?,?,?,?,?,?,?,?)').run(id, a ? a.id : null, kind, v.symbol, v.number, dump(v), stamp, stamp, a ? a.active_spec : null);
         const recordId = Number(result.lastInsertRowid);
+        db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,id);
+        if(kind==='trial'){
+          const stageNo=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(id).n;
+          db.prepare("INSERT INTO project_stages(project_id,stage_no,description,article_id,record_id,stage_date,status,updated_at) VALUES(?,?,?,?,?,?,'in_progress',?)").run(id,stageNo,'',a.id,recordId,v.date,stamp);
+        }
         audit(req.user, 'Utworzono wpis', recordId);
         return recordId;
       });
@@ -517,7 +619,7 @@ async function handle(req, res) {
     id = matchId(p, /^\/records\/(\d+)$/);
     if (id && req.method === 'GET') {
       const r = record(id), history = db.prepare('SELECT a.*,u.name author FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE record_id=? ORDER BY a.id DESC').all(id);
-      return send(req, res, 200, V.recordPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, v: parsePayload(r), history, photoPanel: Photos.panel('record',id,{...req,readOnly:Boolean(r.archived_at)}) }));
+      return send(req, res, 200, V.recordPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, v: parsePayload(r), history, photoPanel: Photos.panel('record',id,{...req,readOnly:Boolean(r.archived_at||r.article_archived_at||r.project_archived_at)}) }));
     }
 
     const recordArchiveMatch=p.match(/^\/records\/(\d+)\/(delete|restore)$/);
@@ -543,6 +645,8 @@ async function handle(req, res) {
       role(req.user, 'technologist', 'approver', 'admin');
       let r = record(id);
       if(r.archived_at)fail(409,'Zarchiwizowany wpis jest tylko do odczytu. Przywróć go w zakładce Archiwum, aby edytować.');
+      if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Najpierw przywróć go z archiwum.');
+      if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go w zakładce Archiwum, aby edytować etap.');
       if (r.state !== 'draft') fail(409, 'Ta wersja jest zablokowana. Utwórz nową wersję albo wycofaj wniosek o zatwierdzenie.');
       if (req.method === 'POST') {
         // Keep a copy of a valid form before BEGIN IMMEDIATE. If SQLite cannot
@@ -550,6 +654,7 @@ async function handle(req, res) {
         try {
           const old = parsePayload(r), values = parseForm(form, old);
           values.date = old.date || values.date;
+          values.number = r.project_trial_number || '';
           recovery = { kind: 'record-edit', record: r, values };
         } catch {
           // The normal transaction path below returns the actual validation
@@ -558,8 +663,9 @@ async function handle(req, res) {
         transaction(() => {
           r = record(id); stale(r, form);
           if (r.state !== 'draft') fail(409, 'Wpis jest już zablokowany.');
-          const old = parsePayload(r), v = parseForm(form, old);
+          const old = parsePayload(r), v = parseForm(form, old), changeComment=formText(form,'change_comment').slice(0,1000);
           v.date = old.date || v.date;
+          v.number = r.project_trial_number || '';
           recovery = { kind: 'record-edit', record: r, values: v };
           let a = r.article_id ? db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id) : null;
           if (a && a.symbol !== v.symbol) fail(400,'Symbol powiązanego artykułu pozostaje stały. Dla innego artykułu utwórz osobny wpis.');
@@ -567,7 +673,8 @@ async function handle(req, res) {
           const expected = a && a.id !== r.article_id ? a.active_spec : r.expected_active;
           db.prepare('UPDATE records SET symbol=?,number=?,payload=?,article_id=?,expected_active=?,updated_at=?,revision=revision+1 WHERE id=?').run(v.symbol, v.number, dump(v), a ? a.id : null, expected, now(), id);
           if(a)db.prepare('UPDATE articles SET updated_at=? WHERE id=?').run(new Date().toISOString(),a.id);
-          audit(req.user, 'Zapisano zmiany', id, dump({ before: old, after: v }));
+          if(r.project_id){db.prepare('UPDATE project_stages SET updated_at=? WHERE record_id=?').run(now(),id);db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now(),r.project_id);}
+          audit(req.user, 'Zapisano zmiany', id, dump({ before: old, after: v, comment: changeComment }));
         });
         return redirect(req, res, `/records/${id}`, 'Zapisano zmiany.');
       }
@@ -580,12 +687,17 @@ async function handle(req, res) {
       const next = transaction(() => {
         const r = record(id), v = parsePayload(r), kind = form.kind || 'trial';
         if(r.archived_at)fail(409,'Nie można tworzyć wpisów na podstawie zarchiwizowanej próby lub specyfikacji.');
+        if(r.project_archived_at||r.article_archived_at)fail(409,'Nie można tworzyć wpisów z zarchiwizowanego projektu lub artykułu.');
         if (!['trial', 'spec'].includes(kind)) fail(400, 'Nieprawidłowy typ wpisu.');
-        if (kind === 'trial') Object.assign(v, { raw: {}, raw_comments: '', finished_comments: '', finished: [], comments: '', stages: '', targets: {}, number: '', date: todayWarsaw() });
+        if (kind === 'trial') Object.assign(v, { raw: {}, raw_comments: '', finished_comments: '', finished: [], comments: '', stages: '', targets: {}, number: r.project_trial_number || '', date: todayWarsaw() });
         if(kind==='trial' && !r.project_id) fail(400,'Próbę rozpocznij w projekcie powiązanym z tym artykułem.');
         const a = r.article_id ? db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id) : kind === 'spec' ? makeArticle(r.project_id, r.symbol) : null;
         const result = db.prepare('INSERT INTO records(project_id,article_id,kind,symbol,number,base_id,expected_active,payload,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(r.project_id, a ? a.id : null, kind, r.symbol, v.number || '', id, a ? a.active_spec : null, dump(v), now(), now());
         const newId = Number(result.lastInsertRowid);
+        if(kind==='trial'&&r.project_id){
+          const stageNo=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(r.project_id).n;
+          db.prepare("INSERT INTO project_stages(project_id,stage_no,description,article_id,record_id,stage_date,status,updated_at) VALUES(?,?,?,?,?,?,'in_progress',?)").run(r.project_id,stageNo,'',a?.id||null,newId,v.date,now());
+        }
         audit(req.user, `Utworzono ${kind === 'trial' ? 'wariant próby' : 'roboczą specyfikację'}`, newId, `Na podstawie wpisu ${id}`);
         return newId;
       });
@@ -601,6 +713,8 @@ async function handle(req, res) {
       let approvedVersion = null;
       transaction(() => {
         const r = record(id); stale(r, form);
+        if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go przed zmianą statusu specyfikacji.');
+        if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go przed zmianą statusu specyfikacji.');
         if (operation === 'submit') {
           if (r.kind !== 'spec' || r.state !== 'draft') fail(409, 'Nie można przekazać tego wpisu do zatwierdzenia.');
           validateReady(r);
@@ -628,7 +742,7 @@ async function handle(req, res) {
     id = matchId(p, /^\/records\/(\d+)\/preview$/);
     if (id && req.method === 'GET') {
       const r = record(id), v = parsePayload(r);
-      const html = V.cardPage({ r, v, changeNotice: Changes.notice(db,r,v), machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
+      const html = V.cardPage({ r, v, machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
       return send(req, res, 200, html);
     }
 
@@ -637,12 +751,22 @@ async function handle(req, res) {
       role(req.user, 'technologist', 'approver', 'admin');
       let r = record(id);
       if (req.method === 'GET') {
+        if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
+        if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
         if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Najpierw zatwierdź aktualną specyfikację.');
         return send(req, res, 200, V.issuePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, token: crypto.randomBytes(24).toString('base64url') }));
       }
       const token = formText(form, 'token'), machine = formText(form, 'machine'), instructions = formText(form, 'instructions');
       if (!machine || !instructions || token.length < 20) fail(400, 'Podaj maszynę i polecenia do tej produkcji.');
       if (machine.length > 100 || instructions.length > 6000) fail(400, 'Skróć nazwę maszyny lub instrukcje.');
+      if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
+      if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
+      if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Można wydać wyłącznie aktualną zatwierdzoną wersję. Otwórz aktualną kartę artykułu.');
+      if(form.cancel_confirmation)return send(req,res,200,V.issuePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r,token,machine,instructions}));
+      const changeNotice=Changes.notice(db,r,parsePayload(r));
+      if(changeNotice&&!form.confirm_changes) {
+        return send(req,res,200,V.issueConfirmPage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r,token,machine,instructions,changeNotice}));
+      }
       const cardId = transaction(() => {
         const old = db.prepare('SELECT id,record_id,created_by FROM cards WHERE token=?').get(token);
         if (old) {
@@ -650,10 +774,12 @@ async function handle(req, res) {
           return old.id;
         }
         r = record(id);
+        if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
+        if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
         if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Można wydać wyłącznie aktualną zatwierdzoną wersję. Otwórz aktualną kartę artykułu.');
         const v = parsePayload(r), stamp = now();
         const cardno = `K-${stamp.slice(0, 10)}-${token.slice(0, 8)}`;
-        const html = V.cardPage({ r, v, changeNotice: Changes.notice(db,r,v), machine, instructions, cardno, issuedAt: stamp, author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
+        const html = V.cardPage({ r, v, machine, instructions, cardno, issuedAt: stamp, author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
         const result = db.prepare('INSERT INTO cards(record_id,machine,instructions,created_at,created_by,token,snapshot,html) VALUES(?,?,?,?,?,?,?,?)').run(id, machine, instructions, stamp, req.user.id, token, dump({ record: r, data: v, author: req.user.name }), html);
         const newId = Number(result.lastInsertRowid);
         audit(req.user, 'Wydano kartę na maszynę', id, `Karta ${newId} / ${machine} / ${instructions}`);
