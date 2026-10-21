@@ -108,7 +108,8 @@ function transaction(action) {
 }
 function audit(user, action, recordId = null, detail = '', articleId = undefined) {
   const linkedArticleId=articleId===undefined&&recordId?db.prepare('SELECT article_id FROM records WHERE id=?').get(recordId)?.article_id||null:articleId||null;
-  db.prepare('INSERT INTO audit(at,user_id,action,record_id,article_id,detail) VALUES(?,?,?,?,?,?)').run(now(), user ? user.id : null, action, recordId, linkedArticleId, detail);
+  const inserted=db.prepare('INSERT INTO audit(at,user_id,action,record_id,detail) VALUES(?,?,?,?,?)').run(now(), user ? user.id : null, action, recordId, detail);
+  if(linkedArticleId)db.prepare('INSERT OR IGNORE INTO audit_articles(audit_id,article_id) VALUES(?,?)').run(inserted.lastInsertRowid,linkedArticleId);
 }
 function auditProjectChange(user, projectId, action, detail) {
   const records = db.prepare(`SELECT pa.article_id,

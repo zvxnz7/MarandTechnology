@@ -131,7 +131,7 @@ async function handle(ctx) {
   const historyRecords=db.prepare("SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,0 is_current FROM records r WHERE r.article_id=? AND r.archived_at IS NULL AND r.id<>coalesce(?,0) ORDER BY CASE WHEN r.kind='spec' AND r.state!='approved' THEN 0 WHEN r.kind='spec' THEN 1 ELSE 2 END,r.id DESC LIMIT 50 OFFSET ?").all(id,currentRecord?.id||0,(historyPage-1)*50);
   const records=[...(currentRecord?[currentRecord]:[]),...historyRecords];
   const cards=db.prepare('SELECT c.id,c.machine,c.created_at FROM cards c JOIN records r ON r.id=c.record_id WHERE r.article_id=? ORDER BY c.id DESC LIMIT 50').all(id);
-  const changeRows=db.prepare(`SELECT a.*,u.name author FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE (a.article_id=? OR EXISTS(SELECT 1 FROM records r WHERE r.id=a.record_id AND r.article_id=?)) AND a.action IN ('Zapisano zmiany','Zapisano etap próby','Dodano etap próby','Zmieniono opis próby','Zmieniono status próby') ORDER BY a.id DESC LIMIT 100`).all(id,id);
+  const changeRows=db.prepare(`SELECT a.*,u.name author FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE (EXISTS(SELECT 1 FROM audit_articles aa WHERE aa.audit_id=a.id AND aa.article_id=?) OR EXISTS(SELECT 1 FROM records r WHERE r.id=a.record_id AND r.article_id=?)) AND a.action IN ('Zapisano zmiany','Zapisano etap próby','Dodano etap próby','Zmieniono opis próby','Zmieniono status próby') ORDER BY a.id DESC LIMIT 100`).all(id,id);
   const changesHistory=changeRows.map(row=>{
     let detail={};try{detail=JSON.parse(row.detail||'{}')}catch{}
     let changes=[];

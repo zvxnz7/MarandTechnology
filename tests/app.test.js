@@ -248,15 +248,15 @@ test('GB auto numbering, finished parameters optional, approvals and immutable c
  r=await post(s,`/records/${rid}/issue`,{token:crypto.randomBytes(24).toString('hex'),machine:'12',instructions:'test'});assert.equal(r.status,303,r.text());const first=r.headers.location;
  r=await post(s,`/records/${rid}/copy`,{kind:'spec'});assert.equal(r.status,303,r.text());const next=Number(r.headers.location.split('/')[2]);
  r=await post(s,`/records/${next}/edit`,{...values,gb_0_run_in:'1400'});assert.equal(r.status,303,r.text());
- r=await request(`${baseUrl}/records/${next}/preview`,{headers:{cookie:s.cookie}});assert.doesNotMatch(r.text(),/data-update-alert|change-alert/);assert.match(r.text(),/1400/);assert.match(r.text(),/Test Admin/);
+ r=await request(`${baseUrl}/records/${next}/preview`,{headers:{cookie:s.cookie}});const previewHtml=r.text().replace(/<style>[\s\S]*?<\/style>/g,'');assert.doesNotMatch(previewHtml,/data-update-alert|class="[^"]*\bchange-alert\b/);assert.match(r.text(),/1400/);assert.match(r.text(),/Test Admin/);
  r=await post(s,`/records/${next}/submit`,{revision:2});assert.equal(r.status,303,r.text());
  r=await post(s,`/records/${next}/approve`,{revision:3,checked:'on',review_note:'Sprawdzono nową technologię.'});assert.equal(r.status,303,r.text());
  r=await request(baseUrl+first,{headers:{cookie:s.cookie}});assert.match(r.text(),/historyczna karta/);
  assert.doesNotMatch(db.prepare('SELECT html FROM cards WHERE record_id=?').get(rid).html,/historyczna karta/);
  const changedCardToken=crypto.randomBytes(24).toString('hex');
- r=await post(s,`/records/${next}/issue`,{token:changedCardToken,machine:'12',instructions:'test'});assert.equal(r.status,200,r.text());assert.match(r.text(),/data-show-modal/);assert.match(r.text(),/change-alert/);assert.match(r.text(),/changed-value/);
+ r=await post(s,`/records/${next}/issue`,{token:changedCardToken,machine:'12',instructions:'test'});assert.equal(r.status,200,r.text());assert.match(r.text(),/data-show-modal/);assert.match(r.text(),/<section class="change-alert"/);assert.match(r.text(),/<td class="changed-value">/);
  r=await post(s,`/records/${next}/issue`,{token:changedCardToken,machine:'12',instructions:'test',confirm_changes:'1'});assert.equal(r.status,303,r.text());
- r=await request(baseUrl+r.headers.location,{headers:{cookie:s.cookie}});assert.doesNotMatch(r.text(),/data-update-alert|change-alert|changed-value/);db.close();
+ r=await request(baseUrl+r.headers.location,{headers:{cookie:s.cookie}});const issuedHtml=r.text().replace(/<style>[\s\S]*?<\/style>/g,'');assert.doesNotMatch(issuedHtml,/data-update-alert|class="[^"]*\bchange-alert\b|class="changed-value"/);db.close();
 });
 test('photo upload is optional, authenticated, append-only and validates the format',async()=>{
  const s=await session();const aid=await createArticle(s,'PHOTO-ARTICLE');

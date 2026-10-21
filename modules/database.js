@@ -39,9 +39,11 @@ function migrateStarterArticles(db) {
 function migrateV5(db) {
   const version = db.prepare('PRAGMA user_version').get().user_version;
   if (version >= 5) {
-    if (!db.prepare('PRAGMA table_info(audit)').all().some(column => column.name === 'article_id')) db.exec('ALTER TABLE audit ADD COLUMN article_id INTEGER');
     db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
-    db.exec('UPDATE audit SET article_id=(SELECT article_id FROM records WHERE records.id=audit.record_id) WHERE article_id IS NULL AND record_id IS NOT NULL;');
+    if (db.prepare('PRAGMA table_info(audit)').all().some(column => column.name === 'article_id')) {
+      db.exec('INSERT OR IGNORE INTO audit_articles(audit_id,article_id) SELECT id,article_id FROM audit WHERE article_id IS NOT NULL;');
+    }
+    db.exec('INSERT OR IGNORE INTO audit_articles(audit_id,article_id) SELECT a.id,r.article_id FROM audit a JOIN records r ON r.id=a.record_id WHERE r.article_id IS NOT NULL;');
     return;
   }
   db.exec('BEGIN IMMEDIATE');
@@ -59,9 +61,8 @@ function migrateV5(db) {
     addColumn('projects', 'updated_at', "TEXT NOT NULL DEFAULT ''");
     addColumn('articles', 'archived_at', 'TEXT');
     addColumn('articles', 'purged_at', 'TEXT');
-    addColumn('audit', 'article_id', 'INTEGER');
     db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
-    db.exec('UPDATE audit SET article_id=(SELECT article_id FROM records WHERE records.id=audit.record_id) WHERE article_id IS NULL AND record_id IS NOT NULL;');
+    db.exec('INSERT OR IGNORE INTO audit_articles(audit_id,article_id) SELECT a.id,r.article_id FROM audit a JOIN records r ON r.id=a.record_id WHERE r.article_id IS NOT NULL;');
 
     const projects = db.prepare('SELECT id,name,description,created_at,trial_number,short_description,goal,updated_at FROM projects ORDER BY created_at,id').all();
     const counters = new Map();

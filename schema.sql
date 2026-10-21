@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,project_id INTEGER REF
 CREATE INDEX IF NOT EXISTS records_project ON records(project_id,kind,state);
 CREATE INDEX IF NOT EXISTS records_symbol ON records(symbol);
 CREATE TABLE IF NOT EXISTS cards(id INTEGER PRIMARY KEY,record_id INTEGER NOT NULL REFERENCES records(id),machine TEXT NOT NULL,instructions TEXT NOT NULL,created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),token TEXT UNIQUE NOT NULL,snapshot TEXT NOT NULL,html TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,at TEXT NOT NULL,user_id INTEGER REFERENCES users(id),action TEXT NOT NULL,record_id INTEGER,article_id INTEGER,detail TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,at TEXT NOT NULL,user_id INTEGER REFERENCES users(id),action TEXT NOT NULL,record_id INTEGER,detail TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS login_attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until REAL NOT NULL);
 CREATE TRIGGER IF NOT EXISTS approved_no_update BEFORE UPDATE ON records WHEN OLD.state='approved' BEGIN SELECT RAISE(ABORT,'Approved record is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS approved_no_delete BEFORE DELETE ON records WHEN OLD.state='approved' BEGIN SELECT RAISE(ABORT,'Approved record is immutable'); END;
@@ -14,6 +14,7 @@ CREATE TRIGGER IF NOT EXISTS card_no_update BEFORE UPDATE ON cards BEGIN SELECT 
 CREATE TRIGGER IF NOT EXISTS card_no_delete BEFORE DELETE ON cards BEGIN SELECT RAISE(ABORT,'Issued card is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
+CREATE TABLE IF NOT EXISTS audit_articles(audit_id INTEGER NOT NULL REFERENCES audit(id),article_id INTEGER NOT NULL REFERENCES articles(id),PRIMARY KEY(audit_id,article_id));
 
 CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES categories(id),name TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS categories_name ON categories(coalesce(parent_id,0),name COLLATE NOCASE);
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS project_stages(id INTEGER PRIMARY KEY,project_id INTE
 CREATE TABLE IF NOT EXISTS project_trial_sequences(year INTEGER PRIMARY KEY,last_value INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS project_articles_article ON project_articles(article_id);
 CREATE INDEX IF NOT EXISTS project_stages_project ON project_stages(project_id,stage_no);
-CREATE INDEX IF NOT EXISTS audit_article ON audit(article_id,id);
+CREATE INDEX IF NOT EXISTS audit_articles_article ON audit_articles(article_id,audit_id);
 CREATE INDEX IF NOT EXISTS articles_category ON articles(category_id);
 CREATE INDEX IF NOT EXISTS articles_created ON articles(created_at,id);
 CREATE INDEX IF NOT EXISTS articles_symbol ON articles(symbol_key);
