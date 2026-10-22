@@ -1,6 +1,58 @@
 'use strict';
 let dirty=false,submitting=false;
 document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('input',()=>dirty=true);f.addEventListener('submit',()=>{submitting=true;});});
+const sourceImportUpload=document.querySelector('form[data-source-import-upload]');
+if(sourceImportUpload){
+ const fileInput=sourceImportUpload.querySelector('[data-source-import-file]'),status=sourceImportUpload.querySelector('[data-source-import-status]'),uploadButton=sourceImportUpload.querySelector('[data-import-upload-button]');
+ const preview=document.querySelector('[data-source-import-preview]'),applyForm=document.querySelector('[data-source-import-apply]');
+ const list=(selector,values)=>{const target=document.querySelector(selector);if(!target)return;target.replaceChildren();for(const value of values){const item=document.createElement('li');item.textContent=value;target.appendChild(item);}};
+ sourceImportUpload.addEventListener('submit',async event=>{
+  event.preventDefault();const file=fileInput.files[0];if(!file)return;
+  if(file.size>25*1024*1024){status.textContent='Plik przekracza limit 25 MB.';return;}
+  uploadButton.disabled=true;status.textContent='Sprawdzanie pliku i porównywanie z bazą…';preview.hidden=true;
+  try{
+   const response=await fetch('/admin/import/preview',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':sourceImportUpload.dataset.csrf},body:await file.text()});
+   const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się sprawdzić paczki.');
+   const report=result.preview,existing=report.existing,incoming=report.incoming,archive=report.will_archive;
+   document.querySelector('[data-import-summary]').textContent=`Plik ${file.name} · ${report.package_sha256.slice(0,16)}…`;
+   list('[data-import-existing]',[
+    `Artykuły: ${existing.active_articles}`,
+    `Projekty/próby: ${existing.active_projects}`,
+    `Użytkownicy: ${existing.users}`,
+    `Zatwierdzone specyfikacje: ${existing.approved_records}`,
+    `Wydane karty: ${existing.issued_cards}`
+   ]);
+   list('[data-import-incoming]',[
+    `Artykuły: ${incoming.articles}`,
+    `Specyfikacje robocze: ${incoming.specifications}`,
+    `Projekty/próby: ${incoming.projects}`,
+    `Wpisy prób: ${incoming.trial_records}`,
+    `Dopasowane artykuły z obecnej kartoteki: ${report.article_matches_to_existing}`,
+    `Opisy dopasowanych artykułów zaktualizowane z paczki: ${report.article_descriptions_updated}`,
+    'Automatyczna numeracja prób: ' + incoming.projects + ' · przykłady: ' + report.trial_number_examples.map(item=>item.from + ' → ' + item.to).join(', '),
+    'Powtórzone oznaczenia źródłowe prób: ' + report.duplicate_source_trial_numbers + ' · każda próba dostanie unikalny numer programu.',
+    `Nazwy prób wymagające dopisku: ${report.project_names_that_need_a_unique_import_label}`
+   ]);
+   list('[data-import-archive]',[
+    `Aktywne projekty/próby: ${archive.active_projects}`,
+    `Robocze wpisy bez wydanej karty: ${archive.unapproved_records_without_issued_cards}`,
+    'Niepasujące artykuły: '+archive.unmatched_articles
+   ]);
+   list('[data-import-preserved]',report.preserved);
+   document.querySelector('[data-import-ai-notice]').textContent=report.ai_notice;
+   const conflictBox=document.querySelector('[data-import-conflict-box]'),conflicts=document.querySelector('[data-import-conflicts]');
+   conflicts.replaceChildren();for(const conflict of report.conflicts){const item=document.createElement('li');item.textContent=[conflict.symbol,conflict.message].filter(Boolean).join(': ');conflicts.appendChild(item);}
+   conflictBox.hidden=report.conflicts.length===0;
+   const info=document.querySelector('[data-import-info]');
+   info.textContent=`Wczytane specyfikacje pozostaną robocze i nie zastąpią obowiązującej technologii. ${incoming.review_flags} oznaczeń wymaga sprawdzenia ze starym katalogiem.`;
+   applyForm.elements.token.value=result.token;applyForm.hidden=report.conflicts.length>0;
+   preview.hidden=false;status.textContent=report.conflicts.length?'Wykryto niezgodności. Import jest zablokowany do czasu ich wyjaśnienia.':'Podgląd gotowy. Baza pozostaje bez zmian do chwili potwierdzenia.';
+   preview.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(error){status.textContent=error.message;}
+  finally{uploadButton.disabled=false;}
+ });
+ applyForm?.addEventListener('submit',()=>{const button=applyForm.querySelector('button[type="submit"],button:not([type])');if(button){button.disabled=true;button.textContent='Tworzenie kopii i import danych…';}});
+}
 document.querySelectorAll('form[data-inherited-values]').forEach(form=>form.querySelectorAll('input:not([type=hidden]),textarea').forEach(control=>{
   if(control.value.trim())control.classList.add('inherited-value');
   control.addEventListener('input',()=>control.classList.remove('inherited-value'));

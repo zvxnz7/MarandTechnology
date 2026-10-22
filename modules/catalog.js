@@ -2,6 +2,7 @@
 const V = require('../views');
 const Changes = require('./card-changes');
 const ArchiveCleanup = require('./archive-cleanup');
+const SourceImport = require('./source-import');
 const { esc: e, datepl: date } = V;
 const writable = u => ['admin','approver','technologist'].includes(u.role);
 const input = (name, label, required = false) => `<label>${label}<input name="${name}" ${required ? 'required' : ''} maxlength="150"></label>`;
@@ -47,7 +48,11 @@ function associate(ctx, pid, form) {
 async function handle(ctx) {
   const { db,req,res,p,url,form,send,redirect,fail,transaction,audit,now,blank } = ctx;
   const csrf = `<input type="hidden" name="csrf" value="${e(req.session.csrf)}">`;
-  const page = body => send(req,res,200,V.layout({user:req.user,csrf:req.session.csrf,flashes:ctx.getFlashes(req),body}));
+  const page = body => {
+    const flashes=ctx.getFlashes(req);
+    if(req.sourceImportNotice)flashes.push({category:'warning',message:req.sourceImportNotice});
+    return send(req,res,200,V.layout({user:req.user,csrf:req.session.csrf,flashes,body}));
+  };
   const edit = () => ctx.role(req.user,'admin','approver','technologist');
   if ((p === '/' || p === '/articles') && req.method === 'GET') {
     const params = [], where = ['a.archived_at IS NULL','a.purged_at IS NULL'];
@@ -78,6 +83,7 @@ async function handle(ctx) {
   const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|new|delete|restore|purge|production-note))?$/);
   if(!match) return false;
   const id=Number(match[1]), a=getArticle(db,id,fail), action=match[2];
+  req.sourceImportNotice=SourceImport.noticeForArticle(db,id);
   if(req.method==='POST'&&action==='production-note') {
     edit();if(a.archived_at||a.purged_at)fail(409,'Zarchiwizowanego artykułu nie można edytować.');
     const note=String(form.production_notes||'').trim().slice(0,6000);

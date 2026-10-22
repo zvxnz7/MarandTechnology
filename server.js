@@ -5,10 +5,12 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const V = require('./views');
 const ArchiveCleanup = require('./modules/archive-cleanup');
+const SourceImport = require('./modules/source-import');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -19,7 +21,10 @@ const HOST = process.env.MARAND_HOST || '127.0.0.1';
 const PORT = Number(process.env.MARAND_PORT || 8765);
 const DEFAULT_GITHUB_REPO = 'zvxnz7/MarandTechnology';
 const MAX_BODY = 3 * 1024 * 1024;
+const MAX_IMPORT_BODY = 25 * 1024 * 1024;
 const SESSION_SECONDS = 8 * 60 * 60;
+const execFileAsync = promisify(execFile);
+const pendingSourceImports = new Map();
 const nodeVersion = process.versions.node.split('.').map(Number);
 if (nodeVersion[0] < 24 || (nodeVersion[0] === 24 && nodeVersion[1] < 15)) throw new Error('Wymagany jest Node.js 24.15 lub nowszy.');
 const versionInfo = JSON.parse(fs.readFileSync(VERSION_PATH, 'utf8'));
@@ -35,6 +40,29 @@ if (!fs.existsSync(DB_PATH)) throw new Error('Brak bazy danych. Uruchom najpierw
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
+function recoverInterruptedSourceImport() {
+  const markerPath = path.join(DATA, 'maintenance.json');
+  const marker = readJsonIfExists(markerPath);
+  if (!marker || marker.operation !== 'source-import' || !Number.isSafeInteger(Number(marker.pid))) return;
+  try {
+    process.kill(Number(marker.pid), 0);
+    return;
+  } catch (error) {
+    if (error.code !== 'ESRCH') return;
+  }
+  try {
+    const integrity = db.prepare('PRAGMA quick_check').get()?.quick_check;
+    if (integrity !== 'ok' || db.prepare('PRAGMA foreign_key_check').all().length) {
+      console.error('Przerwana operacja importu pozostawiła kontrolę bazy w stanie nieprawidłowym; zachowano plik maintenance.json.');
+      return;
+    }
+    fs.rmSync(markerPath, { force: true });
+    console.warn('Usunięto blokadę po przerwanym imporcie; baza przeszła kontrolę integralności.');
+  } catch (error) {
+    console.error('Nie udało się sprawdzić bazy po przerwanym imporcie:', error);
+  }
+}
+recoverInterruptedSourceImport();
 function purgeExpiredArchive() {
   try {
     const removedRecords = ArchiveCleanup.purgeExpired(db, path.join(DATA, 'photos'));
@@ -241,6 +269,62 @@ async function readBody(req) {
   }
   return Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString('utf8')));
 }
+async function readImportBody(req) {
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (type !== 'application/json') fail(400, 'Wybierz plik paczki JSON.');
+  const advertisedLength = Number(req.headers['content-length'] || 0);
+  if (advertisedLength > MAX_IMPORT_BODY) fail(413, 'Paczka przekracza limit 25 MB.');
+  let length = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    length += chunk.length;
+    if (length > MAX_IMPORT_BODY) fail(413, 'Paczka przekracza limit 25 MB.');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, length);
+}
+function validCsrfToken(expectedValue, providedValue) {
+  const expected = Buffer.from(String(expectedValue || ''));
+  const provided = Buffer.from(String(providedValue || ''));
+  return expected.length === provided.length && crypto.timingSafeEqual(expected, provided);
+}
+function cleanPendingSourceImports() {
+  const at = Date.now();
+  for (const [token, pending] of pendingSourceImports) if (pending.expiresAt <= at) {
+    clearTimeout(pending.timer);
+    pendingSourceImports.delete(token);
+  }
+}
+function discardPendingSourceImport(token) {
+  const pending = pendingSourceImports.get(token);
+  if (pending) clearTimeout(pending.timer);
+  pendingSourceImports.delete(token);
+}
+async function createSourceImportBackup() {
+  const configPath = process.env.MARAND_UPDATE_CONFIG || path.resolve(ROOT, '..', 'administracja', 'konfiguracja.json');
+  if (!fs.existsSync(configPath)) throw new Error('Brak konfiguracji kopii zapasowych. Import przerwany przed zmianą bazy.');
+  const config = readJsonIfExists(configPath);
+  if (!config || !config.program_dir || !config.data_dir || !config.backup_dir) throw new Error('Konfiguracja kopii zapasowych jest niekompletna. Import przerwany przed zmianą bazy.');
+  const norm = value => path.resolve(String(value)).toLowerCase();
+  if (norm(config.program_dir) !== norm(ROOT) || norm(config.data_dir) !== norm(DATA)) throw new Error('Konfiguracja wskazuje inną instalację programu lub bazy. Import został zatrzymany.');
+  const backupRoot = path.resolve(String(config.backup_dir));
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 17);
+  const backupPath = path.join(backupRoot, 'przed_importem', `IMPORT-${stamp}.sqlite3`);
+  try {
+    await execFileAsync(process.execPath, [path.join(ROOT, 'manage.js'), 'backup', '--output', backupPath], {
+      cwd: ROOT,
+      env: process.env,
+      windowsHide: true,
+      timeout: 180000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+  } catch (error) {
+    const detail = String(error.stderr || error.message || '').trim().slice(0, 1200);
+    throw new Error(`Nie udało się utworzyć sprawdzonej kopii bazy i zdjęć. Import przerwany. ${detail}`);
+  }
+  if (!fs.existsSync(backupPath)) throw new Error('Polecenie kopii nie utworzyło pliku. Import przerwany przed zmianą bazy.');
+  return backupPath;
+}
 function matchId(pathname, pattern) { const m = pathname.match(pattern); return m ? Number(m[1]) : null; }
 function isLocal(req) { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress); }
 function dataTag() { return crypto.createHash('sha256').update(path.resolve(path.dirname(DB_PATH)).toLowerCase()).digest('hex'); }
@@ -377,6 +461,32 @@ async function handle(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const p = decodeURIComponent(url.pathname);
+    if (p === '/admin/import/preview' && req.method === 'POST') {
+      try {
+        if (!req.user || !req.user.active) return send(req, res, 401, JSON.stringify({ ok: false, error: 'Zaloguj się ponownie.' }), 'application/json; charset=utf-8');
+        role(req.user, 'admin');
+        if (fs.existsSync(path.join(DATA, 'maintenance.json'))) fail(503, 'Trwa aktualizacja programu. Spróbuj ponownie po jej zakończeniu.');
+        if (!validCsrfToken(req.session.csrf, req.headers['x-csrf-token'])) fail(400, 'Sesja formularza wygasła. Odśwież stronę.');
+        const bytes = await readImportBody(req);
+        const pkg = SourceImport.readPackageBuffer(bytes, 'plik przesłany przez administratora');
+        const report = SourceImport.preview(db, pkg);
+        cleanPendingSourceImports();
+        for (const [oldToken, pending] of pendingSourceImports) if (pending.userId === req.user.id) {
+          clearTimeout(pending.timer);
+          pendingSourceImports.delete(oldToken);
+        }
+        if (pendingSourceImports.size >= 3) fail(429, 'Jest już kilka oczekujących podglądów importu. Odczekaj 15 minut i spróbuj ponownie.');
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = Date.now() + 15 * 60 * 1000;
+        const timer = setTimeout(() => pendingSourceImports.delete(token), 15 * 60 * 1000);
+        timer.unref();
+        pendingSourceImports.set(token, { userId: req.user.id, bytes, digest: pkg.digest, expiresAt, timer });
+        return send(req, res, 200, JSON.stringify({ ok: true, token, preview: report }), 'application/json; charset=utf-8');
+      } catch (error) {
+        const status = error instanceof HttpError ? error.status : 400;
+        return send(req, res, status, JSON.stringify({ ok: false, error: error.message || 'Nie udało się sprawdzić paczki.' }), 'application/json; charset=utf-8');
+      }
+    }
     if (req.method === 'POST' && !p.startsWith('/static/')) {
       form = await readBody(req);
       const csrfExpected = Buffer.from(String(req.session.csrf));
@@ -788,6 +898,7 @@ async function handle(req, res) {
       for(const stage of stages)stage.comments=commentsByStage.get(stage.id)||[];
       const linkedArticles=db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=? ORDER BY a.symbol_key,a.id').all(id);
       const comments=db.prepare('SELECT id,author_name,content,created_at FROM project_comments WHERE project_id=? ORDER BY id').all(id);
+      pr.ai_generated_notice=SourceImport.noticeForProject(db,id);
       return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, cards, stages, linkedArticles, comments, selectedStageId:Number(url.searchParams.get('stage')||0), photoPanel:Photos.panel('project',id,{...req,readOnly:Boolean(pr.archived_at)}), articleInput: Catalog.projectArticleInput(db, { optional: false }) }));
     }
     id = matchId(p, /^\/projects\/(\d+)\/new$/);
@@ -818,6 +929,7 @@ async function handle(req, res) {
     id = matchId(p, /^\/records\/(\d+)$/);
     if (id && req.method === 'GET') {
       const r = record(id), history = db.prepare('SELECT a.*,u.name author FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE record_id=? ORDER BY a.id DESC').all(id);
+      r.ai_generated_notice=SourceImport.noticeForRecord(db,id);
       return send(req, res, 200, V.recordPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, v: parsePayload(r), history, photoPanel: Photos.panel('record',id,{...req,readOnly:Boolean(r.archived_at||r.article_archived_at||r.project_archived_at)}) }));
     }
 
@@ -1041,6 +1153,54 @@ async function handle(req, res) {
       role(req.user, 'admin');
       const started = await startGithubUpdate(req);
       return redirect(req, res, '/admin/update', `Aktualizacja do wersji ${started.version} została przekazana do instalatora. Strona może być niedostępna przez chwilę.`);
+    }
+
+    if (p === '/admin/import' && req.method === 'GET') {
+      role(req.user, 'admin');
+      return send(req, res, 200, V.sourceImportPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req) }));
+    }
+    if (p === '/admin/import/apply' && req.method === 'POST') {
+      role(req.user, 'admin');
+      if (form.confirm !== 'IMPORTUJ') fail(400, 'Zaznacz potwierdzenie przed importem.');
+      const token = String(form.token || '');
+      const pending = pendingSourceImports.get(token);
+      if (!/^[a-f0-9]{64}$/.test(token) || !pending || pending.userId !== req.user.id || pending.expiresAt <= Date.now()) {
+        discardPendingSourceImport(token);
+        fail(410, 'Podgląd importu wygasł. Wybierz plik ponownie i odśwież podgląd.');
+      }
+      const pkg = SourceImport.readPackageBuffer(pending.bytes, 'plik przesłany przez administratora');
+      if (pkg.digest !== pending.digest) fail(409, 'Plik importu zmienił się po sprawdzeniu. Wybierz go ponownie.');
+      const report = SourceImport.preview(db, pkg);
+      if (report.conflicts.length) fail(409, 'Baza zmieniła się od czasu podglądu lub paczka ma konflikty. Odśwież podgląd przed importem.');
+
+      const maintenancePath = path.join(DATA, 'maintenance.json');
+      let maintenanceOwned = false;
+      try {
+        fs.writeFileSync(maintenancePath, JSON.stringify({ operation: 'source-import', pid: process.pid, started_at: now() }), { flag: 'wx', mode: 0o600 });
+        maintenanceOwned = true;
+      } catch (error) {
+        if (error.code === 'EEXIST') fail(503, 'Trwa inna operacja administracyjna. Poczekaj i spróbuj ponownie.');
+        throw error;
+      }
+      try {
+        let backupPath;
+        try {
+          backupPath = await createSourceImportBackup();
+        } catch (error) {
+          fail(503, error.message || 'Nie udało się utworzyć kopii zapasowej. Baza nie została zmieniona.');
+        }
+        let result;
+        try {
+          result = SourceImport.importData(db, pkg, backupPath);
+        } catch (error) {
+          console.error('Import danych źródłowych nie został zapisany:', error);
+          fail(409, 'Import został przerwany, a zmiany w bazie wycofano. ' + String(error.message || 'Sprawdź log serwera.'));
+        }
+        discardPendingSourceImport(token);
+        return redirect(req, res, '/admin/import', `Import zakończony: ${result.imported.articles} artykułów, ${result.imported.specifications} roboczych specyfikacji i ${result.imported.projects} prób. Kopia bazy: ${backupPath}.`);
+      } finally {
+        if (maintenanceOwned) fs.rmSync(maintenancePath, { force: true });
+      }
     }
 
     fail(404, 'Nie znaleziono strony.');

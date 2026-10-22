@@ -55,6 +55,35 @@ Keep the form open so you can copy your changes. On the server, open
 `server-*.err.log`. It records the SQLite error code and message needed to
 diagnose a failure against the server's existing database.
 
+## Import prepared article and trial data
+
+After installing an app release that includes the importer, sign in as the app
+administrator and open **Import danych** in the left menu. Choose the
+marand_application_import.json file from the computer you are using, review
+the preview, and confirm the import. The package is uploaded directly to the
+app; it is not added to the GitHub repository or release.
+
+Before writing anything, the app checks the file format, schema, duplicate
+symbols, existing imported packages, and article matches. On confirmation it
+creates a verified database and photo backup in the configured backup folder's
+przed_importem subfolder and briefly puts the app into maintenance mode. If the
+backup or import fails, the transaction is rolled back and the app returns to
+service.
+
+Imported trials receive the app's next sequence number for the year in their
+source date. Original source numbers are kept in the import audit, even when
+they use formats such as 28B/2026. The preview shows example number mappings.
+When an incoming article matches an existing article by symbol, its article ID
+and history are kept and its description is refreshed from the package.
+
+The import keeps user accounts, approved specifications, and issued cards.
+Projects, unissued draft entries, and articles without a match in the incoming
+package are moved to the 30-day archive. Historical approved specifications
+and issued cards remain unchanged. Imported specifications remain drafts until
+reviewed and approved. Imported articles, projects, and records display the
+source AI notice. The preview blocks import when it finds ambiguous existing
+article matches or a package that was imported previously.
+
 ## GitHub updates
 
 The installer copies `updater.js` outside the program folder and configures it
