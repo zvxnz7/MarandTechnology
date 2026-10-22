@@ -89,6 +89,10 @@ function record(id) {
   if (!row) fail(404, 'Nie znaleziono wpisu.');
   return row;
 }
+function pendingProductionNotes(row) {
+  if (!row?.article_id) return '';
+  return String(db.prepare('SELECT pending_production_notes FROM articles WHERE id=?').get(row.article_id)?.pending_production_notes||'');
+}
 function makeArticle(projectId, symbol) {
   const key = String(symbol).toUpperCase().replace(/\s/g, '');
   const matches = db.prepare('SELECT * FROM articles WHERE symbol_key=?').all(key);
@@ -118,13 +122,8 @@ function auditProjectChange(user, projectId, action, detail) {
   if (!records.length) { audit(user, action, null, detail); return; }
   for (const row of records) audit(user, action, row.record_id, detail, row.article_id);
 }
-function projectStatusFromStage(status) {
-  if (status === 'sent_finishing') return 'in_finishing';
-  if (status === 'accepted_internal' || status === 'accepted_client') return 'accepted';
-  return Object.hasOwn(V.PROJECT_STATUS, status) ? status : 'in_progress';
-}
-function syncProjectStatusFromStage(projectId, stageStatus, stamp = now()) {
-  const status = projectStatusFromStage(stageStatus);
+function setProjectStatus(projectId, status, stamp = now()) {
+  if (!Object.hasOwn(V.PROJECT_STATUS, status)) fail(400, 'Nieprawidłowy status próby.');
   const legacyStatus = ['accepted', 'failed', 'client_declined'].includes(status) ? status : 'in_progress';
   db.prepare('UPDATE projects SET workflow_status=?,status=?,updated_at=? WHERE id=?').run(status, legacyStatus, stamp, projectId);
 }
@@ -502,16 +501,16 @@ async function handle(req, res) {
       role(req.user,'technologist','approver','admin');
       const pid=Number(projectAutosave[1]),pr=project(pid),field=formText(form,'field'),value=String(form.value||'').slice(0,6000);
       if(pr.archived_at)fail(409,'Nie można zmieniać zarchiwizowanej próby.');
-      if(!['goal','assumptions'].includes(field))fail(400,'Nieprawidłowe pole do zapisu.');
+      if(field!=='goal')fail(400,'Nieprawidłowe pole do zapisu.');
       let updatedAt=pr.updated_at;
       transaction(()=>{
         const current=project(pid);if(current.archived_at)fail(409,'Nie można zmieniać zarchiwizowanej próby.');
-        const before=field==='goal'?(current.goal||current.description||''):(current.assumptions||'');
+        const previousGoal=String(current.goal||current.description||'').trim(),previousAssumptions=String(current.assumptions||'').trim();
+        const before=previousGoal&&previousAssumptions?`Cel próby:\n${previousGoal}\n\nZałożenia i pomysły:\n${previousAssumptions}`:previousGoal||previousAssumptions;
         if(before===value)return;
         updatedAt=now();
-        if(field==='goal')db.prepare('UPDATE projects SET goal=?,description=?,updated_at=? WHERE id=?').run(value,value,updatedAt,pid);
-        else db.prepare('UPDATE projects SET assumptions=?,updated_at=? WHERE id=?').run(value,updatedAt,pid);
-        auditProjectChange(req.user,pid,'Zapisano '+(field==='goal'?'cel próby':'założenia próby'),JSON.stringify({trial:current.trial_number,field,before,after:value,author:req.user.name,at:updatedAt}));
+        db.prepare("UPDATE projects SET goal=?,description=?,assumptions='',updated_at=? WHERE id=?").run(value,value,updatedAt,pid);
+        auditProjectChange(req.user,pid,'Zapisano założenia projektowe',JSON.stringify({trial:current.trial_number,field,before,after:value,author:req.user.name,at:updatedAt}));
       });
       return send(req,res,200,JSON.stringify({ok:true,updatedAt}),'application/json; charset=utf-8');
     }
@@ -520,8 +519,8 @@ async function handle(req, res) {
     if(projectStageAutosave&&req.method==='POST') {
       role(req.user,'technologist','approver','admin');
       const pid=Number(projectStageAutosave[1]),stageId=Number(projectStageAutosave[2]),field=formText(form,'field');
-      if(!['description','comment'].includes(field))fail(400,'Nieprawidłowe pole etapu.');
-      const limit=field==='description'?300:3000,value=String(form.value||'').trim().slice(0,limit);
+      if(field!=='description')fail(400,'Nieprawidłowe pole etapu.');
+      const value=String(form.value||'').trim().slice(0,300);
       let updatedAt=now();
       transaction(()=>{
         const pr=project(pid);if(pr.archived_at)fail(409,'Nie można zmieniać zarchiwizowanej próby.');
@@ -530,12 +529,67 @@ async function handle(req, res) {
         const before=String(stage[field]||'');
         if(before===value){updatedAt=stage.updated_at||pr.updated_at;return;}
         updatedAt=now();
-        if(field==='description')db.prepare('UPDATE project_stages SET description=?,stage_date=?,updated_at=? WHERE id=?').run(value,todayWarsaw(),updatedAt,stageId);
-        else db.prepare('UPDATE project_stages SET comment=?,stage_date=?,updated_at=? WHERE id=?').run(value,todayWarsaw(),updatedAt,stageId);
+        db.prepare('UPDATE project_stages SET description=?,stage_date=?,updated_at=? WHERE id=?').run(value,todayWarsaw(),updatedAt,stageId);
         db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(updatedAt,pid);
-        auditProjectChange(req.user,pid,'Zapisano '+(field==='description'?'opis etapu':'komentarz etapu'),JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,field,before,after:value,author:req.user.name,at:updatedAt}));
+        auditProjectChange(req.user,pid,'Zapisano opis etapu',JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,field,before,after:value,author:req.user.name,at:updatedAt}));
       });
       return send(req,res,200,JSON.stringify({ok:true,updatedAt}),'application/json; charset=utf-8');
+    }
+
+    const projectStageCommentDelete=p.match(/^\/projects\/(\d+)\/stages\/(\d+)\/comments\/(\d+)\/delete$/);
+    if(projectStageCommentDelete&&req.method==='GET') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectStageCommentDelete[1]),stageId=Number(projectStageCommentDelete[2]),commentId=Number(projectStageCommentDelete[3]),pr=project(pid);
+      if(pr.archived_at)fail(409,'Nie można usuwać komentarzy z zarchiwizowanej próby.');
+      const stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+      if(!stage)fail(404,'Nie znaleziono etapu.');
+      const comment=db.prepare('SELECT * FROM project_stage_comments WHERE id=? AND stage_id=?').get(commentId,stageId);
+      if(!comment)fail(404,'Nie znaleziono komentarza etapu.');
+      return send(req,res,200,V.confirmDeleteStageCommentPage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),p:pr,stage,comment}));
+    }
+    if(projectStageCommentDelete&&req.method==='POST') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectStageCommentDelete[1]),stageId=Number(projectStageCommentDelete[2]),commentId=Number(projectStageCommentDelete[3]);
+      transaction(()=>{
+        const pr=project(pid);if(pr.archived_at)fail(409,'Nie można usuwać komentarzy z zarchiwizowanej próby.');
+        const stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+        if(!stage)fail(404,'Nie znaleziono etapu.');
+        const comment=db.prepare('SELECT * FROM project_stage_comments WHERE id=? AND stage_id=?').get(commentId,stageId);
+        if(!comment)fail(404,'Nie znaleziono komentarza etapu.');
+        db.prepare('DELETE FROM project_stage_comments WHERE id=? AND stage_id=?').run(commentId,stageId);
+        const stamp=now();db.prepare('UPDATE project_stages SET updated_at=? WHERE id=?').run(stamp,stageId);db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
+        auditProjectChange(req.user,pid,'Usunięto komentarz etapu',JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,comment_id:commentId,author:comment.author_name,content:comment.content,at:stamp}));
+      });
+      return redirect(req,res,`/projects/${pid}?stage=${stageId}#trial-stage-${stageId}`,'Komentarz etapu został usunięty.');
+    }
+
+    const projectStageComment=p.match(/^\/projects\/(\d+)\/stages\/(\d+)\/comments$/);
+    if(projectStageComment&&req.method==='POST') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectStageComment[1]),stageId=Number(projectStageComment[2]),content=String(form.content||'').slice(0,3000),commentId=Number(form.comment_id||0);
+      let saved;
+      transaction(()=>{
+        const pr=project(pid);if(pr.archived_at)fail(409,'Nie można dodawać komentarzy do zarchiwizowanej próby.');
+        const stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+        if(!stage)fail(404,'Nie znaleziono etapu.');
+        let changed=false;
+        if(commentId) {
+          const existing=db.prepare('SELECT * FROM project_stage_comments WHERE id=? AND stage_id=?').get(commentId,stageId);
+          if(!existing||existing.author_user_id!==req.user.id)fail(409,'Nie można edytować tego komentarza. Odśwież stronę i spróbuj ponownie.');
+          if(!content.trim()) { saved={...existing}; return; }
+          if(existing.content!==content) { db.prepare('UPDATE project_stage_comments SET content=? WHERE id=?').run(content,commentId);saved=db.prepare('SELECT * FROM project_stage_comments WHERE id=?').get(commentId);changed=true; }
+          else saved=existing;
+        } else {
+          if(!content.trim()) { saved=null; return; }
+          const stamp=now(),result=db.prepare('INSERT INTO project_stage_comments(stage_id,author_user_id,author_name,content,created_at) VALUES(?,?,?,?,?)').run(stageId,req.user.id,req.user.name,content,stamp);
+          saved=db.prepare('SELECT * FROM project_stage_comments WHERE id=?').get(Number(result.lastInsertRowid));changed=true;
+        }
+        if(changed) {
+          const stamp=now();db.prepare('UPDATE project_stages SET updated_at=? WHERE id=?').run(stamp,stageId);db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
+          auditProjectChange(req.user,pid,'Zapisano komentarz etapu',JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,comment_id:saved.id,author:req.user.name,content:saved.content,at:stamp}));
+        }
+      });
+      return send(req,res,200,JSON.stringify({ok:true,comment:saved?{id:saved.id,author_name:saved.author_name,content:saved.content,created_at:saved.created_at}:null}),'application/json; charset=utf-8');
     }
 
     const projectCommentDelete=p.match(/^\/projects\/(\d+)\/comments\/(\d+)\/delete$/);
@@ -591,10 +645,10 @@ async function handle(req, res) {
       return send(req,res,200,JSON.stringify({ok:true,comment:saved?{id:saved.id,author_name:saved.author_name,content:saved.content,created_at:saved.created_at}:null}),'application/json; charset=utf-8');
     }
 
-    const projectAction=p.match(/^\/projects\/(\d+)\/(update|status|stages)(?:\/(\d+))?$/);
+    const projectAction=p.match(/^\/projects\/(\d+)\/(update|status|stages)$/);
     if(projectAction&&req.method==='POST') {
       role(req.user,'technologist','approver','admin');
-      const pid=Number(projectAction[1]),action=projectAction[2],stageId=projectAction[3]?Number(projectAction[3]):null,pr=project(pid);
+      const pid=Number(projectAction[1]),action=projectAction[2],pr=project(pid);
       if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
       if(action==='update'||action==='status') {
         const shortDescription=action==='status'?pr.short_description:String(form.short_description||pr.short_description||pr.name).trim().slice(0,150);
@@ -612,34 +666,17 @@ async function handle(req, res) {
         });
         return redirect(req,res,`/projects/${pid}`,'Zapisano zmiany próby.');
       }
-      if(!stageId) {
-        const description=formText(form,'description').slice(0,300),stageDate=todayWarsaw();
-        const stageNumber=transaction(()=>{
-          const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
-          const stamp=now();
-          const number=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(pid).n;
-          db.prepare("INSERT INTO project_stages(project_id,stage_no,description,stage_date,stage_status,updated_at) VALUES(?,?,?,?,'in_progress',?)").run(pid,number,description,stageDate,stamp);
-          syncProjectStatusFromStage(pid,'in_progress',stamp);
-          auditProjectChange(req.user,pid,'Dodano etap próby',JSON.stringify({stage:number,description,date:stageDate}));
-          return number;
-        });
-        return redirect(req,res,`/projects/${pid}`,`Dodano etap ${stageNumber}.`);
-      }
-      const status=formText(form,'status'),stageDate=todayWarsaw();
-      if(!Object.hasOwn(V.STAGE_STATUS,status))fail(400,'Sprawdź status etapu.');
-      transaction(()=>{
-        const current=project(pid),stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
-        if(!stage)fail(404,'Nie znaleziono etapu.');
-        const description=Object.hasOwn(form,'description')?formText(form,'description').slice(0,300):stage.description;
-        const comment=Object.hasOwn(form,'comment')?String(form.comment||'').trim().slice(0,3000):stage.comment;
+      const description=formText(form,'description').slice(0,300),stageDate=todayWarsaw();
+      const stageNumber=transaction(()=>{
+        const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
         const stamp=now();
-        db.prepare('UPDATE project_stages SET description=?,stage_date=?,stage_status=?,comment=?,updated_at=? WHERE id=?').run(description,stageDate,status,comment,stamp,stageId);
-        const latest=db.prepare('SELECT id FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
-        if(latest?.id===stageId)syncProjectStatusFromStage(pid,status,stamp);
-        else db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
-        auditProjectChange(req.user,pid,'Zapisano etap próby',JSON.stringify({stage:stage.stage_no,before:{description:stage.description,date:stage.stage_date,status:stage.stage_status||stage.status,comment:stage.comment},after:{description,date:stageDate,status,comment}}));
+        const number=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(pid).n;
+        db.prepare('INSERT INTO project_stages(project_id,stage_no,description,stage_date,updated_at) VALUES(?,?,?,?,?)').run(pid,number,description,stageDate,stamp);
+        db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
+        auditProjectChange(req.user,pid,'Dodano etap próby',JSON.stringify({stage:number,description,date:stageDate}));
+        return number;
       });
-      return redirect(req,res,`/projects/${pid}`,'Zapisano etap próby.');
+      return redirect(req,res,`/projects/${pid}`,`Dodano etap ${stageNumber}.`);
     }
 
     const stageDelete=p.match(/^\/projects\/(\d+)\/stages\/(\d+)\/delete$/);
@@ -661,8 +698,7 @@ async function handle(req, res) {
         if(!stage)fail(404,'Nie znaleziono etapu.');
         const articles=db.prepare('SELECT a.symbol FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id WHERE sa.stage_id=? ORDER BY a.symbol_key,a.id').all(stageId).map(row=>row.symbol);
         db.prepare('DELETE FROM project_stages WHERE id=? AND project_id=?').run(stageId,pid);
-        const latest=db.prepare('SELECT stage_status,status FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
-        syncProjectStatusFromStage(pid,latest?.stage_status||latest?.status||'in_progress',now());
+        db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now(),pid);
         audit(req.user,'Usunięto etap próby',null,JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,description:stage.description,articles}));
       });
       return redirect(req,res,`/projects/${pid}`,'Etap próby został usunięty. Powiązane artykuły i wydane karty pozostały zachowane.');
@@ -746,9 +782,13 @@ async function handle(req, res) {
       const stageArticles=db.prepare('SELECT sa.stage_id,sa.article_id,sa.record_id,a.symbol,a.active_spec,a.archived_at,a.purged_at,r.payload,r.state,r.archived_at record_archived_at FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id LEFT JOIN records r ON r.id=sa.record_id JOIN project_stages s ON s.id=sa.stage_id WHERE s.project_id=? ORDER BY s.stage_no,a.symbol_key,a.id').all(id);
       for(const article of stageArticles)byStage.get(article.stage_id)?.push(article);
       for(const stage of stages)stage.articles=byStage.get(stage.id)||[];
+      const commentsByStage=new Map(stages.map(stage=>[stage.id,[]]));
+      const stageComments=db.prepare('SELECT c.id,c.stage_id,c.author_name,c.content,c.created_at FROM project_stage_comments c JOIN project_stages s ON s.id=c.stage_id WHERE s.project_id=? ORDER BY c.id').all(id);
+      for(const comment of stageComments)commentsByStage.get(comment.stage_id)?.push(comment);
+      for(const stage of stages)stage.comments=commentsByStage.get(stage.id)||[];
       const linkedArticles=db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=? ORDER BY a.symbol_key,a.id').all(id);
       const comments=db.prepare('SELECT id,author_name,content,created_at FROM project_comments WHERE project_id=? ORDER BY id').all(id);
-      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, cards, stages, linkedArticles, comments, photoPanel:Photos.panel('project',id,{...req,readOnly:Boolean(pr.archived_at)}), articleInput: Catalog.projectArticleInput(db, { optional: false }) }));
+      return send(req, res, 200, V.projectPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), p: pr, cards, stages, linkedArticles, comments, selectedStageId:Number(url.searchParams.get('stage')||0), photoPanel:Photos.panel('project',id,{...req,readOnly:Boolean(pr.archived_at)}), articleInput: Catalog.projectArticleInput(db, { optional: false }) }));
     }
     id = matchId(p, /^\/projects\/(\d+)\/new$/);
     if (id && req.method === 'POST') {
@@ -918,10 +958,10 @@ async function handle(req, res) {
         if(Boolean(contextProjectRaw)!==Boolean(contextStageRaw))fail(400,'Niepełne powiązanie próby z wydawaną kartą.');
         const contextProjectId=contextProjectRaw?Number(contextProjectRaw):0,contextStageId=contextStageRaw?Number(contextStageRaw):0;
         stageIssueContext(contextProjectId,contextStageId,r.article_id);
-        return send(req, res, 200, V.issuePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, token: crypto.randomBytes(24).toString('base64url'), productionNotes:r.pending_production_notes||'', projectId:contextProjectRaw?contextProjectId:'', stageId:contextStageRaw?contextStageId:'' }));
+        return send(req, res, 200, V.issuePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, token: crypto.randomBytes(24).toString('base64url'), productionNotes:pendingProductionNotes(r), projectId:contextProjectRaw?contextProjectId:'', stageId:contextStageRaw?contextStageId:'' }));
       }
       const token = formText(form, 'token'), machine = formText(form, 'machine'), instructions = formText(form, 'instructions');
-      let productionNotes=String(r.pending_production_notes||'');
+      let productionNotes=pendingProductionNotes(r);
       const contextProjectRaw=formText(form,'trial_project_id'),contextStageRaw=formText(form,'trial_stage_id');
       if(Boolean(contextProjectRaw)!==Boolean(contextStageRaw))fail(400,'Niepełne powiązanie próby z wydawaną kartą.');
       const contextProjectId=contextProjectRaw?Number(contextProjectRaw):0,contextStageId=contextStageRaw?Number(contextStageRaw):0;
@@ -946,7 +986,7 @@ async function handle(req, res) {
         if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
         if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
         if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Można wydać wyłącznie aktualną zatwierdzoną wersję. Otwórz aktualną kartę artykułu.');
-        productionNotes=String(r.pending_production_notes||'');
+        productionNotes=pendingProductionNotes(r);
         const v = parsePayload(r), stamp = now();
         const cardno = `K-${stamp.slice(0, 10)}-${token.slice(0, 8)}`;
         const html = V.cardPage({ r, v, machine, instructions, productionNotes, cardno, issuedAt: stamp, author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
@@ -956,10 +996,7 @@ async function handle(req, res) {
         audit(req.user, 'Wydano kartę na maszynę', id, `Karta ${newId} / ${machine} / ${instructions}${productionNotes?` / ${productionNotes}`:''}`);
         if(issueStage) {
           const currentStage=stageIssueContext(contextProjectId,contextStageId,r.article_id);
-          db.prepare("UPDATE project_stages SET stage_status='to_knitter',updated_at=? WHERE id=?").run(stamp,currentStage.id);
-          const latest=db.prepare('SELECT id FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(contextProjectId);
-          if(latest?.id===currentStage.id)syncProjectStatusFromStage(contextProjectId,'to_knitter',stamp);
-          else db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,contextProjectId);
+          setProjectStatus(contextProjectId,'to_knitter',stamp);
           auditProjectChange(req.user,contextProjectId,'Zlecono na dziewiarnię',JSON.stringify({stage:currentStage.stage_no,article:r.symbol,card:newId,machine}));
         }
         return newId;

@@ -17,6 +17,10 @@ function projectArticleInput(db, { optional = true } = {}) {
   return `<label>Artykuł do etapu<select name="article_mode" data-project-article-mode>${modes.map(([value,label])=>`<option value="${value}" ${value===initialMode?'selected':''}>${label}</option>`).join('')}</select></label>${articles.length?`<div data-project-article-panel="existing" hidden><label>Wybierz artykuł z kartoteki<select name="article_id"><option value="">Wybierz artykuł</option>${options}</select></label></div>`:''}<div data-project-article-panel="new" hidden>${input('symbol','Symbol nowego artykułu')}</div>`;
 }
 function getArticle(db, id, fail) { const a = db.prepare('SELECT * FROM articles WHERE id=?').get(id); if (!a) fail(404, 'Nie znaleziono artykułu.'); return a; }
+function safeReturnTo(url,id) {
+  const requested=String(url.searchParams.get('return_to')||'');
+  return /^\/projects\/\d+$/.test(requested)||requested===`/articles/${id}`?requested:`/articles/${id}`;
+}
 function associate(ctx, pid, form) {
   const { db, fail, makeArticle } = ctx;
   if (form.article_mode === 'new') {
@@ -114,11 +118,11 @@ async function handle(ctx) {
         const rid=db.prepare("INSERT INTO records(article_id,kind,symbol,base_id,payload,created_at,updated_at,expected_active) VALUES(?,'spec',?,?,?,?,?,?)").run(id,a.symbol,source?.id||null,JSON.stringify(v),now(),now(),a.active_spec).lastInsertRowid;
         audit(req.user,'Utworzono specyfikację artykułu',rid,source?`Na podstawie wpisu ${source.id}`:'');return Number(rid);
       } else fail(404,'Nie znaleziono operacji.');
-    });redirect(req,res,result?`/records/${result}/edit${firstArticleSpec?'?new_article=1':''}`:`/articles/${id}`);return true;
+    });redirect(req,res,result?`/records/${result}/edit${firstArticleSpec?'?new_article=1':''}`:action==='delete'?safeReturnTo(url,id):`/articles/${id}`);return true;
   }
     if(req.method==='GET'&&action==='delete') {
       edit();if(a.archived_at||a.purged_at)fail(409,'Ten artykuł jest już w archiwum.');
-      page(V.confirmArchiveArticlePage({user:req.user,csrf:req.session.csrf,flashes:ctx.getFlashes(req),a}));return true;
+      page(V.confirmArchiveArticlePage({user:req.user,csrf:req.session.csrf,flashes:ctx.getFlashes(req),a,returnTo:safeReturnTo(url,id)}));return true;
     }
     if(req.method==='GET'&&action==='purge') {
       edit();if(!a.archived_at||a.purged_at)fail(409,'Ten artykuł nie jest w archiwum.');

@@ -135,13 +135,13 @@ document.querySelectorAll('[data-autosave]').forEach(form=>{
 });
 
 document.querySelectorAll('[data-comment-composer]').forEach(form=>{
- const input=form.querySelector('[data-comment-input]'),status=form.querySelector('[data-comment-status]'),list=document.querySelector('[data-comment-list]');
+ const journal=form.closest('[data-comment-journal]'),input=form.querySelector('[data-comment-input]'),status=form.querySelector('[data-comment-status]'),list=journal?.querySelector('[data-comment-list]');
  if(!input||!status||!list)return;
  let commentId=null,savedContent='',timer=null,sequence=0,busy=false,queued=false,finalize=false;
  const setStatus=(message,error=false)=>{status.textContent=message;status.classList.toggle('save-error',error);};
  const renderComment=comment=>{
   if(!comment)return;
-  document.querySelector('[data-comment-empty]')?.remove();
+  journal.querySelector('[data-comment-empty]')?.remove();
   let row=list.querySelector(`[data-comment-entry="${comment.id}"]`);
   if(!row){
    row=document.createElement('article');row.className='project-comment';row.dataset.commentEntry=String(comment.id);

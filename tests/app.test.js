@@ -233,13 +233,18 @@ test('trial stages autosave, can be added regardless of status, and deletions us
  const s=await session();let r=await post(s,'/projects',{name:'LIVE-STAGES',client_name:'Klient testowy',comment:'Komentarz do usunięcia'});assert.equal(r.status,303,r.text());
  const pid=Number(r.headers.location.split('/').pop()),db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));
  const stage1=db.prepare('SELECT * FROM project_stages WHERE project_id=? AND stage_no=1').get(pid);
- r=await post(s,`/projects/${pid}/stages/${stage1.id}`,{status:'to_knitter'});assert.equal(r.status,303,r.text());
+ r=await post(s,`/projects/${pid}/status`,{status:'to_knitter'});assert.equal(r.status,303,r.text());
+ assert.equal(db.prepare('SELECT workflow_status FROM projects WHERE id=?').get(pid).workflow_status,'to_knitter');
  r=await post(s,`/projects/${pid}/stages`,{description:'Drugi etap'});assert.equal(r.status,303,r.text());
  assert.equal(db.prepare('SELECT count(*) n FROM project_stages WHERE project_id=?').get(pid).n,2);
  r=await post(s,`/projects/${pid}/stages/${stage1.id}/autosave`,{field:'description',value:'Pierwszy etap po zmianie'});assert.equal(r.status,200,r.text());assert.equal(r.json().ok,true);
- r=await post(s,`/projects/${pid}/stages/${stage1.id}/autosave`,{field:'comment',value:'Komentarz etapu zapisany automatycznie'});assert.equal(r.status,200,r.text());
- const savedStage=db.prepare('SELECT description,comment,stage_status FROM project_stages WHERE id=?').get(stage1.id);assert.deepEqual({...savedStage},{description:'Pierwszy etap po zmianie',comment:'Komentarz etapu zapisany automatycznie',stage_status:'to_knitter'});
- r=await request(`${baseUrl}/projects/${pid}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/Klient testowy/);assert.match(r.text(),/data-stage-select=/);assert.match(r.text(),/stage-number/);assert.equal((r.text().match(/<details class="stage-card"[^>]* open>/g)||[]).length,1);
+ r=await post(s,`/projects/${pid}/stages/${stage1.id}/comments`,{content:'Komentarz etapu zapisany automatycznie'});assert.equal(r.status,200,r.text());const stageCommentId=r.json().comment.id;
+ const savedStage=db.prepare('SELECT description,comment,stage_status FROM project_stages WHERE id=?').get(stage1.id);assert.deepEqual({...savedStage},{description:'Pierwszy etap po zmianie',comment:'',stage_status:'in_progress'});
+ assert.equal(db.prepare('SELECT content FROM project_stage_comments WHERE id=?').get(stageCommentId).content,'Komentarz etapu zapisany automatycznie');
+ r=await request(`${baseUrl}/projects/${pid}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/Klient testowy/);assert.match(r.text(),/Założenia Projektowe/);assert.match(r.text(),/data-stage-select=/);assert.match(r.text(),/stage-number/);assert.doesNotMatch(r.text(),/stage-status-form|Status etapu/);assert.equal((r.text().match(/<details class="stage-card"[^>]* open>/g)||[]).length,1);
+ const stageCommentDeleteUrl=`/projects/${pid}/stages/${stage1.id}/comments/${stageCommentId}/delete`;
+ r=await request(`${baseUrl}${stageCommentDeleteUrl}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/<dialog class="form-dialog delete-confirm-dialog"[^>]*data-show-modal/);assert.match(r.text(),/Komentarz etapu zapisany automatycznie/);
+ r=await post(s,stageCommentDeleteUrl,{});assert.equal(r.status,303,r.text());assert.equal(db.prepare('SELECT id FROM project_stage_comments WHERE id=?').get(stageCommentId),undefined);
  const commentId=db.prepare('SELECT id FROM project_comments WHERE project_id=?').get(pid).id,commentDeleteUrl=`/projects/${pid}/comments/${commentId}/delete`;
  r=await request(`${baseUrl}${commentDeleteUrl}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/<dialog class="form-dialog delete-confirm-dialog"[^>]*data-show-modal/);assert.match(r.text(),/Komentarz do usunięcia/);
  r=await post(s,commentDeleteUrl,{});assert.equal(r.status,303,r.text());assert.equal(db.prepare('SELECT id FROM project_comments WHERE id=?').get(commentId),undefined);
@@ -254,7 +259,7 @@ test('production card print removes finished parameters and places one-time inst
  const html=V.cardPage({r:{symbol:'PRINT-TEST',version:1},v:{tech:{},gb:[],raw:{weight:'180'},targets:{weight:'999'},finished_comments:'FINISHED-COMMENT-MUST-NOT-PRINT',knitter_notes:'Stała uwaga'},machine:'M5',instructions:'Standardowe polecenia',productionNotes:'Paletować pionowo',cardno:'K-TEST',issuedAt:'2026-10-22T12:00:00Z',author:'Test',logo:'dGVzdA==',printcss:fs.readFileSync(path.join(ROOT,'static','card.css'),'utf8')});
  assert.doesNotMatch(html,/Parametry dzianiny wykończonej|FINISHED-COMMENT-MUST-NOT-PRINT|999/);
  assert.match(html,/Raport ogniw wzorujących, przędzy i nawleczenia/);
- const noteAt=html.indexOf('Jednorazowe instrukcje przy produkcji'),notesAt=html.indexOf('Notatki od dziewiarza');assert.ok(noteAt>notesAt);assert.match(html,/Paletować pionowo/);assert.match(html,/\.logo\{height:180px\}/);assert.match(html,/\.logo img\{object-fit:cover\}/);
+ const noteAt=html.indexOf('Jednorazowe instrukcje przy produkcji'),notesAt=html.indexOf('Notatki od dziewiarza');assert.ok(noteAt>notesAt);assert.match(html,/class="production-notes-heading"/);assert.match(html,/Paletować pionowo/);assert.match(html,/\.logo\{height:180px\}/);assert.match(html,/\.logo img\{object-fit:cover\}/);assert.match(html,/\.logo\{height:110px;overflow:hidden;position:relative\}/);
  const issue=V.issuePage({user:{name:'Test',role:'admin'},csrf:'csrf',flashes:[],r:{id:1,symbol:'PRINT-TEST',version:1},token:'token',productionNotes:'Paletować pionowo'});assert.match(issue,/class="notice production-note-pending"/);assert.match(issue,/POLECENIA SPECJALNE — najbliższa produkcja/);
 });
 test('categories are removed; article dates and SQL pagination with 500 articles',async()=>{
@@ -276,7 +281,12 @@ test('GB auto numbering, finished parameters optional, approvals and immutable c
  r=await post(s,`/records/${rid}/submit`,{revision:2});assert.equal(r.status,303,r.text());
  r=await post(s,`/records/${rid}/approve`,{revision:3,checked:'on',review_note:'Sprawdzono ustawienia maszyny.'});assert.equal(r.status,303,r.text());
  assert.throws(()=>db.prepare("UPDATE records SET symbol='X' WHERE id=?").run(rid),/immutable/);
+ db.prepare('UPDATE articles SET pending_production_notes=? WHERE id=?').run('Ustawić średnicę tulei 76 mm',aid);
+ r=await request(`${baseUrl}/articles/${aid}`,{headers:{cookie:s.cookie}});assert.match(r.text(),new RegExp(`/records/${rid}`));
+ r=await request(`${baseUrl}/records/${rid}`,{headers:{cookie:s.cookie}});assert.match(r.text(),new RegExp(`/records/${rid}/issue`));
+ r=await request(`${baseUrl}/records/${rid}/issue`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/Ustawić średnicę tulei 76 mm/);
  r=await post(s,`/records/${rid}/issue`,{token:crypto.randomBytes(24).toString('hex'),machine:'12',instructions:'test'});assert.equal(r.status,303,r.text());const first=r.headers.location;
+ const firstCard=Number(first.split('/').pop());assert.match(db.prepare('SELECT html FROM cards WHERE id=?').get(firstCard).html,/Ustawić średnicę tulei 76 mm/);assert.equal(db.prepare('SELECT pending_production_notes FROM articles WHERE id=?').get(aid).pending_production_notes,'');
  r=await post(s,`/records/${rid}/copy`,{kind:'spec'});assert.equal(r.status,303,r.text());const next=Number(r.headers.location.split('/')[2]);
  r=await post(s,`/records/${next}/edit`,{...values,gb_0_run_in:'1400'});assert.equal(r.status,303,r.text());
  r=await request(`${baseUrl}/records/${next}/preview`,{headers:{cookie:s.cookie}});const previewHtml=r.text().replace(/<style>[\s\S]*?<\/style>/g,'');assert.doesNotMatch(previewHtml,/data-update-alert|class="[^"]*\bchange-alert\b/);assert.match(r.text(),/1400/);assert.match(r.text(),/Test Admin/);

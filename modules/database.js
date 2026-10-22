@@ -221,20 +221,40 @@ function migrateV8(db) {
     throw error;
   }
 }
+function migrateV9(db) {
+  const version = db.prepare('PRAGMA user_version').get().user_version;
+  db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+  if (version >= 9) return;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const legacyComments = db.prepare("SELECT id,comment,updated_at FROM project_stages WHERE trim(coalesce(comment,''))<>'' ORDER BY id").all();
+    const insert = db.prepare("INSERT INTO project_stage_comments(stage_id,author_user_id,author_name,content,created_at) VALUES(?,NULL,'Nieznany autor',?,?)");
+    const clear = db.prepare("UPDATE project_stages SET comment='' WHERE id=?");
+    for (const row of legacyComments) {
+      insert.run(row.id, String(row.comment).trim().slice(0, 3000), row.updated_at || new Date().toISOString());
+      clear.run(row.id);
+    }
+    db.exec('PRAGMA user_version=9; COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>8)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===8) { db.exec(schema); return; }
-  if(version===7) { migrateV8(db); return; }
-  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); return; }
-  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
+  if(version>9)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===9) { db.exec(schema); return; }
+  if(version===8) { migrateV9(db); return; }
+  if(version===7) { migrateV8(db); migrateV9(db); return; }
+  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -267,5 +287,6 @@ function migrate(db, dbPath) {
   migrateV6(db);
   migrateV7(db);
   migrateV8(db);
+  migrateV9(db);
 }
 module.exports = { migrate };
