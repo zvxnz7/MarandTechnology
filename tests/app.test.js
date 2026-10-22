@@ -214,11 +214,13 @@ test('independent article and cross-project stage association',async()=>{
  const pid=Number(r.headers.location.split('/').pop());
  r=await post(s,'/projects',{name:'PROJECT-B'});assert.equal(r.status,303,r.text());
  const pid2=Number(r.headers.location.split('/').pop());
- r=await post(s,`/projects/${pid}/stages/1/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
- r=await post(s,`/projects/${pid2}/stages/1/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ const stage1=db.prepare('SELECT id FROM project_stages WHERE project_id=? AND stage_no=1').get(pid).id;
+ const stage2=db.prepare('SELECT id FROM project_stages WHERE project_id=? AND stage_no=1').get(pid2).id;
+ r=await post(s,`/projects/${pid}/stages/${stage1}/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ r=await post(s,`/projects/${pid2}/stages/${stage2}/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
  assert.equal(db.prepare('SELECT count(*) n FROM project_articles WHERE article_id=?').get(aid).n,2);
  const before=db.prepare('SELECT count(*) n FROM projects').get().n;
- r=await post(s,`/projects/${pid}/stages/1/articles`,{article_mode:'new',symbol:'INDEPENDENT'});assert.equal(r.status,409);
+ r=await post(s,`/projects/${pid}/stages/${stage1}/articles`,{article_mode:'new',symbol:'INDEPENDENT'});assert.equal(r.status,409);
  assert.equal(db.prepare('SELECT count(*) n FROM projects').get().n,before);
  const trialId=db.prepare('SELECT record_id FROM project_stage_articles WHERE stage_id=(SELECT id FROM project_stages WHERE project_id=?) AND article_id=?').get(pid,aid).record_id;
  assert.equal(db.prepare('SELECT article_id FROM records WHERE id=?').get(trialId).article_id,aid);
