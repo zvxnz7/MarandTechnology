@@ -158,7 +158,7 @@ function parseForm(form, old) {
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
     if (Object.entries(row).some(([k,v]) => k !== 'number' && v)) {
-      row.number = old.gb?.[i]?.number || String(Math.max(0,...(old.gb||[]).map(g=>Number(g.number))) + i - (old.gb||[]).length + 1);
+      row.number = row.number || old.gb?.[i]?.number || String(Math.max(0,...(old.gb||[]).map(g=>Number(g.number))) + i - (old.gb||[]).length + 1);
       if (!/^\d+$/.test(row.number) || Number(row.number) < 1 || Number(row.number) > 32) fail(400, 'Numer GB musi być liczbą od 1 do 32.');
       if (numbers.has(row.number)) fail(400, 'Numer GB nie może się powtarzać.');
       numbers.add(row.number);

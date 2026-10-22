@@ -5,8 +5,8 @@ Use it with the latest code on `main`.
 
 ## Application improvements
 
-- [ ] Allow a GB row to be removed after accidental insertion, with a clear
-  confirmation step so the row is not deleted accidentally.
+- [x] Allow a GB row to be removed immediately from the editor with one click;
+  keep at least one GB row and do not show a confirmation dialog.
 
 ## Deploy and verify
 

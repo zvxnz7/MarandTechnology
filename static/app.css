@@ -10,8 +10,9 @@
 .target-grid input[name="targets_sample_batch"]{width:100%;max-width:32ch}
 .raw-grid input[name^="raw_"]{width:10ch;max-width:100%}
 .gb-fields-scroll{overflow-x:auto}
-.gb-fields{display:grid;grid-template-columns:58px minmax(180px,2fr) repeat(4,minmax(105px,1fr));gap:10px;align-items:end;min-width:840px}
+.gb-fields{display:grid;grid-template-columns:58px minmax(180px,2fr) repeat(4,minmax(105px,1fr)) 34px;gap:10px;align-items:end;min-width:884px}
 .gb-fields h3{margin:0 0 14px;align-self:end}
+.gb-delete-x{align-self:center;margin:0 0 6px;padding:0;border:0;background:transparent;color:#b3262b;font-size:23px;line-height:1;min-width:28px}.gb-delete-x:hover{border:0;background:transparent;color:#7f171b}.gb-delete-x[hidden]{display:none}
 .gb-fields label{margin:0;font-size:12px;min-width:0}
 .gb-fields label input{display:block;margin-top:5px;padding:8px 9px;font-size:13px}
 .gb-fields label.compact-gb-field input{width:min(100%,14ch);max-width:14ch}

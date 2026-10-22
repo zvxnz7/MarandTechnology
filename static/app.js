@@ -43,15 +43,33 @@ document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',
   if(alert && !window.confirm(alert.innerText+'\n\nCzy zapoznano się ze zmianami i kontynuować drukowanie?'))return;
   window.print();
 }));
+const gbList=document.querySelector('[data-gb-list]');
+const gbRows=()=>gbList?[...gbList.querySelectorAll('[data-gb-index]')]:[];
+const updateGbRows=()=>{
+  const rows=gbRows();
+  rows.forEach((row,index)=>{
+    row.dataset.gbIndex=String(index);
+    row.querySelectorAll('[name^="gb_"]').forEach(control=>{control.name=control.name.replace(/^gb_\d+_/,`gb_${index}_`);});
+    const remove=row.querySelector('[data-remove-gb]');
+    if(remove){const number=row.dataset.gbNumber;remove.setAttribute('aria-label',`Usuń GB ${number}`);remove.title=`Usuń GB ${number}`;remove.hidden=rows.length<=1;}
+  });
+};
+if(gbList)gbList.addEventListener('click',event=>{
+  const remove=event.target.closest('[data-remove-gb]');
+  if(!remove)return;
+  const row=remove.closest('[data-gb-index]');
+  if(!row||gbRows().length<=1)return;
+  row.remove();updateGbRows();dirty=true;
+});
 const addGB=document.querySelector('[data-add-gb]');
 if(addGB)addGB.addEventListener('click',()=>{
-  const list=document.querySelector('[data-gb-list]');const rows=[...list.querySelectorAll('[data-gb-index]')];
+  const list=gbList;const rows=gbRows();
   if(rows.length>=12){alert('Maksymalnie 12 GB w jednym wpisie.');return;}
-  const number=Math.max(...rows.map(r=>Number(r.dataset.gbNumber)))+1;
+  const number=Math.max(0,...rows.map(r=>Number(r.dataset.gbNumber)))+1;
   if(number>32){alert('Osiągnięto maksymalne oznaczenie GB32.');return;}
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
   next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'?String(number):'';c.classList.remove('inherited-value');});
-  list.appendChild(next);dirty=true;next.querySelector('input:not([type=hidden])').focus();
+  list.appendChild(next);updateGbRows();dirty=true;next.querySelector('input:not([type=hidden])').focus();
 });
 document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('submit',async event=>{
  event.preventDefault();const status=form.querySelector('[data-photo-status]'),button=form.querySelector('button');button.disabled=true;

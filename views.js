@@ -151,7 +151,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
     const row = v.gb[i] || {};
     const number = row.number || String(Math.max(0,...v.gb.map(g=>Number(g.number))) + i - v.gb.length + 1);
     const values = GB.filter(([k]) => k !== 'number').map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',{className:['yarn','threads','run_in','threading'].includes(k)?'compact-gb-field':''})).join('');
-    return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${values}</div></div></section>`;
+    return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div></div></section>`;
   }).join('');
   const targetGrid = `<strong>Parametr</strong><strong>Wartość</strong>${TARGET_METRICS.map(([k, label]) => `<label for="target_${k}">${esc(label)}</label><input id="target_${k}" name="targets_${k}" value="${esc((v.targets || {})[k] || '')}"${k === 'sample_batch' ? ' maxlength="150"' : ' maxlength="10"'}>`).join('')}`;
   const rawGrid = `<strong>Parametr</strong><strong>Wartość</strong>${RAW_METRICS.map(([k, label]) => `<label for="raw_${k}">${esc(label)}</label><input id="raw_${k}" name="raw_${k}" value="${esc((v.raw || {})[k] || '')}" maxlength="10">`).join('')}`;
@@ -161,8 +161,11 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
     return `<details class="gb-row" ${Object.values(f).some(Boolean) ? 'open' : ''}><summary>Wariant wykończenia ${i + 1}</summary><div class="form-grid">${fields}</div></details>`;
   }).join('');
   const inheritedNotice = r.base_id ? `<div class="notice">Dane skopiowano z <a href="/records/${r.base_id}">wcześniejszego wpisu #${r.base_id}</a>. Wyszarzone wartości można edytować — po zmianie wrócą do zwykłego tła.</div>` : '';
+  const descriptionField = newArticleFields
+    ? field('Opis dzianiny', 'description', v.description || '', { maxlength: 6000 })
+    : field('Skrócony opis dzianiny', 'description', v.description || '', { multiline: true });
   const form = `<form method="post" class="editor" data-dirty${r.base_id ? ' data-inherited-values' : ''}>${hidden('csrf', csrf)}${hidden('revision', r.revision)}
-<section class="panel padded"><h2>Artykuł i opis</h2><div class="form-grid">${field('Symbol artykułu', 'symbol', v.symbol || r.symbol, { required: 'required' })}${field('Nr projektu', 'number', r.project_trial_number || '', { readonly: 'readonly' })}${field('Data źródłowa / założenia', 'date', v.date || '', v.date ? { readonly: 'readonly' } : {})}${field('Klient', 'client', v.client || '')}</div>${field('Skrócony opis dzianiny', 'description', v.description || '', { multiline: true })}</section>
+<section class="panel padded"><h2>Artykuł i opis</h2><div class="form-grid">${field('Symbol artykułu', 'symbol', v.symbol || r.symbol, { required: 'required' })}${field('Nr projektu', 'number', r.project_trial_number || '', { readonly: 'readonly' })}${field('Data źródłowa / założenia', 'date', v.date || '', v.date ? { readonly: 'readonly' } : {})}${field('Klient', 'client', v.client || '')}</div>${descriptionField}</section>
 <section class="panel padded"><h2>Ustawienia maszyny</h2><div class="form-grid">${tech}</div></section>
 <section class="panel padded"><h2>GB — przędze i sploty</h2><p class="muted">Domyślnie GB1 i GB2. Dodaj kolejne w razie potrzeby. Historyczne oznaczenia GB pozostają zachowane.</p><div data-gb-list>${gbRows}</div><button type="button" data-add-gb>+ Dodaj GB</button></section>
 <section class="panel padded"><h2>Parametry dzianiny surowej</h2><div class="target-grid raw-grid">${rawGrid}</div>${field('Komentarz do dzianiny surowej', 'raw_comments', v.raw_comments || '', { multiline: true })}</section>
