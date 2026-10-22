@@ -195,6 +195,23 @@ test('administrator sees the GitHub update link and install button only for a ne
   assert.doesNotMatch(current, /Pobierz i zainstaluj aktualizację z GitHub/);
 });
 
+test('source import page offers a two-step restore of the pre-import database', () => {
+  const user = { name: 'Test Admin', role: 'admin' };
+  const run = {
+    package_hash: 'a'.repeat(64), imported_at: '2026-10-22T12:00:00.000Z', backup_name: 'IMPORT-20261022120000000.sqlite3', restore_ready: true,
+    result: { imported: { articles: 259, specifications: 257, projects: 71 } },
+  };
+  const page = V.sourceImportPage({ user, csrf: 'csrf', flashes: [], latestImport: run });
+  assert.match(page, /Ostatni import/);
+  assert.match(page, /Przywróć bazę sprzed importu/);
+  assert.match(page, /\/admin\/import\/restore\?package_hash=/);
+  const confirmation = V.confirmRestoreImportPage({ user, csrf: 'csrf', flashes: [], run, backupName: run.backup_name });
+  assert.match(confirmation, /data-show-modal/);
+  assert.match(confirmation, /name="confirm" value="PRZYWRÓĆ" required/);
+  assert.match(confirmation, /Zmiany wykonane po imporcie znikną/);
+  assert.match(confirmation, /dodatkową kopię obecnej bazy i zdjęć/);
+});
+
 
 
 async function session(login='admin') {

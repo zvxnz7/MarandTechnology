@@ -480,12 +480,29 @@ function importedNotice(db, column, id) {
   return row?.notice || '';
 }
 
+function importRunByHash(db, packageHash) {
+  if (!/^[a-f0-9]{64}$/.test(String(packageHash || '')) || !tableExists(db, RUN_TABLE)) return null;
+  const row = db.prepare(`SELECT package_hash,imported_at,backup_path,result_json FROM ${RUN_TABLE} WHERE package_hash=?`).get(packageHash);
+  if (!row) return null;
+  let result = {};
+  try { result = JSON.parse(row.result_json || '{}'); } catch {}
+  return { ...row, result };
+}
+
+function latestImportRun(db) {
+  if (!tableExists(db, RUN_TABLE)) return null;
+  const row = db.prepare(`SELECT package_hash FROM ${RUN_TABLE} ORDER BY imported_at DESC,rowid DESC LIMIT 1`).get();
+  return row ? importRunByHash(db, row.package_hash) : null;
+}
+
 module.exports = {
   readPackage,
   readPackageBuffer,
   preview,
   importData,
   validateSchema,
+  importRunByHash,
+  latestImportRun,
   noticeForArticle: (db, id) => importedNotice(db, 'article_id', id),
   noticeForProject: (db, id) => importedNotice(db, 'project_id', id),
   noticeForRecord: (db, id) => importedNotice(db, 'record_id', id),

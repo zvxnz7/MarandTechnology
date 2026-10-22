@@ -11,6 +11,7 @@ const { DatabaseSync } = require('node:sqlite');
 const V = require('./views');
 const ArchiveCleanup = require('./modules/archive-cleanup');
 const SourceImport = require('./modules/source-import');
+const DatabaseSnapshot = require('./modules/database-snapshot');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -43,16 +44,35 @@ require('./modules/database').migrate(db, DB_PATH);
 function recoverInterruptedSourceImport() {
   const markerPath = path.join(DATA, 'maintenance.json');
   const marker = readJsonIfExists(markerPath);
-  if (!marker || marker.operation !== 'source-import' || !Number.isSafeInteger(Number(marker.pid))) return;
-  try {
-    process.kill(Number(marker.pid), 0);
-    return;
-  } catch (error) {
-    if (error.code !== 'ESRCH') return;
+  if (!marker || !['source-import', 'source-import-restore'].includes(marker.operation) || !Number.isSafeInteger(Number(marker.pid))) return;
+  if (marker.operation === 'source-import') {
+    try {
+      process.kill(Number(marker.pid), 0);
+      return;
+    } catch (error) {
+      if (error.code !== 'ESRCH') return;
+    }
   }
   try {
-    const integrity = db.prepare('PRAGMA quick_check').get()?.quick_check;
-    if (integrity !== 'ok' || db.prepare('PRAGMA foreign_key_check').all().length) {
+    let restored = false;
+    if (marker.operation === 'source-import-restore') {
+      restored = !marker.package_hash || !DatabaseSnapshot.containsImportRun(DB_PATH, marker.package_hash);
+      const recoverySnapshot = restored ? marker.backup_path : marker.rollback_path;
+      if (recoverySnapshot && fs.existsSync(recoverySnapshot)) {
+        DatabaseSnapshot.restorePhotosFromSnapshot(DATA, recoverySnapshot);
+      }
+    }
+    DatabaseSnapshot.inspectSnapshot(DB_PATH, { photosPath: path.join(DATA, 'photos') });
+    if (marker.operation === 'source-import-restore') {
+      writeSourceImportRestoreStatus({
+        ok: restored,
+        at: now(),
+        package_hash: marker.package_hash || '',
+        rollback_name: marker.rollback_path ? path.basename(marker.rollback_path) : '',
+        error: restored ? '' : 'Przywracanie przerwano. Baza jest poprawna, ale wybrany import nadal jest aktywny; można ponowić przywracanie.',
+      });
+    }
+    if (db.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok' || db.prepare('PRAGMA foreign_key_check').all().length) {
       console.error('Przerwana operacja importu pozostawiła kontrolę bazy w stanie nieprawidłowym; zachowano plik maintenance.json.');
       return;
     }
@@ -325,6 +345,38 @@ async function createSourceImportBackup() {
   if (!fs.existsSync(backupPath)) throw new Error('Polecenie kopii nie utworzyło pliku. Import przerwany przed zmianą bazy.');
   return backupPath;
 }
+function sourceImportRestoreTarget(packageHash) {
+  const run = SourceImport.importRunByHash(db, packageHash);
+  if (!run) fail(404, 'Nie znaleziono importu do cofnięcia.');
+  const latest = SourceImport.latestImportRun(db);
+  if (!latest || latest.package_hash !== run.package_hash) fail(409, 'Można cofnąć tylko ostatni import.');
+
+  const configPath = path.resolve(process.env.MARAND_UPDATE_CONFIG || path.resolve(ROOT, '..', 'administracja', 'konfiguracja.json'));
+  if (!fs.existsSync(configPath)) throw new Error('Brak konfiguracji kopii zapasowych.');
+  const config = readJsonIfExists(configPath);
+  if (!config || !config.program_dir || !config.data_dir || !config.backup_dir) throw new Error('Konfiguracja kopii zapasowych jest niekompletna.');
+  const norm = value => path.resolve(String(value)).toLowerCase();
+  if (norm(config.program_dir) !== norm(ROOT) || norm(config.data_dir) !== norm(DATA)) throw new Error('Konfiguracja wskazuje inną instalację programu lub bazy.');
+  if (config.service_type !== 'scheduled-task' || !config.service_name) throw new Error('Automatyczne przywracanie wymaga instalacji jako zadanie Windows.');
+
+  const backupDirectory = path.resolve(String(config.backup_dir), 'przed_importem');
+  const backupPath = path.resolve(String(run.backup_path || ''));
+  if (path.dirname(backupPath).toLowerCase() !== backupDirectory.toLowerCase() || !/^IMPORT-\d{17}\.sqlite3$/.test(path.basename(backupPath))) {
+    throw new Error('Zapisana kopia importu wskazuje niedozwoloną ścieżkę.');
+  }
+  const snapshot = DatabaseSnapshot.inspectSnapshot(backupPath);
+  if (DatabaseSnapshot.containsImportRun(backupPath, packageHash)) throw new Error('Kopia została wykonana po imporcie i nie może go cofnąć.');
+  const helper = path.join(ROOT, 'administracja', 'restore-import.ps1');
+  if (!fs.existsSync(helper)) throw new Error('Brak skryptu przywracania w tej wersji programu.');
+  const adminDirectory = path.dirname(configPath);
+  const controlScript = path.join(adminDirectory, 'control-server.ps1');
+  const settings = readJsonIfExists(path.join(adminDirectory, 'server-settings.json'));
+  const configuredNodePath = String(config.node_path || settings?.node_path || '').trim();
+  if (!fs.existsSync(controlScript) || !settings || !configuredNodePath) throw new Error('Brak plików wymaganych do bezpiecznego zatrzymania i uruchomienia serwera.');
+  const nodePath = path.resolve(configuredNodePath);
+  if (!fs.existsSync(nodePath)) throw new Error('Nie znaleziono node.exe wskazanego w konfiguracji serwera.');
+  return { run, backupPath, backupName: path.basename(backupPath), configPath, helper, photoCount: snapshot.photoFiles.length };
+}
 function matchId(pathname, pattern) { const m = pathname.match(pattern); return m ? Number(m[1]) : null; }
 function isLocal(req) { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress); }
 function dataTag() { return crypto.createHash('sha256').update(path.resolve(path.dirname(DB_PATH)).toLowerCase()).digest('hex'); }
@@ -351,6 +403,12 @@ async function githubLatest(repo) {
 }
 function readJsonIfExists(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+function writeSourceImportRestoreStatus(status) {
+  const destination = path.join(DATA, 'import_restore_status.json');
+  const temporary = `${destination}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(status), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(temporary, destination);
 }
 async function syncExternalUpdater(updaterPath) {
   const bundled = path.join(ROOT, 'administracja', 'updater.js');
@@ -1157,7 +1215,62 @@ async function handle(req, res) {
 
     if (p === '/admin/import' && req.method === 'GET') {
       role(req.user, 'admin');
-      return send(req, res, 200, V.sourceImportPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req) }));
+      let latestImport = SourceImport.latestImportRun(db);
+      if (latestImport) {
+        try {
+          const target = sourceImportRestoreTarget(latestImport.package_hash);
+          latestImport = { ...latestImport, restore_ready: true, backup_name: target.backupName };
+        } catch (error) {
+          latestImport = { ...latestImport, restore_ready: false, restore_error: error.message };
+        }
+      }
+      return send(req, res, 200, V.sourceImportPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), latestImport, restoreStatus: readJsonIfExists(path.join(DATA, 'import_restore_status.json')) }));
+    }
+    if (p === '/admin/import/restore' && req.method === 'GET') {
+      role(req.user, 'admin');
+      let target;
+      try { target = sourceImportRestoreTarget(String(url.searchParams.get('package_hash') || '')); }
+      catch (error) { fail(error instanceof HttpError ? error.status : 409, error.message || 'Nie można sprawdzić kopii sprzed importu.'); }
+      return send(req, res, 200, V.confirmRestoreImportPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), run: target.run, backupName: target.backupName }));
+    }
+    if (p === '/admin/import/restore/apply' && req.method === 'POST') {
+      role(req.user, 'admin');
+      if (form.confirm !== 'PRZYWRÓĆ') fail(400, 'Zaznacz potwierdzenie przywrócenia bazy.');
+      let target;
+      const packageHash = String(form.package_hash || '');
+      try { target = sourceImportRestoreTarget(packageHash); }
+      catch (error) { fail(error instanceof HttpError ? error.status : 409, error.message || 'Nie można sprawdzić kopii sprzed importu.'); }
+      const maintenancePath = path.join(DATA, 'maintenance.json');
+      try {
+        fs.writeFileSync(maintenancePath, JSON.stringify({ operation: 'source-import-restore', pid: process.pid, package_hash: packageHash, backup_path: target.backupPath, started_at: now() }), { flag: 'wx', mode: 0o600 });
+      } catch (error) {
+        if (error.code === 'EEXIST') fail(503, 'Trwa inna operacja administracyjna. Poczekaj i spróbuj ponownie.');
+        throw error;
+      }
+      const launch = () => {
+        try {
+          const child = spawn('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', target.helper,
+            '-ConfigPath', target.configPath, '-BackupPath', target.backupPath, '-PackageHash', packageHash,
+          ], {
+            cwd: ROOT, detached: true, windowsHide: true, stdio: 'ignore',
+            env: { ...process.env, MARAND_DATA: DATA, MARAND_DATABASE: DB_PATH, MARAND_UPDATE_CONFIG: target.configPath },
+          });
+          child.once('error', error => {
+            try { fs.rmSync(maintenancePath, { force: true }); } catch {}
+            try { writeSourceImportRestoreStatus({ ok: false, at: now(), package_hash: packageHash, rollback_name: '', error: `Nie udało się uruchomić skryptu przywracania: ${error.message}` }); } catch {}
+            console.error('Nie udało się uruchomić przywracania importu:', error);
+          });
+          child.unref();
+        } catch (error) {
+          try { fs.rmSync(maintenancePath, { force: true }); } catch {}
+          try { writeSourceImportRestoreStatus({ ok: false, at: now(), package_hash: packageHash, rollback_name: '', error: `Nie udało się uruchomić skryptu przywracania: ${error.message}` }); } catch {}
+          console.error('Nie udało się uruchomić przywracania importu:', error);
+        }
+      };
+      const launchTimer = setTimeout(launch, 1200);
+      launchTimer.unref();
+      return redirect(req, res, '/admin/import', 'Rozpoczęto przywracanie. Program uruchomi się ponownie; odśwież stronę za chwilę.');
     }
     if (p === '/admin/import/apply' && req.method === 'POST') {
       role(req.user, 'admin');
@@ -1197,6 +1310,7 @@ async function handle(req, res) {
           fail(409, 'Import został przerwany, a zmiany w bazie wycofano. ' + String(error.message || 'Sprawdź log serwera.'));
         }
         discardPendingSourceImport(token);
+        fs.rmSync(path.join(DATA, 'import_restore_status.json'), { force: true });
         return redirect(req, res, '/admin/import', `Import zakończony: ${result.imported.articles} artykułów, ${result.imported.specifications} roboczych specyfikacji i ${result.imported.projects} prób. Kopia bazy: ${backupPath}.`);
       } finally {
         if (maintenanceOwned) fs.rmSync(maintenancePath, { force: true });

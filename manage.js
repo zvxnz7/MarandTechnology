@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const readline = require('node:readline');
 const { DatabaseSync, backup } = require('node:sqlite');
+const DatabaseSnapshot = require('./modules/database-snapshot');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -173,6 +174,22 @@ async function backupCommand(outputPath) {
   }
   console.log(`Kopia bazy gotowa: ${output}. Zdjęcia (jeśli są): ${photosOutput}`);
 }
+function verifySnapshotCommand(inputPath, photosPath, absentImportHash = '') {
+  if (!inputPath) throw new Error('Podaj --input ścieżka.sqlite3.');
+  const info = DatabaseSnapshot.inspectSnapshot(inputPath, photosPath ? { photosPath } : {});
+  if (absentImportHash && DatabaseSnapshot.containsImportRun(inputPath, absentImportHash)) {
+    throw new Error('Kopia zawiera import, który miał zostać cofnięty. Baza nie została zmieniona.');
+  }
+  console.log(`Kopia sprawdzona: schemat ${info.schema}, zdjęcia: ${info.photoFiles.length}.`);
+}
+async function restoreSnapshotCommand(inputPath, rollbackPath, absentImportHash = '') {
+  if (!inputPath || !rollbackPath) throw new Error('Podaj --input kopia.sqlite3 oraz --rollback kopia-zabezpieczająca.sqlite3.');
+  if (absentImportHash && DatabaseSnapshot.containsImportRun(inputPath, absentImportHash)) {
+    throw new Error('Kopia zawiera import, który miał zostać cofnięty. Baza nie została zmieniona.');
+  }
+  const result = await DatabaseSnapshot.restoreSnapshot({ databasePath: DB_PATH, dataDirectory: DATA, sourcePath: inputPath, rollbackPath });
+  console.log(`Przywrócono bazę sprzed importu. Zdjęcia: ${result.photoFiles}. Kopia bezpieczeństwa: ${path.resolve(rollbackPath)}`);
+}
 function optionsFrom(args) {
   const result = { _: [] };
   for (let i = 0; i < args.length; i++) {
@@ -190,6 +207,8 @@ async function main() {
   if (command === 'init') await init({ seed: !o.empty });
   else if (command === 'add-user') await addUserCommand(o);
   else if (command === 'backup') await backupCommand(o.output);
+  else if (command === 'verify-snapshot') verifySnapshotCommand(o.input, o.photos, o['absent-import-hash']);
+  else if (command === 'restore-snapshot') await restoreSnapshotCommand(o.input, o.rollback, o['absent-import-hash']);
   else if (command === 'run') {
     if (!fs.existsSync(DB_PATH)) throw new Error('Najpierw uruchom node manage.js init.');
     if (o.host) process.env.MARAND_HOST = o.host;
@@ -200,6 +219,8 @@ async function main() {
     console.log('  node manage.js init [--empty]');
     console.log('  node manage.js add-user --login LOGIN --name NAZWA [--role viewer|technologist|approver|admin]');
     console.log('  node manage.js backup --output ŚCIEŻKA.sqlite3');
+    console.log('  node manage.js verify-snapshot --input kopia.sqlite3 [--photos folder-zdjęć]');
+    console.log('  node manage.js restore-snapshot --input kopia.sqlite3 --rollback kopia-bieżącego-stanu.sqlite3');
     console.log('  node manage.js run [--host 127.0.0.1] [--port 8765]');
   }
 }

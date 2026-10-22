@@ -25,7 +25,7 @@ for (let current = OUT; current !== ROOT; current = path.dirname(current)) {
 }
 const FILES = [
   'server.js', 'views.js', 'manage.js', 'package.json', 'schema.sql',
-  'administracja/updater.js',
+  'administracja/updater.js', 'administracja/restore-import.ps1',
   ...fs.readdirSync(path.join(ROOT, 'modules')).filter(file => file.endsWith('.js')).sort().map(file => path.posix.join('modules', file)),
   'INSTALL_SERVER.cmd', 'INSTALL_SERVER.ps1', 'SERVER_QUICKSTART.md', 'tools/build-release.js',
   'administracja/control-server.ps1', 'administracja/run-server.ps1', 'administracja/set-github-token.ps1',
