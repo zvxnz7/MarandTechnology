@@ -14,7 +14,7 @@ function projectArticleInput(db, { optional = true } = {}) {
     ['new', 'Utwórz nowy artykuł'],
   ];
   const initialMode = optional ? 'none' : (articles.length ? 'existing' : 'new');
-  return `<label>Artykuł do projektu<select name="article_mode" data-project-article-mode>${modes.map(([value,label])=>`<option value="${value}" ${value===initialMode?'selected':''}>${label}</option>`).join('')}</select></label>${articles.length?`<div data-project-article-panel="existing" hidden><label>Wybierz artykuł z kartoteki<select name="article_id"><option value="">Wybierz artykuł</option>${options}</select></label></div>`:''}<div data-project-article-panel="new" hidden>${input('symbol','Symbol nowego artykułu')}</div>`;
+  return `<label>Artykuł do etapu<select name="article_mode" data-project-article-mode>${modes.map(([value,label])=>`<option value="${value}" ${value===initialMode?'selected':''}>${label}</option>`).join('')}</select></label>${articles.length?`<div data-project-article-panel="existing" hidden><label>Wybierz artykuł z kartoteki<select name="article_id"><option value="">Wybierz artykuł</option>${options}</select></label></div>`:''}<div data-project-article-panel="new" hidden>${input('symbol','Symbol nowego artykułu')}</div>`;
 }
 function getArticle(db, id, fail) { const a = db.prepare('SELECT * FROM articles WHERE id=?').get(id); if (!a) fail(404, 'Nie znaleziono artykułu.'); return a; }
 function associate(ctx, pid, form) {
@@ -71,7 +71,7 @@ async function handle(ctx) {
       audit(req.user,'Utworzono artykuł',null,`Artykuł ${aid}`); return aid;
     });redirect(req,res,`/articles/${id}`);return true;
   }
-  const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|new|link|delete|restore|purge))?$/);
+  const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|new|delete|restore|purge))?$/);
   if(!match) return false;
   const id=Number(match[1]), a=getArticle(db,id,fail), action=match[2];
   if(req.method==='POST'&&action==='purge') {
@@ -96,12 +96,6 @@ async function handle(ctx) {
         if(String(form.updated_at)!==getArticle(db,id,fail).updated_at) fail(409,'Artykuł został zmieniony. Odśwież dane przed zapisem.');
         db.prepare('UPDATE articles SET description=?,updated_at=? WHERE id=?').run(String(form.description||'').slice(0,6000),new Date().toISOString(),id);
         audit(req.user,'Zmieniono opis artykułu',null,`Artykuł ${id}`);
-      } else if(action==='link') {
-        const pid=Number(form.project_id);
-        const pr=db.prepare('SELECT id,archived_at FROM projects WHERE id=?').get(pid);
-        if(!Number.isSafeInteger(pid)||!pr)fail(400,'Wybierz projekt / próbę.');
-        if(pr.archived_at)fail(409,'Nie można dodać artykułu do zarchiwizowanego projektu/próby.');
-        db.prepare('INSERT OR IGNORE INTO project_articles VALUES(?,?)').run(pid,id); audit(req.user,'Dodano artykuł do projektu / próby',null,`${id} / ${pid}`);
       } else if(action==='new') {
         firstArticleSpec=!db.prepare('SELECT 1 FROM records WHERE article_id=? AND archived_at IS NULL LIMIT 1').get(id);
         const source=db.prepare("SELECT * FROM records WHERE article_id=? AND kind='spec' AND archived_at IS NULL ORDER BY id DESC LIMIT 1").get(id);
@@ -123,7 +117,6 @@ async function handle(ctx) {
     const isWritable=writable(req.user)&&!a.archived_at&&!a.purged_at;
   const articleUpdated=db.prepare('SELECT max(a.updated_at,coalesce((SELECT max(updated_at) FROM records WHERE article_id=a.id),a.updated_at)) updated FROM articles a WHERE a.id=?').get(id).updated;
   const projects=db.prepare('SELECT p.* FROM projects p JOIN project_articles pa ON pa.project_id=p.id WHERE pa.article_id=? ORDER BY p.created_at DESC,p.id DESC').all(id);
-  const unlinkedProjects=db.prepare('SELECT p.* FROM projects p WHERE p.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=p.id AND pa.article_id=?) ORDER BY p.created_at DESC,p.id DESC').all(id);
   const historyPage=Math.max(1,parseInt(url.searchParams.get('history_page'))||1);
   const recordCount=db.prepare('SELECT count(*) n FROM records WHERE article_id=? AND archived_at IS NULL').get(id).n;
   const currentRecord=db.prepare('SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,1 is_current FROM records r WHERE r.id=? AND r.archived_at IS NULL').get(a.active_spec);
@@ -131,20 +124,15 @@ async function handle(ctx) {
   const historyRecords=db.prepare("SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,0 is_current FROM records r WHERE r.article_id=? AND r.archived_at IS NULL AND r.id<>coalesce(?,0) ORDER BY CASE WHEN r.kind='spec' AND r.state!='approved' THEN 0 WHEN r.kind='spec' THEN 1 ELSE 2 END,r.id DESC LIMIT 50 OFFSET ?").all(id,currentRecord?.id||0,(historyPage-1)*50);
   const records=[...(currentRecord?[currentRecord]:[]),...historyRecords];
   const cards=db.prepare('SELECT c.id,c.machine,c.created_at FROM cards c JOIN records r ON r.id=c.record_id WHERE r.article_id=? ORDER BY c.id DESC LIMIT 50').all(id);
-  const changeRows=db.prepare(`SELECT a.*,u.name author FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE (EXISTS(SELECT 1 FROM audit_articles aa WHERE aa.audit_id=a.id AND aa.article_id=?) OR EXISTS(SELECT 1 FROM records r WHERE r.id=a.record_id AND r.article_id=?)) AND a.action IN ('Zapisano zmiany','Zapisano etap próby','Dodano etap próby','Zmieniono opis próby','Zmieniono status próby') ORDER BY a.id DESC LIMIT 100`).all(id,id);
+  const changeRows=db.prepare(`SELECT a.*,u.name author FROM audit a JOIN records r ON r.id=a.record_id LEFT JOIN users u ON u.id=a.user_id WHERE r.article_id=? AND r.kind='spec' AND r.state='approved' AND a.action='Zatwierdzono zmianę karty' ORDER BY a.id DESC LIMIT 100`).all(id);
   const changesHistory=changeRows.map(row=>{
     let detail={};try{detail=JSON.parse(row.detail||'{}')}catch{}
-    let changes=[];
-    if(row.action==='Zapisano zmiany'&&detail.before&&detail.after)changes=Changes.changes(detail.before,detail.after);
-    else if(detail.before&&detail.after){
-      const names={description:'Opis etapu',date:'Data etapu',status:'Status',comment:'Komentarz',short_description:'Skrócony opis próby',goal:'Cel próby',assumptions:'Założenia i pomysły'};
-      changes=Object.keys(detail.after).filter(key=>(detail.before[key]||'')!==(detail.after[key]||'')).map(key=>({label:names[key]||key,before:detail.before[key]||'—',after:detail.after[key]||'—'}));
-    } else if(row.action==='Dodano etap próby')changes=[{label:'Etap',before:'—',after:`${detail.stage||''} · ${detail.description||''} · ${detail.date||''}`}];
-    return {at:row.at,author:row.author||'Nieznany',action:row.action,comment:detail.comment||'',changes};
+    const changes=detail.before&&detail.after?Changes.changes(detail.before,detail.after):[];
+    const editor=detail.author_id?db.prepare('SELECT name FROM users WHERE id=?').get(detail.author_id):null;
+    return {at:detail.edited_at||row.at,author:editor?.name||row.author||'Nieznany',action:row.action,comment:detail.comment||'',changes,version:detail.version};
   }).filter(row=>row.changes.length||row.comment);
-  const changesView=changesHistory.length?`<section class="panel padded"><h3>Historia zmian</h3>${changesHistory.map(change=>`<article class="history"><strong>${date(change.at)} · ${e(change.author)}</strong><div>${change.changes.map(item=>`<p><b>${e(item.label)}:</b> <del>${e(item.before)}</del> → <strong>${e(item.after)}</strong></p>`).join('')}${change.comment?`<p class="preline"><b>Komentarz:</b> ${e(change.comment)}</p>`:''}</div></article>`).join('')}</section>`:'<p class="muted">Brak zapisanych zmian.</p>';
+  const changesView=changesHistory.length?`<section class="panel padded"><h3>Historia zmian</h3>${changesHistory.map(change=>`<article class="history"><strong>${date(change.at)} · ${e(change.author)}${change.version?` · zatwierdzona wersja v${e(change.version)}`:''}</strong><div>${change.changes.map(item=>`<p><b>${e(item.label)}:</b> <del>${e(item.before)}</del> → <strong>${e(item.after)}</strong></p>`).join('')}${change.comment?`<p class="preline"><b>Komentarz:</b> ${e(change.comment)}</p>`:''}</div></article>`).join('')}</section>`:'<p class="muted">Historia zmian pojawi się po zatwierdzeniu pierwszej zmiany karty.</p>';
   const editor=isWritable?`<details class="panel padded"><summary>Edytuj opis artykułu</summary><form method="post" action="/articles/${id}/metadata">${csrf}<input type="hidden" name="updated_at" value="${e(a.updated_at)}"><label>Opis<textarea name="description" maxlength="6000">${e(a.description)}</textarea></label><button>Zapisz opis</button></form></details><form method="post" action="/articles/${id}/new">${csrf}<button>+ Nowa specyfikacja</button></form>`:'';
-  const links=isWritable&&unlinkedProjects.length?`<form method="post" action="/articles/${id}/link" class="panel padded">${csrf}<label>Dodaj artykuł do projektu / próby<select name="project_id" required><option value="">Wybierz projekt / próbę</option>${unlinkedProjects.map(pr=>`<option value="${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</option>`).join('')}</select></label><button>Dodaj do projektu</button></form>`:'';
   const specs=records.filter(r=>r.kind==='spec'),trials=records.filter(r=>r.kind==='trial'),current=specs.find(r=>r.is_current),drafts=specs.filter(r=>r.state!=='approved'),history=specs.filter(r=>r.state==='approved'&&!r.is_current);
   const tile=r=>`<a class="record-tile" href="/records/${r.id}"><span class="badge ${e(r.state)}">${e(V.STATE[r.state])}${r.version?` · v${r.version}`:''}</span><h3>${e(r.symbol)}</h3><p>${r.is_current?'Obowiązująca technologia':r.state==='approved'?'Archiwalna wersja':'Robocza — nie wpływa na produkcję do czasu zatwierdzenia'}</p><small>${date(r.updated_at)} · wpis ${r.id}</small></a>`;
   const currentView=current?`<section class="current-spec"><h2>Aktualna specyfikacja</h2><div class="grid">${tile(current)}</div></section>`:'<section class="panel padded"><h2>Aktualna specyfikacja</h2><p class="muted">Brak zatwierdzonej technologii dla tego artykułu.</p></section>';
@@ -152,6 +140,6 @@ async function handle(ctx) {
   const historyView=history.length?`<details class="spec-history"><summary>Archiwalne wersje (${history.length})</summary><div class="grid">${history.map(tile).join('')}</div></details>`:'';
   const trialsView=trials.length?`<h2>Próby i warianty</h2><div class="grid">${trials.map(tile).join('')}</div>`:'';
   const articleArchiveNotice=a.purged_at?'<div class="notice warning"><strong>Artykuł usunięto z widocznej kartoteki.</strong> Historyczne specyfikacje, projekty i karty nadal są dostępne.</div>':a.archived_at?'<div class="notice warning"><strong>Artykuł jest w archiwum.</strong> Można go przywrócić przez 30 dni w zakładce Archiwum.</div>':'';
-  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><h1>${e(a.symbol)}</h1><p class="preline">${e(a.description)}</p><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${a.active_spec?`<a class="button primary" href="/records/${a.active_spec}">Otwórz obowiązującą technologię</a>`:''}${editor}<h2>Technologia artykułu</h2>${currentView}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${links}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
+  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><h1>${e(a.symbol)}</h1><p class="preline">${e(a.description)}</p><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${a.active_spec?`<a class="button primary" href="/records/${a.active_spec}">Otwórz obowiązującą technologię</a>`:''}${editor}<h2>Technologia artykułu</h2>${currentView}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
 }
 module.exports={handle,projectArticleInput,associate};

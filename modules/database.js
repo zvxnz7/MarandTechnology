@@ -97,17 +97,51 @@ function migrateV5(db) {
     throw error;
   }
 }
+function migrateV6(db) {
+  const version = db.prepare('PRAGMA user_version').get().user_version;
+  if (version >= 6) {
+    db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+    return;
+  }
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const addColumn = (table, name, definition) => {
+      if (!db.prepare(`PRAGMA table_info(${table})`).all().some(column => column.name === name)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+      }
+    };
+    db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+    addColumn('projects', 'client_name', "TEXT NOT NULL DEFAULT ''");
+    addColumn('projects', 'workflow_status', "TEXT NOT NULL DEFAULT 'in_progress'");
+    addColumn('cards', 'production_notes', "TEXT NOT NULL DEFAULT ''");
+    db.exec(`UPDATE projects SET workflow_status=CASE
+      WHEN status IN ('in_progress','accepted','failed','client_declined') THEN status
+      ELSE 'in_progress' END;
+      INSERT OR IGNORE INTO project_stage_articles(stage_id,article_id,record_id,created_at)
+        SELECT s.id,coalesce(s.article_id,r.article_id),s.record_id,coalesce(s.updated_at,'')
+        FROM project_stages s LEFT JOIN records r ON r.id=s.record_id
+        WHERE coalesce(s.article_id,r.article_id) IS NOT NULL;
+      INSERT OR IGNORE INTO project_articles(project_id,article_id)
+        SELECT s.project_id,sa.article_id FROM project_stage_articles sa
+        JOIN project_stages s ON s.id=sa.stage_id;
+      PRAGMA user_version=6; COMMIT;`);
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>5)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===5) { db.exec(schema); migrateV5(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); return; }
+  if(version>6)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===6) { db.exec(schema); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -137,5 +171,6 @@ function migrate(db, dbPath) {
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   finally { db.exec('PRAGMA foreign_keys=ON'); }
   migrateV5(db);
+  migrateV6(db);
 }
 module.exports = { migrate };

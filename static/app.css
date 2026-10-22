@@ -42,3 +42,40 @@
 .archive-heading{font-size:17px}
 .row-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}.delete-x{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#fff1f0;color:#a82025;font-size:25px;font-weight:600;text-decoration:none;border:1px solid #e5babb}.delete-x:hover{background:#a82025;color:#fff}.date-filter{min-width:145px}.date-filter input{min-width:145px}.status-control{display:flex;align-items:end;gap:10px;margin:18px 0}.status-control label{max-width:360px}.trial-purpose>h2{margin-top:0}.project-articles{margin-top:24px}.project-articles .sectionhead{margin-top:0}.stage-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:18px 22px;margin:14px 0}.stage-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.stage-head h3{margin:5px 0}.stage-metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:720px;margin:14px 0}.stage-metrics>div{display:grid;gap:5px;padding:12px;background:#f5f6f7;border-radius:6px}.stage-edit{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}.stage-edit summary{cursor:pointer;color:var(--muted)}.stage-create{margin-top:18px}.stage-create h3{margin-top:0}.change-confirm{max-width:1000px;margin:0 auto}.change-confirm .change-alert{margin:16px 0}.change-confirm .actions{justify-content:flex-end;padding:12px;background:#fff;border:1px solid var(--line);border-radius:8px}
 .change-dialog{width:min(1000px,calc(100vw - 32px));max-width:1000px}.change-dialog .dialog-body{max-height:calc(90vh - 76px)}.change-dialog .change-alert{max-width:none;margin:0 0 18px}
+.trial-searchbar{align-items:center}
+.trial-searchbar input,.trial-searchbar select,.trial-searchbar button,.trial-searchbar .date-filter input{height:40px;padding:6px 10px}
+.trial-searchbar .date-filter{display:flex;align-items:center;gap:7px;min-width:0;margin:0;white-space:nowrap;font-weight:500}
+.trial-searchbar .date-filter input{min-width:0;width:150px}
+.status-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.status-choice,.status-pill{border:1px solid transparent;border-radius:20px;padding:7px 12px;font-size:13px;font-weight:650;line-height:1.2;white-space:nowrap}
+.status-choice{cursor:pointer;transition:filter .15s,box-shadow .15s}
+.status-choice:hover{filter:brightness(.96)}
+.status-choice.selected{box-shadow:0 0 0 2px #25303b55}
+.status-progress{color:#245d87;background:#e8f1fb;border-color:#c3d9ed}
+.status-knitter{color:#805a17;background:#fff2d9;border-color:#ecd49e}
+.status-produced{color:#1b6b60;background:#e1f4f1;border-color:#afdcd4}
+.status-accepted{color:#23684c;background:#e7f4ec;border-color:#b9ddc8}
+.status-failed{color:#9d2d32;background:#fbe9e9;border-color:#e7bfc1}
+.status-client-declined{color:#5e4a80;background:#f0ebf7;border-color:#d4c8e6}
+.client-name{margin:0 0 8px}
+.trial-form,.stage-edit-form{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.trial-form label,.stage-edit-form label{width:100%}
+.trial-form textarea,.stage-edit-form textarea{min-height:54px;height:54px}
+.stage-title{min-width:0;flex:1}
+.stage-top-actions{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin:8px 0}
+.stage-edit{margin:0;border:0;padding:0}
+.stage-edit summary{list-style:none}
+.stage-edit summary::-webkit-details-marker{display:none}
+.stage-edit-form{width:min(100%,900px);margin-top:10px;padding:16px;background:#f7f8f9;border:1px solid var(--line);border-radius:7px}
+.stage-edit-form label{margin-bottom:12px}
+.stage-create label{width:100%}
+.stage-comment{margin-bottom:12px}
+.stage-parameters{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.stage-parameters h4{margin:0 0 10px;font-size:14px}
+.stage-article{padding:12px 0;border-bottom:1px solid #edf0f2}
+.stage-article:last-child{border-bottom:0}
+.stage-article-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.stage-article-symbol{font-size:17px;font-weight:700;color:#252b31}
+.stage-article .stage-metrics{max-width:100%;margin:10px 0 0}
+.parameter-link span{font-size:16px}
+@media(max-width:650px){.trial-searchbar{align-items:stretch}.trial-searchbar input,.trial-searchbar select,.trial-searchbar button,.trial-searchbar .date-filter,.trial-searchbar .date-filter input{width:100%;max-width:none}.trial-searchbar .date-filter{justify-content:space-between}.stage-head{align-items:flex-start}.status-buttons{gap:6px}.status-choice{font-size:12px;padding:7px 9px}}

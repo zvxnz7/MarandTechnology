@@ -1,11 +1,11 @@
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,login TEXT UNIQUE NOT NULL,name TEXT NOT NULL,password TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('viewer','technologist','approver','admin')),active INTEGER NOT NULL DEFAULT 1);
-CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL DEFAULT '',conflict TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,archived_at TEXT);
+CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL DEFAULT '',conflict TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,archived_at TEXT,client_name TEXT NOT NULL DEFAULT '',workflow_status TEXT NOT NULL DEFAULT 'in_progress');
 CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY,project_id INTEGER REFERENCES projects(id),symbol TEXT NOT NULL,symbol_key TEXT NOT NULL,active_spec INTEGER,category_id INTEGER REFERENCES categories(id),created_at TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',UNIQUE(project_id,symbol_key));
 CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,project_id INTEGER REFERENCES projects(id),article_id INTEGER REFERENCES articles(id),kind TEXT NOT NULL CHECK(kind IN ('trial','spec')),symbol TEXT NOT NULL,number TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','submitted','approved')),revision INTEGER NOT NULL DEFAULT 1,version INTEGER,base_id INTEGER REFERENCES records(id),expected_active INTEGER,payload TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,approved_at TEXT,approved_by INTEGER REFERENCES users(id),review_note TEXT NOT NULL DEFAULT '',archived_at TEXT,UNIQUE(article_id,version));
 CREATE INDEX IF NOT EXISTS records_project ON records(project_id,kind,state);
 CREATE INDEX IF NOT EXISTS records_symbol ON records(symbol);
-CREATE TABLE IF NOT EXISTS cards(id INTEGER PRIMARY KEY,record_id INTEGER NOT NULL REFERENCES records(id),machine TEXT NOT NULL,instructions TEXT NOT NULL,created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),token TEXT UNIQUE NOT NULL,snapshot TEXT NOT NULL,html TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cards(id INTEGER PRIMARY KEY,record_id INTEGER NOT NULL REFERENCES records(id),machine TEXT NOT NULL,instructions TEXT NOT NULL,created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),token TEXT UNIQUE NOT NULL,snapshot TEXT NOT NULL,html TEXT NOT NULL,production_notes TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,at TEXT NOT NULL,user_id INTEGER REFERENCES users(id),action TEXT NOT NULL,record_id INTEGER,detail TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS login_attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until REAL NOT NULL);
 CREATE TRIGGER IF NOT EXISTS approved_no_update BEFORE UPDATE ON records WHEN OLD.state='approved' BEGIN SELECT RAISE(ABORT,'Approved record is immutable'); END;
@@ -20,9 +20,11 @@ CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY,parent_id INTEGER R
 CREATE UNIQUE INDEX IF NOT EXISTS categories_name ON categories(coalesce(parent_id,0),name COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS project_articles(project_id INTEGER NOT NULL REFERENCES projects(id),article_id INTEGER NOT NULL REFERENCES articles(id),PRIMARY KEY(project_id,article_id));
 CREATE TABLE IF NOT EXISTS project_stages(id INTEGER PRIMARY KEY,project_id INTEGER NOT NULL REFERENCES projects(id),stage_no INTEGER NOT NULL,description TEXT NOT NULL DEFAULT '',article_id INTEGER REFERENCES articles(id) ON DELETE SET NULL,record_id INTEGER REFERENCES records(id) ON DELETE SET NULL,stage_date TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'in_progress' CHECK(status IN ('in_progress','sent_finishing','sample_at_client','accepted_internal','accepted_client')),comment TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,UNIQUE(project_id,stage_no));
+CREATE TABLE IF NOT EXISTS project_stage_articles(stage_id INTEGER NOT NULL REFERENCES project_stages(id) ON DELETE CASCADE,article_id INTEGER NOT NULL REFERENCES articles(id),record_id INTEGER REFERENCES records(id) ON DELETE SET NULL,created_at TEXT NOT NULL,PRIMARY KEY(stage_id,article_id),UNIQUE(record_id));
 CREATE TABLE IF NOT EXISTS project_trial_sequences(year INTEGER PRIMARY KEY,last_value INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS project_articles_article ON project_articles(article_id);
 CREATE INDEX IF NOT EXISTS project_stages_project ON project_stages(project_id,stage_no);
+CREATE INDEX IF NOT EXISTS project_stage_articles_article ON project_stage_articles(article_id,stage_id);
 CREATE INDEX IF NOT EXISTS audit_articles_article ON audit_articles(article_id,audit_id);
 CREATE INDEX IF NOT EXISTS articles_category ON articles(category_id);
 CREATE INDEX IF NOT EXISTS articles_created ON articles(created_at,id);
