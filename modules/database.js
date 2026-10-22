@@ -163,19 +163,78 @@ function migrateV7(db) {
     throw error;
   }
 }
+function migrateV8(db) {
+  const version = db.prepare('PRAGMA user_version').get().user_version;
+  if (version >= 8) {
+    db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+    db.exec('CREATE INDEX IF NOT EXISTS photos_project ON photos(project_id);');
+    return;
+  }
+  // Create any tables missing from older layouts before entering the migration.
+  // The photos_project index is deliberately created after the legacy photos
+  // table has been rebuilt with its new project_id column.
+  db.exec(fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8'));
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const addColumn = (table, name, definition) => {
+      if (!db.prepare(`PRAGMA table_info(${table})`).all().some(column => column.name === name)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+      }
+    };
+    addColumn('articles', 'pending_production_notes', "TEXT NOT NULL DEFAULT ''");
+
+    const photoColumns = db.prepare('PRAGMA table_info(photos)').all();
+    if (photoColumns.length && !photoColumns.some(column => column.name === 'project_id')) {
+      db.exec(`DROP INDEX IF EXISTS photos_article;
+        DROP INDEX IF EXISTS photos_record;
+        ALTER TABLE photos RENAME TO photos_before_v8;
+        CREATE TABLE photos(id INTEGER PRIMARY KEY,article_id INTEGER REFERENCES articles(id),record_id INTEGER REFERENCES records(id),project_id INTEGER REFERENCES projects(id),file TEXT NOT NULL UNIQUE,caption TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),CHECK((article_id IS NOT NULL)+(record_id IS NOT NULL)+(project_id IS NOT NULL)=1));
+        INSERT INTO photos(id,article_id,record_id,project_id,file,caption,created_at,created_by)
+          SELECT id,article_id,record_id,NULL,file,caption,created_at,created_by FROM photos_before_v8;
+        DROP TABLE photos_before_v8;
+        CREATE INDEX photos_article ON photos(article_id);
+        CREATE INDEX photos_record ON photos(record_id);`);
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS photos_project ON photos(project_id);');
+
+    const projects = db.prepare("SELECT id,trial_number,comment,updated_at,created_at FROM projects WHERE NOT EXISTS(SELECT 1 FROM project_comments pc WHERE pc.project_id=projects.id) ORDER BY id").all();
+    const auditRows = db.prepare("SELECT a.user_id,u.name,a.at,a.detail FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE a.action='Zmieniono opis próby' ORDER BY a.id").all();
+    const insertComment = db.prepare('INSERT INTO project_comments(project_id,author_user_id,author_name,content,created_at) VALUES(?,?,?,?,?)');
+    for (const project of projects) {
+      let lastMigrated = '';
+      for (const entry of auditRows) {
+        let detail;
+        try { detail = JSON.parse(entry.detail || '{}'); } catch { continue; }
+        if (detail.trial !== project.trial_number) continue;
+        const before = String(detail.before?.comment || '').trim();
+        const comment = String(detail.after?.comment ?? detail.comment ?? '').trim().slice(0,3000);
+        if (!comment || comment === before) continue;
+        insertComment.run(project.id, entry.user_id || null, entry.name || 'Nieznany autor', comment, entry.at || project.created_at);
+        lastMigrated=comment;
+      }
+      const current=String(project.comment||'').trim().slice(0,3000);
+      if(current&&current!==lastMigrated)insertComment.run(project.id,null,'Nieznany autor',current,project.updated_at||project.created_at);
+    }
+    db.exec('PRAGMA user_version=8; COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>7)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===7) { db.exec(schema); return; }
-  if(version===6) { db.exec(schema); migrateV7(db); return; }
-  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); return; }
+  if(version>8)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===8) { db.exec(schema); return; }
+  if(version===7) { migrateV8(db); return; }
+  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -207,5 +266,6 @@ function migrate(db, dbPath) {
   migrateV5(db);
   migrateV6(db);
   migrateV7(db);
+  migrateV8(db);
 }
 module.exports = { migrate };

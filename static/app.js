@@ -48,3 +48,124 @@ document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('s
   form.elements.image.value=data;status.textContent='Wysyłanie…';submitting=true;HTMLFormElement.prototype.submit.call(form);
  }catch(err){status.textContent=err.message;button.disabled=false;}
 }));
+
+// Search and sort controls update the current result page as soon as a value changes.
+const liveSearch=document.querySelector('form[data-live-search]');
+if(liveSearch){
+ let searchTimer=null,searchSequence=0;
+ const results=document.querySelector('[data-live-results]'),count=document.querySelector('[data-live-count]');
+ const currentSearchUrl=()=>{
+  const params=new URLSearchParams();
+  for(const [key,value] of new FormData(liveSearch))if(String(value).trim())params.set(key,String(value).trim());
+  const query=params.toString();return `${location.pathname}${query?`?${query}`:''}`;
+ };
+ const syncControls=url=>{
+  const params=new URL(url,location.href).searchParams;
+  for(const control of liveSearch.elements){if(!control.name)continue;if(params.has(control.name))control.value=params.get(control.name);else if(control.type==='text'||control.type==='search'||control.type==='date')control.value='';}
+ };
+ const loadResults=async(url,sequence=++searchSequence)=>{
+  if(!results)return;
+  results.setAttribute('aria-busy','true');
+  try{
+   const response=await fetch(url,{headers:{'X-Requested-With':'fetch'}});
+   if(!response.ok)throw new Error('Nie udało się pobrać wyników.');
+   const html=await response.text(),doc=new DOMParser().parseFromString(html,'text/html'),next=doc.querySelector('[data-live-results]'),nextCount=doc.querySelector('[data-live-count]');
+   if(!next)throw new Error('Brak wyników w odpowiedzi.');
+   if(sequence!==searchSequence)return;
+   results.innerHTML=next.innerHTML;
+   if(count&&nextCount)count.textContent=nextCount.textContent;
+   syncControls(url);history.replaceState({},'',url);
+  }catch(error){if(sequence===searchSequence)location.assign(url);}
+  finally{if(sequence===searchSequence)results.removeAttribute('aria-busy');}
+ };
+ const scheduleSearch=delay=>{clearTimeout(searchTimer);const sequence=++searchSequence;searchTimer=setTimeout(()=>loadResults(currentSearchUrl(),sequence),delay);};
+ liveSearch.addEventListener('input',event=>{if(event.target.matches('input[name="q"]'))scheduleSearch(220);});
+ liveSearch.addEventListener('change',event=>{if(!event.target.matches('input[name="q"]'))scheduleSearch(0);});
+ liveSearch.addEventListener('submit',event=>{event.preventDefault();scheduleSearch(0);});
+ document.addEventListener('click',event=>{
+  const link=event.target.closest('[data-live-results] .pagination a');
+  if(!link)return;
+  event.preventDefault();clearTimeout(searchTimer);const sequence=++searchSequence;loadResults(link.href,sequence);
+ });
+}
+
+document.querySelectorAll('[data-autosave]').forEach(form=>{
+ const control=form.querySelector('[data-autosave-value]'),status=form.querySelector('[data-autosave-status]');
+ if(!control||!status)return;
+ let timer=null,sequence=0,busy=false,queued=false;
+ const setStatus=(message,error=false)=>{status.textContent=message;status.classList.toggle('save-error',error);};
+ const persist=async()=>{
+  if(busy){queued=true;return;}
+  busy=true;
+  do{
+   queued=false;const value=control.value,version=sequence;
+   setStatus('Zapisywanie…');
+   try{
+    const body=new URLSearchParams(new FormData(form));body.set('value',value);
+    const response=await fetch(form.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-Requested-With':'fetch'},body});
+    const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się zapisać.');
+    if(version===sequence&&!queued)setStatus('Zapisano automatycznie.');else queued=true;
+   }catch{setStatus('Błąd zapisu. Spróbuj ponownie.',true);break;}
+  }while(queued);
+  busy=false;
+ };
+ const schedule=delay=>{sequence++;queued=true;clearTimeout(timer);setStatus('Niezapisane zmiany…');timer=setTimeout(persist,delay);};
+ control.addEventListener('input',()=>schedule(650));
+ control.addEventListener('change',()=>{clearTimeout(timer);persist();});
+ control.addEventListener('blur',()=>{clearTimeout(timer);if(queued)persist();});
+});
+
+document.querySelectorAll('[data-comment-composer]').forEach(form=>{
+ const input=form.querySelector('[data-comment-input]'),status=form.querySelector('[data-comment-status]'),list=document.querySelector('[data-comment-list]');
+ if(!input||!status||!list)return;
+ let commentId=null,savedContent='',timer=null,sequence=0,busy=false,queued=false,finalize=false;
+ const setStatus=(message,error=false)=>{status.textContent=message;status.classList.toggle('save-error',error);};
+ const renderComment=comment=>{
+  if(!comment)return;
+  document.querySelector('[data-comment-empty]')?.remove();
+  let row=list.querySelector(`[data-comment-entry="${comment.id}"]`);
+  if(!row){
+   row=document.createElement('article');row.className='project-comment';row.dataset.commentEntry=String(comment.id);
+   const meta=document.createElement('div');meta.className='project-comment-meta';
+   const author=document.createElement('strong');author.dataset.commentAuthor='';
+   const time=document.createElement('time');time.dataset.commentTime='';meta.append(author,time);
+   const text=document.createElement('p');text.className='preline';text.dataset.commentContent='';row.append(meta,text);list.appendChild(row);
+  }
+  row.querySelector('[data-comment-author]').textContent=comment.author_name;
+  row.querySelector('[data-comment-time]').textContent=new Date(comment.created_at).toLocaleString('pl-PL');
+  row.querySelector('[data-comment-content]').textContent=comment.content;
+ };
+ const persist=async()=>{
+  if(busy){queued=true;return;}
+  busy=true;
+  do{
+   queued=false;const content=input.value,version=sequence;
+   if(!content.trim()){
+    if(finalize){input.value='';commentId=null;savedContent='';setStatus('Komentarz zapisany.');finalize=false;}
+    break;
+   }
+   setStatus('Zapisywanie komentarza…');
+   try{
+    const body=new URLSearchParams(new FormData(form));body.set('content',content);if(commentId)body.set('comment_id',String(commentId));else body.delete('comment_id');
+    const response=await fetch(form.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-Requested-With':'fetch'},body});
+    const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się zapisać komentarza.');
+    if(result.comment){commentId=result.comment.id;savedContent=result.comment.content;renderComment(result.comment);}
+    if(version===sequence&&!queued){
+     if(finalize){input.value='';commentId=null;savedContent='';finalize=false;setStatus('Komentarz zapisany.');}
+     else setStatus('Zapisano automatycznie.');
+    }else queued=true;
+   }catch{setStatus('Błąd zapisu. Komentarz nadal jest w polu.',true);break;}
+  }while(queued);
+  busy=false;
+ };
+ const schedule=delay=>{sequence++;queued=true;finalize=false;clearTimeout(timer);setStatus('Niezapisane zmiany…');timer=setTimeout(persist,delay);};
+ input.addEventListener('input',()=>schedule(650));
+ input.addEventListener('change',()=>{clearTimeout(timer);persist();});
+ input.addEventListener('blur',()=>{
+  clearTimeout(timer);finalize=true;
+  if(!input.value.trim()&&commentId&&savedContent){input.value=savedContent;commentId=null;savedContent='';finalize=true;}
+  if(queued||input.value.trim())persist();else{input.value='';finalize=false;}
+ });
+});
+
+document.addEventListener('click',event=>{const link=event.target.closest('[data-stage-delete-link]');if(link){event.preventDefault();event.stopPropagation();location.assign(link.href);}},true);
