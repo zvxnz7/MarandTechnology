@@ -79,3 +79,22 @@
 .stage-article .stage-metrics{max-width:100%;margin:10px 0 0}
 .parameter-link span{font-size:16px}
 @media(max-width:650px){.trial-searchbar{align-items:stretch}.trial-searchbar input,.trial-searchbar select,.trial-searchbar button,.trial-searchbar .date-filter,.trial-searchbar .date-filter input{width:100%;max-width:none}.trial-searchbar .date-filter{justify-content:space-between}.stage-head{align-items:flex-start}.status-buttons{gap:6px}.status-choice{font-size:12px;padding:7px 9px}}
+
+.delete-x{display:inline-flex;align-items:center;justify-content:center;width:auto;height:auto;padding:0 6px;border:0;border-radius:0;background:transparent;color:#a82025;font-size:25px;line-height:1;font-weight:700;text-decoration:none}
+.delete-x:hover{background:transparent;color:#741a1d;text-decoration:none}
+.status-finishing{color:#684b20;background:#f4ead6;border-color:#dfc99d}
+.status-sample{color:#5e4a80;background:#f0ebf7;border-color:#d4c8e6}
+.stage-card{display:block;width:100%}
+.stage-card>.stage-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;list-style:none}
+.stage-card>.stage-toggle::-webkit-details-marker{display:none}
+.stage-toggle>div{min-width:0}
+.stage-toggle h3{margin:5px 0}
+.stage-body{width:100%;padding-top:12px}
+.stage-top-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.stage-edit{width:100%;margin:0;border:0;padding:0}
+.stage-edit-form{width:100%;max-width:none;grid-template-columns:minmax(0,1fr);gap:0}
+.stage-edit-form label,.stage-edit-form input,.stage-edit-form select,.stage-edit-form textarea{width:100%}
+.stage-edit-form textarea[name="comment"]{min-height:66px;height:66px}
+.linked-article-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid #eee}
+.linked-article-row .delete-x{margin-left:auto}
+@media(max-width:650px){.stage-card>.stage-toggle{align-items:flex-start}.stage-card>.stage-toggle .status-pill{white-space:normal;text-align:right}.stage-body{padding-top:8px}}

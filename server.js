@@ -118,6 +118,27 @@ function auditProjectChange(user, projectId, action, detail) {
   if (!records.length) { audit(user, action, null, detail); return; }
   for (const row of records) audit(user, action, row.record_id, detail, row.article_id);
 }
+function projectStatusFromStage(status) {
+  if (status === 'sent_finishing') return 'in_finishing';
+  if (status === 'accepted_internal' || status === 'accepted_client') return 'accepted';
+  return Object.hasOwn(V.PROJECT_STATUS, status) ? status : 'in_progress';
+}
+function syncProjectStatusFromStage(projectId, stageStatus, stamp = now()) {
+  const status = projectStatusFromStage(stageStatus);
+  const legacyStatus = ['accepted', 'failed', 'client_declined'].includes(status) ? status : 'in_progress';
+  db.prepare('UPDATE projects SET workflow_status=?,status=?,updated_at=? WHERE id=?').run(status, legacyStatus, stamp, projectId);
+}
+function stageIssueContext(projectId, stageId, articleId) {
+  if (projectId === 0 && stageId === 0) return null;
+  if (!Number.isSafeInteger(projectId) || projectId < 1 || !Number.isSafeInteger(stageId) || stageId < 1) fail(400, 'Nieprawidłowe powiązanie próby z wydawaną kartą.');
+  const stage = db.prepare(`SELECT s.*,p.archived_at project_archived_at
+    FROM project_stages s JOIN projects p ON p.id=s.project_id
+    JOIN project_stage_articles sa ON sa.stage_id=s.id
+    WHERE s.id=? AND s.project_id=? AND sa.article_id=?`).get(stageId, projectId, articleId);
+  if (!stage) fail(409, 'Artykuł nie jest przypisany do wskazanego etapu próby.');
+  if (stage.project_archived_at) fail(409, 'Projekt/próba jest zarchiwizowany. Przywróć go przed wydaniem karty.');
+  return stage;
+}
 function stale(row, form) {
   if (String(row.revision) !== String(form.revision || '')) fail(409, 'Ktoś zapisał nowszą wersję. Wróć do formularza, zachowaj własne uwagi i wczytaj aktualne dane.');
 }
@@ -434,7 +455,7 @@ async function handle(req, res) {
       const statusFilter = url.searchParams.get('status') || (legacyState==='approved'?'accepted':legacyState==='pending'?'in_progress':'');
       const validStatuses=Object.keys(V.PROJECT_STATUS);
       const status=validStatuses.includes(statusFilter)?statusFilter:'';
-      const sortOptions={updated:'updated DESC,p.id DESC',created_desc:'p.created_at DESC,p.id DESC',created_asc:'p.created_at,p.id',status:"CASE p.workflow_status WHEN 'in_progress' THEN 1 WHEN 'to_knitter' THEN 2 WHEN 'produced' THEN 3 WHEN 'accepted' THEN 4 WHEN 'failed' THEN 5 WHEN 'client_declined' THEN 6 ELSE 7 END,p.updated_at DESC,p.id DESC",number:"CAST(substr(p.trial_number,instr(p.trial_number,'/')+1) AS INTEGER),CAST(substr(p.trial_number,1,instr(p.trial_number,'/')-1) AS INTEGER)",name:'p.short_description COLLATE NOCASE,p.id'};
+      const sortOptions={updated:'updated DESC,p.id DESC',created_desc:'p.created_at DESC,p.id DESC',created_asc:'p.created_at,p.id',status:"CASE p.workflow_status WHEN 'in_progress' THEN 1 WHEN 'to_knitter' THEN 2 WHEN 'produced' THEN 3 WHEN 'in_finishing' THEN 4 WHEN 'sample_at_client' THEN 5 WHEN 'accepted' THEN 6 WHEN 'failed' THEN 7 WHEN 'client_declined' THEN 8 ELSE 9 END,p.updated_at DESC,p.id DESC",number:"CAST(substr(p.trial_number,instr(p.trial_number,'/')+1) AS INTEGER),CAST(substr(p.trial_number,1,instr(p.trial_number,'/')-1) AS INTEGER)",name:'p.short_description COLLATE NOCASE,p.id'};
       const sort=sortOptions[url.searchParams.get('sort')]?url.searchParams.get('sort'):'updated';
       const dateFrom=/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date_from')||'')?url.searchParams.get('date_from'):'';
       const dateTo=/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date_to')||'')?url.searchParams.get('date_to'):'';
@@ -442,7 +463,7 @@ async function handle(req, res) {
       const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
       const params = [], clauses=['p.archived_at IS NULL'];
       for(const word of normalize(q).split(/\s+/).filter(Boolean)) {
-        clauses.push("search_text(p.trial_number || ' ' || p.short_description || ' ' || p.client_name || ' ' || p.goal || ' ' || p.assumptions || ' ' || coalesce((SELECT group_concat(a.symbol,' ') FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id),'')) LIKE ? ESCAPE '\\'");
+        clauses.push("search_text(p.trial_number || ' ' || p.short_description || ' ' || p.client_name || ' ' || p.goal || ' ' || p.assumptions || ' ' || p.comment || ' ' || coalesce((SELECT group_concat(a.symbol,' ') FROM project_articles pa JOIN articles a ON a.id=pa.article_id WHERE pa.project_id=p.id),'')) LIKE ? ESCAPE '\\'");
         params.push('%'+word.replace(/[\\%_]/g,'\\$&')+'%');
       }
       if(status){clauses.push('p.workflow_status=?');params.push(status);}
@@ -463,13 +484,13 @@ async function handle(req, res) {
       role(req.user, 'technologist', 'approver', 'admin');
       const shortDescription = formText(form, 'name');
       if (!shortDescription || shortDescription.length > 150) fail(400, 'Podaj krótki opis próby (do 150 znaków).');
-      const goal=String(form.goal||form.description||'').trim().slice(0,6000), assumptions=String(form.assumptions||'').trim().slice(0,6000),clientName=formText(form,'client_name').slice(0,200);
+      const goal=String(form.goal||form.description||'').trim().slice(0,6000), assumptions=String(form.assumptions||'').trim().slice(0,6000),clientName=formText(form,'client_name').slice(0,200),comment=formText(form,'comment').slice(0,3000);
       const pid = transaction(() => {
         const stamp=now(),number=nextTrialNumber(),name=`${number} · ${shortDescription}`;
-        const result = db.prepare("INSERT INTO projects(name,description,created_at,trial_number,short_description,goal,assumptions,status,updated_at,client_name,workflow_status) VALUES(?,?,?,?,?,?,?,'in_progress',?,?,'in_progress')").run(name,goal,stamp,number,shortDescription,goal,assumptions,stamp,clientName);
+        const result = db.prepare("INSERT INTO projects(name,description,created_at,trial_number,short_description,goal,assumptions,status,updated_at,client_name,workflow_status,comment) VALUES(?,?,?,?,?,?,?,'in_progress',?,?,'in_progress',?)").run(name,goal,stamp,number,shortDescription,goal,assumptions,stamp,clientName,comment);
         const projectId=Number(result.lastInsertRowid);
         db.prepare("INSERT INTO project_stages(project_id,stage_no,stage_date,status,updated_at) VALUES(?,1,?,'in_progress',?)").run(projectId,todayWarsaw(),stamp);
-        audit(req.user, 'Utworzono próbę', null, `${number} · ${shortDescription}${clientName?` · ${clientName}`:''}`);
+        audit(req.user, 'Utworzono próbę', null, `${number} · ${shortDescription}${clientName?` · ${clientName}`:''}${comment?` · ${comment}`:''}`);
         return projectId;
       });
       return redirect(req, res, `/projects/${pid}`);
@@ -482,18 +503,17 @@ async function handle(req, res) {
       if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
       if(action==='update'||action==='status') {
         const shortDescription=action==='status'?pr.short_description:String(form.short_description||pr.short_description||pr.name).trim().slice(0,150);
-        const goal=action==='status'?pr.goal:String(form.goal||'').trim().slice(0,6000),assumptions=action==='status'?pr.assumptions:String(form.assumptions||'').trim().slice(0,6000),clientName=action==='status'?pr.client_name:formText(form,'client_name').slice(0,200),status=String(form.status||pr.workflow_status||pr.status);
+        const goal=action==='status'?pr.goal:String(form.goal||'').trim().slice(0,6000),assumptions=action==='status'?pr.assumptions:String(form.assumptions||'').trim().slice(0,6000),clientName=action==='status'?pr.client_name:formText(form,'client_name').slice(0,200),comment=action==='status'?pr.comment:formText(form,'comment').slice(0,3000),status=String(form.status||pr.workflow_status||pr.status);
         if(!Object.hasOwn(V.PROJECT_STATUS,status))fail(400,'Nieprawidłowy status próby.');
         transaction(()=>{
           const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
-          const before={short_description:current.short_description||current.name,client_name:current.client_name||'',goal:current.goal||current.description||'',assumptions:current.assumptions||'',status:current.workflow_status||current.status};
-          const after={short_description:shortDescription,client_name:action==='status'?(current.client_name||''):clientName,goal,assumptions,status:action==='status'?status:before.status};
-          const changeComment=formText(form,'change_comment').slice(0,1000);
+          const before={short_description:current.short_description||current.name,client_name:current.client_name||'',goal:current.goal||current.description||'',assumptions:current.assumptions||'',comment:current.comment||'',status:current.workflow_status||current.status};
+          const after={short_description:shortDescription,client_name:action==='status'?(current.client_name||''):clientName,goal,assumptions,comment,status:action==='status'?status:before.status};
           if(action==='status') {
             const legacyStatus=['accepted','failed','client_declined'].includes(status)?status:'in_progress';
             db.prepare('UPDATE projects SET workflow_status=?,status=?,updated_at=? WHERE id=?').run(status,legacyStatus,now(),pid);
-          } else db.prepare('UPDATE projects SET name=?,short_description=?,client_name=?,description=?,goal=?,assumptions=?,updated_at=? WHERE id=?').run(`${current.trial_number} · ${shortDescription}`,shortDescription,clientName,goal,goal,assumptions,now(),pid);
-          auditProjectChange(req.user,pid,action==='status'?'Zmieniono status próby':'Zmieniono opis próby',JSON.stringify({trial:current.trial_number,before,after,comment:changeComment}));
+          } else db.prepare('UPDATE projects SET name=?,short_description=?,client_name=?,description=?,goal=?,assumptions=?,comment=?,updated_at=? WHERE id=?').run(`${current.trial_number} · ${shortDescription}`,shortDescription,clientName,goal,goal,assumptions,comment,now(),pid);
+          auditProjectChange(req.user,pid,action==='status'?'Zmieniono status próby':'Zmieniono opis próby',JSON.stringify({trial:current.trial_number,before,after}));
         });
         return redirect(req,res,`/projects/${pid}`,'Zapisano zmiany próby.');
       }
@@ -501,27 +521,57 @@ async function handle(req, res) {
         const description=formText(form,'description').slice(0,300),stageDate=todayWarsaw();
         const stageNumber=transaction(()=>{
           const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
+          const previous=db.prepare('SELECT stage_status,status FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
+          const previousStatus=previous?.stage_status||previous?.status;
+          if(previous&&!['accepted_internal','accepted_client'].includes(previousStatus))fail(409,'Najpierw zaakceptuj poprzedni etap przez nas lub klienta. Etap pozostanie otwarty i będzie można go dalej przeglądać oraz edytować.');
           const stamp=now();
           const number=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(pid).n;
-          db.prepare("INSERT INTO project_stages(project_id,stage_no,description,stage_date,status,updated_at) VALUES(?,?,?,?,'in_progress',?)").run(pid,number,description,stageDate,stamp);
-          db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
+          db.prepare("INSERT INTO project_stages(project_id,stage_no,description,stage_date,stage_status,updated_at) VALUES(?,?,?,?,'in_progress',?)").run(pid,number,description,stageDate,stamp);
+          syncProjectStatusFromStage(pid,'in_progress',stamp);
           auditProjectChange(req.user,pid,'Dodano etap próby',JSON.stringify({stage:number,description,date:stageDate}));
           return number;
         });
         return redirect(req,res,`/projects/${pid}`,`Dodano etap ${stageNumber}.`);
       }
       const description=formText(form,'description').slice(0,300),stageDate=todayWarsaw(),status=formText(form,'status'),comment=String(form.comment||'').trim().slice(0,3000);
-      if(!['in_progress','sent_finishing','sample_at_client','accepted_internal','accepted_client'].includes(status))fail(400,'Sprawdź status etapu.');
+      if(!Object.hasOwn(V.STAGE_STATUS,status))fail(400,'Sprawdź status etapu.');
       transaction(()=>{
         const current=project(pid),stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
         if(!stage)fail(404,'Nie znaleziono etapu.');
         const stamp=now();
-        db.prepare('UPDATE project_stages SET description=?,stage_date=?,status=?,comment=?,updated_at=? WHERE id=?').run(description,stageDate,status,comment,stamp,stageId);
-        if(status==='accepted_client'||status==='accepted_internal')db.prepare("UPDATE projects SET status='accepted',workflow_status='accepted',updated_at=? WHERE id=?").run(stamp,pid);
+        db.prepare('UPDATE project_stages SET description=?,stage_date=?,stage_status=?,comment=?,updated_at=? WHERE id=?').run(description,stageDate,status,comment,stamp,stageId);
+        const latest=db.prepare('SELECT id FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
+        if(latest?.id===stageId)syncProjectStatusFromStage(pid,status,stamp);
         else db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
-        auditProjectChange(req.user,pid,'Zapisano etap próby',JSON.stringify({stage:stage.stage_no,before:{description:stage.description,date:stage.stage_date,status:stage.status,comment:stage.comment},after:{description,date:stageDate,status,comment},comment}));
+        auditProjectChange(req.user,pid,'Zapisano etap próby',JSON.stringify({stage:stage.stage_no,before:{description:stage.description,date:stage.stage_date,status:stage.stage_status||stage.status,comment:stage.comment},after:{description,date:stageDate,status,comment}}));
       });
       return redirect(req,res,`/projects/${pid}`,'Zapisano etap próby.');
+    }
+
+    const stageDelete=p.match(/^\/projects\/(\d+)\/stages\/(\d+)\/delete$/);
+    if(stageDelete&&req.method==='GET') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(stageDelete[1]),stageId=Number(stageDelete[2]),pr=project(pid);
+      if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
+      const stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+      if(!stage)fail(404,'Nie znaleziono etapu.');
+      const articles=db.prepare('SELECT a.symbol FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id WHERE sa.stage_id=? ORDER BY a.symbol_key,a.id').all(stageId);
+      return send(req,res,200,V.confirmDeleteStagePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),p:pr,stage,articles}));
+    }
+    if(stageDelete&&req.method==='POST') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(stageDelete[1]),stageId=Number(stageDelete[2]);
+      transaction(()=>{
+        const pr=project(pid);if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
+        const stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+        if(!stage)fail(404,'Nie znaleziono etapu.');
+        const articles=db.prepare('SELECT a.symbol FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id WHERE sa.stage_id=? ORDER BY a.symbol_key,a.id').all(stageId).map(row=>row.symbol);
+        db.prepare('DELETE FROM project_stages WHERE id=? AND project_id=?').run(stageId,pid);
+        const latest=db.prepare('SELECT stage_status,status FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
+        syncProjectStatusFromStage(pid,latest?.stage_status||latest?.status||'in_progress',now());
+        audit(req.user,'Usunięto etap próby',null,JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,description:stage.description,articles}));
+      });
+      return redirect(req,res,`/projects/${pid}`,'Etap próby został usunięty. Powiązane artykuły i wydane karty pozostały zachowane.');
     }
 
     const stageArticleLink=p.match(/^\/projects\/(\d+)\/stages\/(\d+)\/articles$/);
@@ -569,17 +619,29 @@ async function handle(req, res) {
     }
 
     const unlinkProjectArticle=p.match(/^\/projects\/(\d+)\/articles\/(\d+)\/unlink$/);
+    if(unlinkProjectArticle && req.method==='GET') {
+      role(req.user,'admin','approver','technologist');
+      const pid=Number(unlinkProjectArticle[1]),articleId=Number(unlinkProjectArticle[2]),pr=project(pid);
+      if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanego projektu/próby.');
+      const article=db.prepare('SELECT a.* FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=? AND a.id=?').get(pid,articleId);
+      if(!article)fail(404,'Ten artykuł nie jest przypisany do próby.');
+      const stageCount=db.prepare('SELECT count(*) n FROM project_stage_articles sa JOIN project_stages s ON s.id=sa.stage_id WHERE s.project_id=? AND sa.article_id=?').get(pid,articleId).n;
+      return send(req,res,200,V.confirmRemoveProjectArticlePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),p:pr,article,stageCount}));
+    }
     if(unlinkProjectArticle && req.method==='POST') {
       role(req.user,'admin','approver','technologist');
       const pid=Number(unlinkProjectArticle[1]), articleId=Number(unlinkProjectArticle[2]);
       const pr=project(pid);if(pr.archived_at)fail(409,'Nie można modyfikować zarchiwizowanego projektu/próby.');
       transaction(()=>{
+        const article=db.prepare('SELECT a.symbol FROM articles a JOIN project_articles pa ON pa.article_id=a.id WHERE pa.project_id=? AND a.id=?').get(pid,articleId);
+        if(!article)fail(404,'Ten artykuł nie jest przypisany do próby.');
+        db.prepare('DELETE FROM project_stage_articles WHERE article_id=? AND stage_id IN (SELECT id FROM project_stages WHERE project_id=?)').run(articleId,pid);
         const result=db.prepare('DELETE FROM project_articles WHERE project_id=? AND article_id=?').run(pid,articleId);
         if(!result.changes)fail(404,'To powiązanie artykułu z projektem już nie istnieje.');
         db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(now(),pid);
-        audit(req.user,'Odpięto artykuł od projektu',null,`${articleId} / ${pid}`);
+        audit(req.user,'Usunięto artykuł z próby',null,`${article.symbol} · próba ${pr.trial_number}`,articleId);
       });
-      return redirect(req,res,`/projects/${pid}`,'Artykuł został odpięty od projektu.');
+      return redirect(req,res,`/projects/${pid}`,'Artykuł został usunięty z próby. Pozostał w kartotece.');
     }
     let id = matchId(p, /^\/projects\/(\d+)$/);
     if (id && req.method === 'GET') {
@@ -725,7 +787,7 @@ async function handle(req, res) {
           const note = formText(form, 'review_note');
           if (r.kind !== 'spec' || r.state !== 'submitted') fail(409, 'Nie można zatwierdzić tego wpisu.');
           validateReady(r);
-          if (!form.checked || note.length < 10) fail(400, 'Potwierdź sprawdzenie i opisz decyzję (minimum 10 znaków).');
+          if (!form.checked) fail(400, 'Potwierdź, że sprawdzono dane i rozbieżności.');
           if (r.active_spec !== r.expected_active) fail(409, 'W międzyczasie zatwierdzono inną specyfikację. Utwórz nową wersję na podstawie aktualnej i porównaj zmiany.');
           const base=r.expected_active?db.prepare("SELECT * FROM records WHERE id=? AND article_id=? AND state='approved'").get(r.expected_active,r.article_id):null;
           const beforePayload=base?parsePayload(base):null,afterPayload=parsePayload(r);
@@ -757,18 +819,26 @@ async function handle(req, res) {
         if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
         if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
         if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Najpierw zatwierdź aktualną specyfikację.');
-        return send(req, res, 200, V.issuePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, token: crypto.randomBytes(24).toString('base64url') }));
+        const contextProjectRaw=url.searchParams.get('project')||'',contextStageRaw=url.searchParams.get('stage')||'';
+        if(Boolean(contextProjectRaw)!==Boolean(contextStageRaw))fail(400,'Niepełne powiązanie próby z wydawaną kartą.');
+        const contextProjectId=contextProjectRaw?Number(contextProjectRaw):0,contextStageId=contextStageRaw?Number(contextStageRaw):0;
+        stageIssueContext(contextProjectId,contextStageId,r.article_id);
+        return send(req, res, 200, V.issuePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, token: crypto.randomBytes(24).toString('base64url'), projectId:contextProjectRaw?contextProjectId:'', stageId:contextStageRaw?contextStageId:'' }));
       }
       const token = formText(form, 'token'), machine = formText(form, 'machine'), instructions = formText(form, 'instructions'), productionNotes=formText(form,'production_notes');
+      const contextProjectRaw=formText(form,'trial_project_id'),contextStageRaw=formText(form,'trial_stage_id');
+      if(Boolean(contextProjectRaw)!==Boolean(contextStageRaw))fail(400,'Niepełne powiązanie próby z wydawaną kartą.');
+      const contextProjectId=contextProjectRaw?Number(contextProjectRaw):0,contextStageId=contextStageRaw?Number(contextStageRaw):0;
+      const issueStage=stageIssueContext(contextProjectId,contextStageId,r.article_id);
       if (!machine || (!instructions && !productionNotes) || token.length < 20) fail(400, 'Podaj maszynę oraz polecenia lub specjalne informacje do tej produkcji.');
       if (machine.length > 100 || instructions.length > 6000 || productionNotes.length > 6000) fail(400, 'Skróć nazwę maszyny, polecenia lub specjalne informacje do produkcji.');
       if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
       if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
       if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Można wydać wyłącznie aktualną zatwierdzoną wersję. Otwórz aktualną kartę artykułu.');
-      if(form.cancel_confirmation)return send(req,res,200,V.issuePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r,token,machine,instructions,productionNotes}));
+      if(form.cancel_confirmation)return send(req,res,200,V.issuePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r,token,machine,instructions,productionNotes,projectId:contextProjectRaw?contextProjectId:'',stageId:contextStageRaw?contextStageId:''}));
       const changeNotice=Changes.notice(db,r,parsePayload(r));
       if(changeNotice&&!form.confirm_changes) {
-        return send(req,res,200,V.issueConfirmPage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r,token,machine,instructions,productionNotes,changeNotice}));
+        return send(req,res,200,V.issueConfirmPage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r,token,machine,instructions,productionNotes,projectId:contextProjectRaw?contextProjectId:'',stageId:contextStageRaw?contextStageId:'',changeNotice}));
       }
       const cardId = transaction(() => {
         const old = db.prepare('SELECT id,record_id,created_by FROM cards WHERE token=?').get(token);
@@ -786,6 +856,14 @@ async function handle(req, res) {
         const result = db.prepare('INSERT INTO cards(record_id,machine,instructions,created_at,created_by,token,snapshot,html,production_notes) VALUES(?,?,?,?,?,?,?,?,?)').run(id, machine, instructions, stamp, req.user.id, token, dump({ record: r, data: v, author: req.user.name, production_notes:productionNotes }), html, productionNotes);
         const newId = Number(result.lastInsertRowid);
         audit(req.user, 'Wydano kartę na maszynę', id, `Karta ${newId} / ${machine} / ${instructions}${productionNotes?` / ${productionNotes}`:''}`);
+        if(issueStage) {
+          const currentStage=stageIssueContext(contextProjectId,contextStageId,r.article_id);
+          db.prepare("UPDATE project_stages SET stage_status='to_knitter',updated_at=? WHERE id=?").run(stamp,currentStage.id);
+          const latest=db.prepare('SELECT id FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(contextProjectId);
+          if(latest?.id===currentStage.id)syncProjectStatusFromStage(contextProjectId,'to_knitter',stamp);
+          else db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,contextProjectId);
+          auditProjectChange(req.user,contextProjectId,'Zlecono na dziewiarnię',JSON.stringify({stage:currentStage.stage_no,article:r.symbol,card:newId,machine}));
+        }
         return newId;
       });
       return redirect(req, res, `/cards/${cardId}`);
