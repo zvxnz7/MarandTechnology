@@ -206,21 +206,22 @@ async function post(s,url,fields={}) {return request(baseUrl+url,{method:'POST',
 async function createArticle(s,symbol) {
  const r=await post(s,'/articles',{symbol});assert.equal(r.status,303,r.text());return Number(r.headers.location.split('/').pop());
 }
-test('independent article, project creation with article and cross-project association',async()=>{
+test('independent article and cross-project stage association',async()=>{
  const s=await session();const aid=await createArticle(s,'INDEPENDENT');
  const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));
  assert.equal(db.prepare('SELECT project_id FROM articles WHERE id=?').get(aid).project_id,null);
- let r=await post(s,'/projects',{name:'PROJECT-A',article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ let r=await post(s,'/projects',{name:'PROJECT-A'});assert.equal(r.status,303,r.text());
  const pid=Number(r.headers.location.split('/').pop());
- r=await post(s,'/projects',{name:'PROJECT-B',article_mode:'new',symbol:'NEW-ARTICLE'});assert.equal(r.status,303,r.text());
+ r=await post(s,'/projects',{name:'PROJECT-B'});assert.equal(r.status,303,r.text());
  const pid2=Number(r.headers.location.split('/').pop());
- r=await post(s,`/projects/${pid2}/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ r=await post(s,`/projects/${pid}/stages/1/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
+ r=await post(s,`/projects/${pid2}/stages/1/articles`,{article_mode:'existing',existing_symbol:'INDEPENDENT'});assert.equal(r.status,303,r.text());
  assert.equal(db.prepare('SELECT count(*) n FROM project_articles WHERE article_id=?').get(aid).n,2);
  const before=db.prepare('SELECT count(*) n FROM projects').get().n;
- r=await post(s,'/projects',{name:'INVALID-ROLLBACK',article_mode:'new',symbol:'INDEPENDENT'});assert.equal(r.status,409);
+ r=await post(s,`/projects/${pid}/stages/1/articles`,{article_mode:'new',symbol:'INDEPENDENT'});assert.equal(r.status,409);
  assert.equal(db.prepare('SELECT count(*) n FROM projects').get().n,before);
- r=await post(s,`/projects/${pid}/new`,{kind:'trial',article_id:aid});assert.equal(r.status,303,r.text());
- const trialId=Number(r.headers.location.split('/')[2]);assert.equal(db.prepare('SELECT article_id FROM records WHERE id=?').get(trialId).article_id,aid);
+ const trialId=db.prepare('SELECT record_id FROM project_stage_articles WHERE stage_id=(SELECT id FROM project_stages WHERE project_id=?) AND article_id=?').get(pid,aid).record_id;
+ assert.equal(db.prepare('SELECT article_id FROM records WHERE id=?').get(trialId).article_id,aid);
  db.prepare('UPDATE records SET updated_at=? WHERE id=?').run('2026-03-04T10:00:00Z',trialId);
  r=await request(`${baseUrl}/articles/${aid}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200);assert.match(r.text(),/PROJECT-A/);assert.match(r.text(),/PROJECT-B/);
  assert.match(r.text(),/04\.03\.2026/);
