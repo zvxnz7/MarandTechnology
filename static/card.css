@@ -4,3 +4,4 @@
 .gb th:nth-child(2){width:24%}.gb th:nth-child(3){width:20%}.gb th:nth-child(4){width:12%}.gb th:nth-child(5){width:18%}.gb th:nth-child(6){width:20%}
 .production-notes{margin-top:12px;padding-top:9px;border-top:1px solid #777}.production-notes strong{display:block;margin-bottom:5px;font-size:14px}.production-notes div{white-space:pre-wrap}
 .machine-specs th{background:#a6a6a6}
+.logo{height:180px}.logo img{object-fit:cover}.production-notes-row{min-height:42px;margin-bottom:8px;line-height:1.45}.one-time-production-notes{break-inside:avoid}

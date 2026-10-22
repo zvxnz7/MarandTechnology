@@ -229,6 +229,34 @@ test('independent article and cross-project stage association',async()=>{
  assert.match(r.text(),/04\.03\.2026/);
  db.close();
 });
+test('trial stages autosave, can be added regardless of status, and deletions use popup confirmation',async()=>{
+ const s=await session();let r=await post(s,'/projects',{name:'LIVE-STAGES',client_name:'Klient testowy',comment:'Komentarz do usunięcia'});assert.equal(r.status,303,r.text());
+ const pid=Number(r.headers.location.split('/').pop()),db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));
+ const stage1=db.prepare('SELECT * FROM project_stages WHERE project_id=? AND stage_no=1').get(pid);
+ r=await post(s,`/projects/${pid}/stages/${stage1.id}`,{status:'to_knitter'});assert.equal(r.status,303,r.text());
+ r=await post(s,`/projects/${pid}/stages`,{description:'Drugi etap'});assert.equal(r.status,303,r.text());
+ assert.equal(db.prepare('SELECT count(*) n FROM project_stages WHERE project_id=?').get(pid).n,2);
+ r=await post(s,`/projects/${pid}/stages/${stage1.id}/autosave`,{field:'description',value:'Pierwszy etap po zmianie'});assert.equal(r.status,200,r.text());assert.equal(r.json().ok,true);
+ r=await post(s,`/projects/${pid}/stages/${stage1.id}/autosave`,{field:'comment',value:'Komentarz etapu zapisany automatycznie'});assert.equal(r.status,200,r.text());
+ const savedStage=db.prepare('SELECT description,comment,stage_status FROM project_stages WHERE id=?').get(stage1.id);assert.deepEqual({...savedStage},{description:'Pierwszy etap po zmianie',comment:'Komentarz etapu zapisany automatycznie',stage_status:'to_knitter'});
+ r=await request(`${baseUrl}/projects/${pid}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/Klient testowy/);assert.match(r.text(),/data-stage-select=/);assert.match(r.text(),/stage-number/);assert.equal((r.text().match(/<details class="stage-card"[^>]* open>/g)||[]).length,1);
+ const commentId=db.prepare('SELECT id FROM project_comments WHERE project_id=?').get(pid).id,commentDeleteUrl=`/projects/${pid}/comments/${commentId}/delete`;
+ r=await request(`${baseUrl}${commentDeleteUrl}`,{headers:{cookie:s.cookie}});assert.equal(r.status,200,r.text());assert.match(r.text(),/<dialog class="form-dialog delete-confirm-dialog"[^>]*data-show-modal/);assert.match(r.text(),/Komentarz do usunięcia/);
+ r=await post(s,commentDeleteUrl,{});assert.equal(r.status,303,r.text());assert.equal(db.prepare('SELECT id FROM project_comments WHERE id=?').get(commentId),undefined);
+ const aid=await createArticle(s,'DRAFT-DELETE');r=await request(`${baseUrl}/articles/${aid}`,{headers:{cookie:s.cookie}});assert.match(r.text(),/POLECENIA SPECJALNE – najbliższa produkcja/);assert.match(r.text(),/special-production-button/);
+ r=await post(s,`/articles/${aid}/new`);assert.equal(r.status,303,r.text());const recordId=Number(r.headers.location.split('/')[2]);
+ r=await request(`${baseUrl}/articles/${aid}`,{headers:{cookie:s.cookie}});assert.match(r.text(),new RegExp(`/records/${recordId}/delete`));
+ const recordDeleteUrl=`/records/${recordId}/delete`;r=await request(`${baseUrl}${recordDeleteUrl}`,{headers:{cookie:s.cookie}});assert.match(r.text(),/<dialog class="form-dialog delete-confirm-dialog"[^>]*data-show-modal/);
+ r=await post(s,recordDeleteUrl,{});assert.equal(r.status,303,r.text());assert.ok(db.prepare('SELECT archived_at FROM records WHERE id=?').get(recordId).archived_at);
+ db.close();
+});
+test('production card print removes finished parameters and places one-time instructions at the bottom',()=>{
+ const html=V.cardPage({r:{symbol:'PRINT-TEST',version:1},v:{tech:{},gb:[],raw:{weight:'180'},targets:{weight:'999'},finished_comments:'FINISHED-COMMENT-MUST-NOT-PRINT',knitter_notes:'Stała uwaga'},machine:'M5',instructions:'Standardowe polecenia',productionNotes:'Paletować pionowo',cardno:'K-TEST',issuedAt:'2026-10-22T12:00:00Z',author:'Test',logo:'dGVzdA==',printcss:fs.readFileSync(path.join(ROOT,'static','card.css'),'utf8')});
+ assert.doesNotMatch(html,/Parametry dzianiny wykończonej|FINISHED-COMMENT-MUST-NOT-PRINT|999/);
+ assert.match(html,/Raport ogniw wzorujących, przędzy i nawleczenia/);
+ const noteAt=html.indexOf('Jednorazowe instrukcje przy produkcji'),notesAt=html.indexOf('Notatki od dziewiarza');assert.ok(noteAt>notesAt);assert.match(html,/Paletować pionowo/);assert.match(html,/\.logo\{height:180px\}/);assert.match(html,/\.logo img\{object-fit:cover\}/);
+ const issue=V.issuePage({user:{name:'Test',role:'admin'},csrf:'csrf',flashes:[],r:{id:1,symbol:'PRINT-TEST',version:1},token:'token',productionNotes:'Paletować pionowo'});assert.match(issue,/class="notice production-note-pending"/);assert.match(issue,/POLECENIA SPECJALNE — najbliższa produkcja/);
+});
 test('categories are removed; article dates and SQL pagination with 500 articles',async()=>{
  const s=await session();let r=await post(s,'/categories',{name:'Poliester-test'});assert.equal(r.status,404,r.text());
  const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));

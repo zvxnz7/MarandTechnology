@@ -18,7 +18,26 @@ document.querySelectorAll('[data-open-dialog]').forEach(button=>button.addEventL
  if(dialog&&typeof dialog.showModal==='function')dialog.showModal();
 }));
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
-document.querySelectorAll('[data-show-modal]').forEach(dialog=>{if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');});
+document.querySelectorAll('[data-show-modal]').forEach(dialog=>{
+ dialog.addEventListener('cancel',event=>{
+  const cancelUrl=dialog.dataset.cancelUrl;
+  if(cancelUrl){event.preventDefault();location.assign(cancelUrl);}
+ });
+ if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+});
+document.querySelectorAll('[data-stage-select]').forEach(button=>button.addEventListener('click',()=>{
+ const selected=document.getElementById(button.getAttribute('aria-controls'));
+ if(!selected)return;
+ document.querySelectorAll('details.stage-card').forEach(stage=>{stage.open=stage===selected;});
+ document.querySelectorAll('[data-stage-select]').forEach(item=>{
+  const active=item===button;item.classList.toggle('selected',active);item.setAttribute('aria-pressed',String(active));
+ });
+ selected.scrollIntoView({behavior:'smooth',block:'start'});
+}));
+document.querySelectorAll('[data-stage-description-input]').forEach(input=>input.addEventListener('input',()=>{
+ const heading=document.querySelector(`[data-stage-description-label="${input.dataset.stageDescriptionInput}"]`);
+ if(heading)heading.textContent=input.value.trim()||'Etap bez opisu';
+}));
 document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>{
   const alert=document.querySelector('[data-update-alert]');
   if(alert && !window.confirm(alert.innerText+'\n\nCzy zapoznano się ze zmianami i kontynuować drukowanie?'))return;
@@ -129,6 +148,8 @@ document.querySelectorAll('[data-comment-composer]').forEach(form=>{
    const meta=document.createElement('div');meta.className='project-comment-meta';
    const author=document.createElement('strong');author.dataset.commentAuthor='';
    const time=document.createElement('time');time.dataset.commentTime='';meta.append(author,time);
+   const remove=document.createElement('a');remove.className='delete-x project-comment-delete';remove.setAttribute('aria-label','Usuń komentarz');remove.setAttribute('title','Usuń komentarz');
+   remove.href=form.dataset.commentDeleteBase+comment.id+'/delete';remove.textContent='×';meta.append(remove);
    const text=document.createElement('p');text.className='preline';text.dataset.commentContent='';row.append(meta,text);list.appendChild(row);
   }
   row.querySelector('[data-comment-author]').textContent=comment.author_name;

@@ -516,6 +516,52 @@ async function handle(req, res) {
       return send(req,res,200,JSON.stringify({ok:true,updatedAt}),'application/json; charset=utf-8');
     }
 
+    const projectStageAutosave=p.match(/^\/projects\/(\d+)\/stages\/(\d+)\/autosave$/);
+    if(projectStageAutosave&&req.method==='POST') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectStageAutosave[1]),stageId=Number(projectStageAutosave[2]),field=formText(form,'field');
+      if(!['description','comment'].includes(field))fail(400,'Nieprawidłowe pole etapu.');
+      const limit=field==='description'?300:3000,value=String(form.value||'').trim().slice(0,limit);
+      let updatedAt=now();
+      transaction(()=>{
+        const pr=project(pid);if(pr.archived_at)fail(409,'Nie można zmieniać zarchiwizowanej próby.');
+        const stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
+        if(!stage)fail(404,'Nie znaleziono etapu.');
+        const before=String(stage[field]||'');
+        if(before===value){updatedAt=stage.updated_at||pr.updated_at;return;}
+        updatedAt=now();
+        if(field==='description')db.prepare('UPDATE project_stages SET description=?,stage_date=?,updated_at=? WHERE id=?').run(value,todayWarsaw(),updatedAt,stageId);
+        else db.prepare('UPDATE project_stages SET comment=?,stage_date=?,updated_at=? WHERE id=?').run(value,todayWarsaw(),updatedAt,stageId);
+        db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(updatedAt,pid);
+        auditProjectChange(req.user,pid,'Zapisano '+(field==='description'?'opis etapu':'komentarz etapu'),JSON.stringify({trial:pr.trial_number,stage:stage.stage_no,field,before,after:value,author:req.user.name,at:updatedAt}));
+      });
+      return send(req,res,200,JSON.stringify({ok:true,updatedAt}),'application/json; charset=utf-8');
+    }
+
+    const projectCommentDelete=p.match(/^\/projects\/(\d+)\/comments\/(\d+)\/delete$/);
+    if(projectCommentDelete&&req.method==='GET') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectCommentDelete[1]),commentId=Number(projectCommentDelete[2]),pr=project(pid);
+      if(pr.archived_at)fail(409,'Nie można usuwać komentarzy z zarchiwizowanej próby.');
+      const comment=db.prepare('SELECT * FROM project_comments WHERE id=? AND project_id=?').get(commentId,pid);
+      if(!comment)fail(404,'Nie znaleziono komentarza.');
+      return send(req,res,200,V.confirmDeleteCommentPage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),p:pr,comment}));
+    }
+    if(projectCommentDelete&&req.method==='POST') {
+      role(req.user,'technologist','approver','admin');
+      const pid=Number(projectCommentDelete[1]),commentId=Number(projectCommentDelete[2]);
+      transaction(()=>{
+        const pr=project(pid);if(pr.archived_at)fail(409,'Nie można usuwać komentarzy z zarchiwizowanej próby.');
+        const comment=db.prepare('SELECT * FROM project_comments WHERE id=? AND project_id=?').get(commentId,pid);
+        if(!comment)fail(404,'Nie znaleziono komentarza.');
+        db.prepare('DELETE FROM project_comments WHERE id=? AND project_id=?').run(commentId,pid);
+        const latest=db.prepare('SELECT content FROM project_comments WHERE project_id=? ORDER BY id DESC LIMIT 1').get(pid)?.content||'';
+        const stamp=now();db.prepare('UPDATE projects SET comment=?,updated_at=? WHERE id=?').run(latest,stamp,pid);
+        auditProjectChange(req.user,pid,'Usunięto komentarz próby',JSON.stringify({trial:pr.trial_number,comment_id:commentId,author:comment.author_name,content:comment.content,at:stamp}));
+      });
+      return redirect(req,res,`/projects/${pid}`,'Komentarz został usunięty.');
+    }
+
     const projectComment=p.match(/^\/projects\/(\d+)\/comments$/);
     if(projectComment&&req.method==='POST') {
       role(req.user,'technologist','approver','admin');
@@ -570,9 +616,6 @@ async function handle(req, res) {
         const description=formText(form,'description').slice(0,300),stageDate=todayWarsaw();
         const stageNumber=transaction(()=>{
           const current=project(pid);if(current.archived_at)fail(409,'Nie można modyfikować zarchiwizowanej próby.');
-          const previous=db.prepare('SELECT stage_status,status FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
-          const previousStatus=previous?.stage_status||previous?.status;
-          if(previous&&!['accepted_internal','accepted_client'].includes(previousStatus))fail(409,'Najpierw zaakceptuj poprzedni etap przez nas lub klienta. Etap pozostanie otwarty i będzie można go dalej przeglądać oraz edytować.');
           const stamp=now();
           const number=db.prepare('SELECT coalesce(max(stage_no),0)+1 n FROM project_stages WHERE project_id=?').get(pid).n;
           db.prepare("INSERT INTO project_stages(project_id,stage_no,description,stage_date,stage_status,updated_at) VALUES(?,?,?,?,'in_progress',?)").run(pid,number,description,stageDate,stamp);
@@ -582,11 +625,13 @@ async function handle(req, res) {
         });
         return redirect(req,res,`/projects/${pid}`,`Dodano etap ${stageNumber}.`);
       }
-      const description=formText(form,'description').slice(0,300),stageDate=todayWarsaw(),status=formText(form,'status'),comment=String(form.comment||'').trim().slice(0,3000);
+      const status=formText(form,'status'),stageDate=todayWarsaw();
       if(!Object.hasOwn(V.STAGE_STATUS,status))fail(400,'Sprawdź status etapu.');
       transaction(()=>{
         const current=project(pid),stage=db.prepare('SELECT * FROM project_stages WHERE id=? AND project_id=?').get(stageId,pid);
         if(!stage)fail(404,'Nie znaleziono etapu.');
+        const description=Object.hasOwn(form,'description')?formText(form,'description').slice(0,300):stage.description;
+        const comment=Object.hasOwn(form,'comment')?String(form.comment||'').trim().slice(0,3000):stage.comment;
         const stamp=now();
         db.prepare('UPDATE project_stages SET description=?,stage_date=?,stage_status=?,comment=?,updated_at=? WHERE id=?').run(description,stageDate,status,comment,stamp,stageId);
         const latest=db.prepare('SELECT id FROM project_stages WHERE project_id=? ORDER BY stage_no DESC LIMIT 1').get(pid);
