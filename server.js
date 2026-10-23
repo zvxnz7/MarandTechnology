@@ -12,6 +12,7 @@ const V = require('./views');
 const ArchiveCleanup = require('./modules/archive-cleanup');
 const SourceImport = require('./modules/source-import');
 const DatabaseSnapshot = require('./modules/database-snapshot');
+const Production = require('./modules/production');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -101,6 +102,7 @@ const Catalog = require('./modules/catalog');
 const Changes = require('./modules/card-changes');
 db.function('search_text', { deterministic: true }, normalize);
 const Photos = require('./modules/photos').create({db,DATA,fail,role,transaction,audit,now,send,redirect});
+Production.initialize(db);
 
 
 class HttpError extends Error {
@@ -120,7 +122,7 @@ function nextTrialNumber() {
   db.prepare('INSERT INTO project_trial_sequences(year,last_value) VALUES(?,?) ON CONFLICT(year) DO UPDATE SET last_value=excluded.last_value').run(year,number);
   return `${number}/${year}`;
 }
-function normalize(value) { return String(value || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function normalize(value) { return String(value || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ''); }
 function dump(value) { return JSON.stringify(value); }
 function blank() {
   return { symbol: '', number: '', date: '', client: '', description: '', tech: {}, gb: [], raw: {}, raw_comments: '', finished_comments: '', finished: [], comments: '', stages: '', targets: {}, knitter_notes: '', sources: [] };
@@ -519,6 +521,19 @@ async function handle(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const p = decodeURIComponent(url.pathname);
+    if (p === '/api/production/upload' && req.method === 'POST') {
+      const raw = await readImportBody(req);
+      let payload;
+      try { payload = JSON.parse(raw.toString('utf8')); }
+      catch { return send(req, res, 400, JSON.stringify({ ok: false, error: 'Nieprawidłowy format danych.' }), 'application/json; charset=utf-8'); }
+      try {
+        const result = Production.receiveUpload(db, req.headers.authorization, payload, { now, todayWarsaw, transaction, makeArticle, audit });
+        return send(req, res, 200, JSON.stringify({ ok: true, ...result }), 'application/json; charset=utf-8');
+      } catch (error) {
+        const status = error.status || 500;
+        return send(req, res, status, JSON.stringify({ ok: false, error: error.message || 'Nie udało się zapisać produkcji.' }), 'application/json; charset=utf-8');
+      }
+    }
     if (p === '/admin/import/preview' && req.method === 'POST') {
       try {
         if (!req.user || !req.user.active) return send(req, res, 401, JSON.stringify({ ok: false, error: 'Zaloguj się ponownie.' }), 'application/json; charset=utf-8');
@@ -614,7 +629,7 @@ async function handle(req, res) {
       const articles = db.prepare('SELECT id,symbol,archived_at FROM articles WHERE archived_at IS NOT NULL AND archived_at>=? AND purged_at IS NULL ORDER BY archived_at DESC,id DESC').all(cutoff);
       return send(req,res,200,V.archivePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),records,projects,articles}));
     }
-    if (Photos.handle(context) || await Catalog.handle(context)) return;
+    if (Photos.handle(context) || await Production.handle(context) || await Catalog.handle(context)) return;
 
     if (p === '/projects' && req.method === 'GET') {
       const q = (url.searchParams.get('q') || '').trim();

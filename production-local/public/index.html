@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#cf2e31">
+  <title>Produkcja · Marand</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">M</span><div><strong>MARAND</strong><small>PRODUKCJA DZIANIN</small></div></div>
+    <div class="connection"><span class="local-dot"></span>Praca lokalna</div>
+  </header>
+  <main>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <section id="boot-error" class="panel boot-error" hidden>
+      <span class="eyebrow">PANEL LOKALNY</span>
+      <h1>Nie udało się połączyć z bazą na tym komputerze</h1>
+      <p class="muted">Sprawdź, czy uruchomiony jest panel dziewiarza, a potem spróbuj ponownie.</p>
+      <button id="retry-startup" class="primary" type="button">Połącz ponownie</button>
+    </section>
+    <section id="view-production" class="view">
+      <div class="page-head">
+        <div><span class="eyebrow">PANEL DZIEWIARZA</span><h1>Przyjęcie belki</h1><p class="muted">Wpisz podstawowe dane i zapisz belkę.</p></div>
+        <div id="pending-pill" class="pending-pill">Lokalna baza</div>
+      </div>
+      <div id="setup-notice" class="notice warning" hidden>Uzupełnij listę artykułów i dziewiarzy w ustawieniach, aby rozpocząć wpisy.</div>
+      <div id="sequence-warning" class="notice warning" hidden></div>
+      <form id="production-form" autocomplete="off">
+        <section class="panel common-panel">
+          <div class="panel-heading"><h2>Produkcja</h2><span class="small muted">Te dane zostaną przy następnej belce</span></div>
+          <div class="common-grid">
+            <label>Artykuł<select id="article" required></select></label>
+            <label>Maszyna<select id="machine" required></select></label>
+            <label>Data produkcji<input id="production-date" type="date" required></label>
+          </div>
+        </section>
+        <section class="panel bale-entry">
+          <div class="entry-heading"><div><h2 id="bale-form-title">Nowa belka</h2><p class="muted">Kilogramy są najważniejsze. Metry są informacją pomocniczą.</p></div><span class="touch-hint">Wpis 1 z 1</span></div>
+          <div class="primary-fields">
+            <label class="worker-main">Dziewiarz<select id="worker-primary" required></select></label>
+            <label class="kg-main">Masa belki <span class="field-note">kg</span><input id="weight-kg" type="text" inputmode="none" data-numeric="decimal" pattern="[0-9]+([,.][0-9]{1,2})?" required></label>
+            <label class="meters-main">Długość <span class="field-note">metry</span><input id="meters" type="text" inputmode="none" data-numeric="decimal" pattern="[0-9]+([,.][0-9]{1,2})?" required></label>
+            <label class="errors-main">Błędy<input id="errors" type="text" inputmode="none" data-numeric="integer" pattern="[0-9]+"></label>
+            <label class="stops-main">Stopy<input id="stops" type="text" inputmode="none" data-numeric="integer" pattern="[0-9]+"></label>
+          </div>
+          <div class="extra-content">
+            <section class="split-section">
+              <div class="extra-heading"><div><strong>Podział pracy dziewiarzy</strong><span class="muted"> · domyślnie całość przypisana wybranej osobie</span></div><button id="add-extra-worker" type="button" class="small-button">＋ Dodaj osobę</button></div>
+              <div id="extra-workers"></div>
+              <p id="share-summary" class="share-summary"><strong>Udział głównego dziewiarza:</strong> — m</p>
+            </section>
+            <div class="extra-grid">
+              <label>Uwagi<input id="notes" maxlength="1000" placeholder="Opcjonalnie"></label>
+            </div>
+          </div>
+        </section>
+        <div class="submit-row"><label class="repeat-toggle"><input id="repeat-next" type="checkbox"><span>Następna taka sama<br><small>zachowaj kg i metry, wyczyść błędy</small></span></label><button id="save-bale" class="primary save-button" type="submit">Zapisz belkę</button></div>
+      </form>
+      <section class="history-section">
+        <div class="history-heading"><span><strong>Ostatnie belki</strong><small id="history-caption">Historia lokalna · ostatnie 30 dni</small></span><button id="refresh" type="button" class="secondary refresh-button">Odśwież</button></div>
+        <div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Belka</th><th>Artykuł</th><th>Data</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział metrów</th><th>Stan</th><th>Akcje</th></tr></thead><tbody id="bale-list"></tbody></table></div></div>
+      </section>
+      <p class="footnote">Dane pozostają zapisane lokalnie po zamknięciu programu. Wysłane belki są zachowane także w kartotece głównej.</p>
+    </section>
+
+    <section id="view-settings" class="view" hidden>
+      <div class="page-head"><div><span class="eyebrow">USTAWIENIA LOKALNE</span><h1>Listy wyboru</h1><p class="muted">Ustaw aktywne artykuły i dziewiarzy widocznych na tym komputerze.</p></div><button type="button" id="back-to-production" class="secondary">Wróć do produkcji</button></div>
+      <div class="notice">Listy są przechowywane na tym komputerze. Połącz panel z programem głównym, aby kierownik mógł codziennie wysłać produkcję.</div>
+      <div class="settings-grid">
+        <section class="panel padded catalog-panel"><div class="catalog-title"><div><h2>Artykuły</h2><p class="muted">LOT ustawia kierownik dla artykułu. Dziewiarz nie wpisuje go przy belce.</p></div></div><form id="article-add-form" class="catalog-add"><label>Symbol artykułu<input id="article-new" maxlength="150" placeholder="np. WT 56-21 (5)" required></label><label>LOT <span class="field-note">opcjonalny</span><input id="article-new-lot" maxlength="120" placeholder="LOT artykułu"></label><button type="submit" class="primary">＋ Dodaj</button></form><div id="article-list" class="catalog-list"></div></section>
+        <section class="panel padded catalog-panel"><div class="catalog-title"><div><h2>Pracownicy</h2><p class="muted">Każda osoba ma własny identyfikator systemowy. Inicjały mogą się powtarzać.</p></div></div><form id="worker-add-form" class="catalog-add worker-add"><label>Imię i nazwisko<input id="worker-new-name" maxlength="100" placeholder="np. Adam Kowalski" required></label><label>Oznaczenie <span class="field-note">opcjonalne</span><input id="worker-new-code" maxlength="20" placeholder="np. AK"></label><button type="submit" class="primary">＋ Dodaj</button></form><div id="worker-list" class="catalog-list"></div></section>
+        <section class="panel padded full-row"><h2>Numeracja belek</h2><p class="muted">Wpisz ostatni przydzielony numer na każdej używanej maszynie. Pierwsza nowa belka otrzyma następny numer. Bez ustawionego licznika panel nie rozpocznie numeracji od 1.</p><div class="sequence-year"><label>Rok produkcji<input id="sequence-year" type="number" min="2000" max="2100" inputmode="numeric"></label></div><div id="sequence-list" class="sequence-grid"></div></section>
+        <section class="panel padded full-row"><h2>Codzienne wysłanie produkcji</h2><p class="muted">W programie głównym otwórz „Stan bieżący”, wygeneruj token jako administrator i wpisz go tutaj. Na tym etapie wysyłany jest artykuł WT 56-21 (5).</p><div class="production-connection-grid"><label>Adres programu głównego<input id="production-server-url" type="url" placeholder="http://adres-serwera:8765" autocomplete="url"></label><label>Token serwera<input id="production-api-token" type="password" maxlength="64" placeholder="Wklej token wygenerowany na serwerze" autocomplete="off"></label></div><p id="production-connection-status" class="muted small">Sprawdzam połączenie…</p><button id="sync-production" type="button" class="primary">Wyślij produkcję do bazy</button><p id="sync-production-status" class="muted small" role="status"></p></section>
+        <section class="panel padded full-row"><h2>Hasło kierownika</h2><p class="muted">Zmień hasło wymagane do ustawień i wysłania produkcji.</p><form id="change-password-form" class="password-change-grid"><label>Obecne hasło<input id="current-manager-password" type="password" minlength="8" maxlength="200" autocomplete="current-password" required></label><label>Nowe hasło<input id="new-manager-password" type="password" minlength="8" maxlength="200" autocomplete="new-password" required></label><label>Powtórz nowe hasło<input id="confirm-manager-password" type="password" minlength="8" maxlength="200" autocomplete="new-password" required></label><button type="submit" class="secondary">Zmień hasło</button></form></section>
+      </div>
+      <div class="settings-save"><span class="muted">Maszyny: M1–M8 oraz B1–B3</span><button id="save-settings" type="button" class="primary">Zapisz listy i liczniki</button></div>
+    </section>
+  </main>
+  <section id="settings-auth-modal" class="settings-auth-overlay" hidden>
+    <form id="settings-auth-form" class="settings-auth-panel">
+      <span class="eyebrow">DOSTĘP KIEROWNIKA</span>
+      <h2 id="settings-auth-title">Odblokuj ustawienia</h2>
+      <p id="settings-auth-description" class="muted">Wpisz hasło kierownika.</p>
+      <label>Hasło<input id="settings-password" type="password" minlength="8" maxlength="200" autocomplete="current-password" required></label>
+      <label id="settings-password-confirm-wrap" hidden>Powtórz hasło<input id="settings-password-confirm" type="password" minlength="8" maxlength="200" autocomplete="new-password"></label>
+      <p id="settings-auth-error" class="auth-error" role="status" hidden></p>
+      <button id="settings-auth-submit" type="submit" class="primary">Odblokuj</button>
+      <button id="settings-auth-cancel" type="button" class="secondary">Wróć do produkcji</button>
+    </form>
+  </section>
+  <section id="numeric-keypad" class="numeric-keypad" aria-label="Klawiatura ekranowa" hidden>
+    <div class="keypad-top"><span id="keypad-label">Wpisz wartość</span><button id="keypad-close" type="button" aria-label="Ukryj klawiaturę">⌄</button></div>
+    <div class="keypad-keys">
+      <button type="button" data-key="1">1</button><button type="button" data-key="2">2</button><button type="button" data-key="3">3</button>
+      <button type="button" data-key="4">4</button><button type="button" data-key="5">5</button><button type="button" data-key="6">6</button>
+      <button type="button" data-key="7">7</button><button type="button" data-key="8">8</button><button type="button" data-key="9">9</button>
+      <button type="button" class="keypad-alt" data-key="clear">Wyczyść</button><button type="button" data-key="0">0</button><button type="button" class="keypad-alt" data-key="backspace">⌫</button>
+      <button type="button" class="keypad-alt decimal-key" data-key=",">,</button><button type="button" id="keypad-enter" class="keypad-enter">Dalej ↵</button>
+    </div>
+  </section>
+  <nav class="bottom-nav"><button type="button" class="nav-button active" data-view="production">Produkcja</button><button type="button" class="nav-button" data-view="settings">Ustawienia</button></nav>
+</body>
+</html>

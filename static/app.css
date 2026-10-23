@@ -81,6 +81,8 @@
 .parameter-link span{font-size:16px}
 @media(max-width:650px){.trial-searchbar{align-items:stretch}.trial-searchbar input,.trial-searchbar select,.trial-searchbar button,.trial-searchbar .date-filter,.trial-searchbar .date-filter input{width:100%;max-width:none}.trial-searchbar .date-filter{justify-content:space-between}.stage-head{align-items:flex-start}.status-buttons{gap:6px}.status-choice{font-size:12px;padding:7px 9px}}
 
+.production-stock{margin:24px 0 12px}.stock-table{min-width:1040px;text-align:center}.stock-table th,.stock-table td{padding:12px 10px;white-space:nowrap}.stock-table thead tr:first-child th{top:0}.stock-table thead tr:nth-child(2) th{top:43px}.stock-table tbody td:first-child,.stock-table tbody td:nth-child(2){text-align:left}.stock-date{display:block}.stock-table th small{display:block;margin-top:3px;font-size:10px;letter-spacing:0;text-transform:none}.production-setup{margin-top:18px}.production-token{display:block;overflow-wrap:anywhere;padding:12px;border:1px solid #b7d8c2;border-radius:5px;background:white;font-size:14px}.production-bale-filters{align-items:end}.production-bale-filters .date-filter{display:grid;gap:4px;margin:0}.production-bale-filters .date-filter input{min-width:150px}.production-bale-filters input[name=q]{min-width:240px}
+
 .delete-x{display:inline-flex;align-items:center;justify-content:center;width:auto;height:auto;padding:0 6px;border:0;border-radius:0;background:transparent;color:#a82025;font-size:25px;line-height:1;font-weight:700;text-decoration:none}
 .delete-x:hover{background:transparent;color:#741a1d;text-decoration:none}
 .status-finishing{color:#684b20;background:#f4ead6;border-color:#dfc99d}
