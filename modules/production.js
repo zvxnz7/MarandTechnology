@@ -243,7 +243,7 @@ async function handle(ctx) {
     db.prepare(`INSERT INTO production_article_status(article_id,status,updated_at) VALUES(?,?,?)
       ON CONFLICT(article_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`).run(articleId, status, ctx.now());
     ctx.audit(req.user, 'Zmieniono stan artykułu w produkcji', null, JSON.stringify({ status }), articleId);
-    return redirect(req, res, '/production');
+    return redirect(req, res, '/production', 'Stan artykułu został zapisany.');
   }
   if (p === '/production' && req.method === 'GET') return send(req, res, 200, overviewPage(ctx));
   if (p === '/production/bales' && req.method === 'GET') return send(req, res, 200, balesPage(ctx));
