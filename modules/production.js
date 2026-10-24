@@ -151,8 +151,8 @@ function overviewPage(ctx) {
     ...productionDates,
   ];
   const dateHeaders = dates.map(day => day
-    ? `<th colspan="2"><span class="stock-date">${V.esc(new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long' }).format(new Date(`${day.snapshot_date}T12:00:00Z`)))}</span><small>${V.esc(day.snapshot_date.split('-').reverse().join('.'))}</small></th>`
-    : '<th colspan="2"><span class="stock-date">—</span><small>&nbsp;</small></th>'
+    ? `<th class="stock-day-header" colspan="2"><span class="stock-date">${V.esc(new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long' }).format(new Date(`${day.snapshot_date}T12:00:00Z`)))}</span><small>${V.esc(day.snapshot_date.split('-').reverse().join('.'))}</small></th>`
+    : '<th class="stock-day-header" colspan="2"><span class="stock-date">—</span><small>&nbsp;</small></th>'
   ).join('');
   const latest = ctx.db.prepare(`SELECT a.id,a.symbol,coalesce(st.status,'standard') status,
       s.snapshot_date,s.pieces,s.weight_kg,s.uploaded_at
@@ -175,14 +175,16 @@ function overviewPage(ctx) {
   const rows = latest.map(article => {
     const state = `<form method="post" action="/production/article-status" class="stock-state-form"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><input type="hidden" name="article_id" value="${article.id}"><select name="status" aria-label="Stan artykułu ${V.esc(article.symbol)}" class="stock-state stock-state-${V.esc(article.status)}"${ctx.req.user.role === 'viewer' ? ' disabled' : ' data-auto-submit'}>${statusOptions.map(([key,label]) => `<option value="${key}" ${article.status === key ? 'selected' : ''}>${V.esc(label)}</option>`).join('')}</select></form>`;
     const values = dates.map(day => {
-      if (!day) return '<td>—</td><td>—</td>';
+      const separator = ' class="stock-day-start"';
+      if (!day) return `<td${separator}>—</td><td>—</td>`;
       const value = byArticleDay.get(`${article.id}:${day.snapshot_date}`);
-      return value ? `<td>${value.pieces}</td><td>${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : '<td>—</td><td>—</td>';
+      return value ? `<td${separator}>${value.pieces}</td><td>${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : `<td${separator}>—</td><td>—</td>`;
     }).join('');
     return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/production/bales">${V.esc(article.symbol)}</a></td>${values}</tr>`;
   }).join('');
   const summary = `<p class="stock-summary"><strong>Liczba sztuk: ${pieces}</strong><strong>Łączna waga: ${Number(weight).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</strong></p><p class="muted">Stan zaktualizowano: ${updatedAt ? V.datepl(updatedAt) : 'brak danych'}</p>`;
-  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div><div class="panel scroll production-stock"><table class="listing stock-table"><thead><tr><th rowspan="2">Stan</th><th rowspan="2">Symbol</th>${dateHeaders}</tr><tr>${dates.map(() => '<th>Szt</th><th>Kg</th>').join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + dates.length * 2}">Brak wysłanej produkcji.</td></tr>`}</tbody></table></div><p class="muted small">Tabela pokazuje pięć ostatnich dni z wysłaną produkcją. Szt/Kg to stan zapisany w kartotece w dniu wysyłki.</p>`;
+  const dayColumns = dates.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('');
+  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column">${dayColumns}</colgroup><thead><tr><th class="stock-fixed-header" rowspan="2">Stan</th><th class="stock-fixed-header" rowspan="2">Symbol</th>${dateHeaders}</tr><tr>${dates.map(() => '<th class="stock-day-subheader stock-day-start">Szt</th><th class="stock-day-subheader">Kg</th>').join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + dates.length * 2}">Brak wysłanej produkcji.</td></tr>`}</tbody></table></div><p class="muted small">Tabela pokazuje pięć ostatnich dni z wysłaną produkcją. Szt/Kg to stan zapisany w kartotece w dniu wysyłki.</p>`;
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Stan bieżący · Marand', body });
 }
 

@@ -119,3 +119,20 @@
 .stock-state-form{width:130px;min-width:130px;flex:0 0 130px}.stock-state{width:130px;min-width:130px;max-width:130px;flex:0 0 130px}
 select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;color:#17653b!important;border-color:#79bf8c!important}select.stock-state.stock-state-standard{background-color:#edf0f3!important;color:#46515b!important;border-color:#cbd2d8!important}select.stock-state.stock-state-three_d{background-color:#f1eaff!important;color:#6741a5!important;border-color:#c4a8eb!important}select.stock-state.stock-state-aging{background-color:#fff0d9!important;color:#8d5711!important;border-color:#efc16c!important}select.stock-state.stock-state-baltex{background-color:#e4f3f8!important;color:#17617b!important;border-color:#8cc5d9!important}select.stock-state.stock-state-second_grade{background-color:#fde9e9!important;color:#9e2828!important;border-color:#e9a0a0!important}
 .stock-table tbody tr.stock-row-in_production>td{background-color:#f0f9f2!important}.stock-table tbody tr.stock-row-standard>td{background-color:#edf0f3!important}.stock-table tbody tr.stock-row-three_d>td{background-color:#f7f2ff!important}.stock-table tbody tr.stock-row-aging>td{background-color:#fff8ec!important}.stock-table tbody tr.stock-row-baltex>td{background-color:#f0fafc!important}.stock-table tbody tr.stock-row-second_grade>td{background-color:#fff4f4!important}
+
+/* Keep the grouped daily stock headers aligned and give each day room to read. */
+.stock-table{table-layout:fixed;min-width:1410px;font-size:12px}
+.stock-state-column{width:150px}.stock-symbol-column{width:190px}.stock-day-pieces{width:86px}.stock-day-weight{width:128px}
+.stock-table th,.stock-table td{padding:7px 10px;vertical-align:middle}
+.stock-table thead th{font-size:10px;line-height:1.2;letter-spacing:.45px;text-align:center}
+.stock-table thead tr:first-child th{height:48px;top:0}
+.stock-table thead tr:nth-child(2) th{height:32px;top:48px}
+.stock-table thead th.stock-fixed-header{vertical-align:middle;text-align:left}
+.stock-table tbody td{font-size:12px;line-height:1.25;text-align:center}
+.stock-table tbody td:first-child{text-align:center}.stock-table tbody td:nth-child(2){text-align:left}
+.stock-table .item-title{font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+.stock-table .stock-day-header,.stock-table .stock-day-start{border-left:2px solid #cbd1d6}
+.stock-table .stock-day-subheader{border-bottom:1px solid var(--line)}
+.stock-table .stock-date{font-size:11px;letter-spacing:0;text-transform:none}
+.stock-table th small{font-size:10px}
+.stock-table .stock-state-form{margin:auto}
