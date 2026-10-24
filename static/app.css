@@ -136,3 +136,19 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .stock-table .stock-date{font-size:11px;letter-spacing:0;text-transform:none}
 .stock-table th small{font-size:10px}
 .stock-table .stock-state-form{margin:auto}
+
+/* Compact rows and draw day separators through the complete value area. */
+.stock-table tbody td{padding:2px 7px;font-size:11px;line-height:1.15}
+.stock-table tbody tr{height:27px}
+.stock-table .stock-day-header,.stock-table .stock-day-subheader{border-right:2px solid #cbd1d6}
+.stock-table .stock-day-subheader.stock-day-start{border-left:2px solid #cbd1d6}
+.stock-table tbody td.stock-day-start{border-left:2px solid #cbd1d6}
+.stock-table tbody td.stock-day-end{border-right:2px solid #cbd1d6}
+.stock-table .stock-state{height:24px;padding:1px 7px;font-size:10px;line-height:1.1}
+.stock-table .item-title{font-size:13px;line-height:1.1}
+.article-symbol-line{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+.article-symbol-line h1{margin:8px 0 12px}
+.article-current-stock{display:flex;align-items:baseline;gap:10px;color:#555d65;font-size:12px;line-height:1.2}
+.article-current-stock>span{font-weight:600;color:#71777e}
+.article-current-stock strong{font-size:13px;color:#252b31;white-space:nowrap}
+.article-current-stock small{font-size:10px;font-weight:500;color:#71777e}
