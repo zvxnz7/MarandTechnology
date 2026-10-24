@@ -80,7 +80,7 @@ async function handle(ctx) {
       audit(req.user,'Utworzono artykuł',null,`Artykuł ${aid}`); return aid;
     });redirect(req,res,`/articles/${id}`);return true;
   }
-  const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|new|delete|restore|purge|production-note))?$/);
+  const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|symbol|new|delete|restore|purge|production-note))?$/);
   if(!match) return false;
   const id=Number(match[1]), a=getArticle(db,id,fail), action=match[2];
   req.sourceImportNotice=SourceImport.noticeForArticle(db,id);
@@ -117,6 +117,23 @@ async function handle(ctx) {
         if(String(form.updated_at)!==getArticle(db,id,fail).updated_at) fail(409,'Artykuł został zmieniony. Odśwież dane przed zapisem.');
         db.prepare('UPDATE articles SET description=?,updated_at=? WHERE id=?').run(String(form.description||'').slice(0,6000),new Date().toISOString(),id);
         audit(req.user,'Zmieniono opis artykułu',null,`Artykuł ${id}`);
+      } else if(action==='symbol') {
+        const current=getArticle(db,id,fail);
+        if(String(form.updated_at)!==current.updated_at) fail(409,'Artykuł został zmieniony. Odśwież dane przed zapisem.');
+        const symbol=String(form.symbol||'').trim();
+        if(!symbol||symbol.length>150) fail(400,'Podaj symbol artykułu (do 150 znaków).');
+        const symbolKey=symbol.toUpperCase().replace(/\s/g,'');
+        if(db.prepare('SELECT id FROM articles WHERE symbol_key=? AND id<>? LIMIT 1').get(symbolKey,id)) fail(409,'Artykuł o takim symbolu już istnieje.');
+        const stamp=now();
+        db.prepare('UPDATE articles SET symbol=?,symbol_key=?,updated_at=? WHERE id=?').run(symbol,symbolKey,stamp,id);
+        const linkedRecords=db.prepare('SELECT id,payload FROM records WHERE article_id=?').all(id);
+        const updateRecord=db.prepare('UPDATE records SET symbol=?,payload=? WHERE id=?');
+        for(const record of linkedRecords) {
+          let payload={};try{payload=JSON.parse(record.payload||'{}')}catch{}
+          payload.symbol=symbol;
+          updateRecord.run(symbol,JSON.stringify(payload),record.id);
+        }
+        audit(req.user,'Zmieniono symbol artykułu',null,JSON.stringify({before:current.symbol,after:symbol}),id);
       } else if(action==='new') {
         firstArticleSpec=!db.prepare('SELECT 1 FROM records WHERE article_id=? AND archived_at IS NULL LIMIT 1').get(id);
         const source=db.prepare("SELECT * FROM records WHERE article_id=? AND kind='spec' AND archived_at IS NULL ORDER BY id DESC LIMIT 1").get(id);
@@ -154,6 +171,7 @@ async function handle(ctx) {
   }).filter(row=>row.changes.length||row.comment);
   const changesView=changesHistory.length?`<section class="panel padded"><h3>Historia zmian</h3>${changesHistory.map(change=>`<article class="history"><strong>${date(change.at)} · ${e(change.author)}${change.version?` · zatwierdzona wersja v${e(change.version)}`:''}</strong><div>${change.changes.map(item=>`<p><b>${e(item.label)}:</b> <del>${e(item.before)}</del> → <strong>${e(item.after)}</strong></p>`).join('')}${change.comment?`<p class="preline"><b>Komentarz:</b> ${e(change.comment)}</p>`:''}</div></article>`).join('')}</section>`:'<p class="muted">Historia zmian pojawi się po zatwierdzeniu pierwszej zmiany karty.</p>';
   const descriptionEditor=isWritable?`<details class="description-edit"><summary class="button">Edytuj opis</summary><form method="post" action="/articles/${id}/metadata">${csrf}<input type="hidden" name="updated_at" value="${e(a.updated_at)}"><label>Opis<textarea name="description" maxlength="6000">${e(a.description)}</textarea></label><button>Zapisz opis</button></form></details>`:'';
+  const symbolEditor=isWritable?`<details class="description-edit symbol-edit"><summary class="button">Edytuj symbol artykułu</summary><form method="post" action="/articles/${id}/symbol">${csrf}<input type="hidden" name="updated_at" value="${e(a.updated_at)}"><label>Symbol artykułu<input name="symbol" maxlength="150" value="${e(a.symbol)}" required></label><p class="muted small">Numer wewnętrzny artykułu (#${id}) pozostanie bez zmian. Zmiana symbolu uaktualni powiązane specyfikacje.</p><button>Zapisz symbol</button></form></details>`:'';
   const productionNoteButton=isWritable?`<button type="button" class="button special-production-button" data-open-dialog="production-note-${id}">POLECENIA SPECJALNE – najbliższa produkcja</button>`:'';
   const productionNoteDialog=isWritable?`<dialog class="form-dialog" id="production-note-${id}"><form method="dialog" class="dialog-head"><strong>Polecenia specjalne — najbliższa produkcja</strong><button type="submit" aria-label="Zamknij">×</button></form><form method="post" action="/articles/${id}/production-note" class="dialog-body">${csrf}<p class="muted">Pojawią się jako ostrzeżenie na ekranie wydawania karty oraz w osobnym wierszu na dole następnej wydanej karty. Po wydaniu zostaną wyczyszczone z artykułu.</p><label>Polecenia specjalne<textarea name="production_notes" maxlength="6000" placeholder="Np. sposób pakowania, paletowanie, średnica tulei…">${e(a.pending_production_notes||'')}</textarea></label><div class="actions"><button type="button" data-close-dialog>Anuluj</button><button class="primary">Zapisz polecenia</button></div></form></dialog>`:'';
   const newSpecButton=isWritable?`<form method="post" action="/articles/${id}/new" class="article-new-spec">${csrf}<button>+ Nowa specyfikacja</button></form>`:'';
@@ -165,6 +183,6 @@ async function handle(ctx) {
   const trialsView=trials.length?`<h2>Próby i warianty</h2><div class="grid">${trials.map(tile).join('')}</div>`:'';
   const articleArchiveNotice=a.purged_at?'<div class="notice warning"><strong>Artykuł usunięto z widocznej kartoteki.</strong> Historyczne specyfikacje, projekty i karty nadal są dostępne.</div>':a.archived_at?'<div class="notice warning"><strong>Artykuł jest w archiwum.</strong> Można go przywrócić przez 30 dni w zakładce Archiwum.</div>':'';
   const activeActions=`<div class="article-technology-actions">${a.active_spec?`<a class="button primary" href="/records/${a.active_spec}">Otwórz obowiązującą technologię</a>`:''}${productionNoteButton}</div>${newSpecButton}${a.pending_production_notes?`<p class="notice production-note-saved">Polecenia specjalne czekają na najbliższe wydanie karty.</p>`:''}${productionNoteDialog}`;
-  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><h1>${e(a.symbol)}</h1><div class="article-description"><p class="preline">${e(a.description)}</p>${descriptionEditor}</div><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${activeActions}<h2>Technologia artykułu</h2>${currentView}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
+  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><h1>${e(a.symbol)}</h1>${symbolEditor}<div class="article-description"><p class="preline">${e(a.description)}</p>${descriptionEditor}</div><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${activeActions}<h2>Technologia artykułu</h2>${currentView}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
 }
 module.exports={handle,projectArticleInput,associate};

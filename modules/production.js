@@ -4,7 +4,14 @@ const crypto = require('node:crypto');
 const V = require('../views');
 
 const TEST_ARTICLE_KEY = 'WT56-21(5)';
-const WEEKDAYS = ['niedziela', 'poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota'];
+const STOCK_STATES = {
+  in_production: 'W produkcji',
+  standard: 'Standard',
+  three_d: '3D',
+  aging: 'Zalegające',
+  baltex: 'Baltex',
+  second_grade: 'II gatunek',
+};
 const normalizeSymbol = value => String(value || '').toLocaleUpperCase('pl-PL').replace(/\s+/g, '');
 const escapeLike = value => String(value).replace(/[\\%_]/g, '\\$&');
 
@@ -40,6 +47,11 @@ function initialize(db) {
       PRIMARY KEY(snapshot_date,article_id)
     );
     CREATE INDEX IF NOT EXISTS production_snapshots_recent ON production_stock_snapshots(snapshot_date,article_id);
+    CREATE TABLE IF NOT EXISTS production_article_status (
+      article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'standard' CHECK(status IN ('in_production','standard','three_d','aging','baltex','second_grade')),
+      updated_at TEXT NOT NULL
+    );
   `);
 }
 
@@ -67,7 +79,7 @@ function receiveUpload(db, authorization, payload, helpers) {
     const localId = String(row.id || '');
     if (!/^[0-9a-f-]{32,36}$/i.test(localId)) throw responseError(400, `Belka ${index + 1}: nieprawidłowy identyfikator.`);
     const symbol = String(row.symbol || '').trim();
-    if (normalizeSymbol(symbol) !== TEST_ARTICLE_KEY) throw responseError(400, `Belka ${index + 1}: na tym etapie zatwierdzony jest wyłącznie artykuł WT 56-21 (5).`);
+    if (!symbol || symbol.length > 150) throw responseError(400, `Belka ${index + 1}: nieprawidłowy symbol artykułu.`);
     const machine = String(row.machine || '').trim();
     const number = String(row.number || '').trim();
     const date = String(row.production_date || '');
@@ -96,64 +108,79 @@ function receiveUpload(db, authorization, payload, helpers) {
   });
 
   const results = helpers.transaction(() => {
-    let article = db.prepare('SELECT * FROM articles WHERE symbol_key=?').all(TEST_ARTICLE_KEY);
-    if (article.length > 1) throw responseError(409, 'Kartoteka zawiera powielony symbol WT 56-21 (5). Administrator musi go uporządkować.');
-    if (!article.length) article = [helpers.makeArticle(null, 'WT 56-21 (5)')];
-    const articleId = article[0].id;
-    const insert = db.prepare(`INSERT OR IGNORE INTO production_bales
+    const articles = new Map();
+    for (const symbol of new Set(valid.map(row => row.symbol))) {
+      const matches = db.prepare('SELECT * FROM articles WHERE symbol_key=?').all(normalizeSymbol(symbol));
+      if (matches.length > 1) throw responseError(409, `Kartoteka zawiera powielony symbol ${symbol}. Administrator musi go uporządkować.`);
+      articles.set(symbol, matches[0] || helpers.makeArticle(null, symbol));
+    }
+    const save = db.prepare(`INSERT INTO production_bales
       (local_id,article_id,article_symbol,machine,bale_number,production_date,weight_kg,meters,errors,stops,needs_check,lot,notes,workers_json,local_created_at,uploaded_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(local_id) DO UPDATE SET article_id=excluded.article_id,article_symbol=excluded.article_symbol,
+      machine=excluded.machine,bale_number=excluded.bale_number,production_date=excluded.production_date,
+      weight_kg=excluded.weight_kg,meters=excluded.meters,errors=excluded.errors,stops=excluded.stops,
+      needs_check=excluded.needs_check,lot=excluded.lot,notes=excluded.notes,workers_json=excluded.workers_json,
+      local_created_at=excluded.local_created_at,uploaded_at=excluded.uploaded_at`);
     const accepted = [];
     for (const row of valid) {
-      insert.run(row.localId, articleId, row.symbol, row.machine, row.number, row.date, row.weight, row.meters, row.errors, row.stops, row.needsCheck, row.lot, row.notes, row.workers, row.localCreatedAt || uploadedAt, uploadedAt);
+      const articleId = articles.get(row.symbol).id;
+      save.run(row.localId, articleId, row.symbol, row.machine, row.number, row.date, row.weight, row.meters, row.errors, row.stops, row.needsCheck, row.lot, row.notes, row.workers, row.localCreatedAt || uploadedAt, uploadedAt);
       if (db.prepare('SELECT 1 FROM production_bales WHERE local_id=?').get(row.localId)) accepted.push(row.localId);
     }
-    const totals = db.prepare('SELECT count(*) pieces,round(coalesce(sum(weight_kg),0),2) weight_kg FROM production_bales WHERE article_id=?').get(articleId);
-    db.prepare(`INSERT INTO production_stock_snapshots(snapshot_date,article_id,pieces,weight_kg,uploaded_at)
-      VALUES(?,?,?,?,?) ON CONFLICT(snapshot_date,article_id) DO UPDATE SET pieces=excluded.pieces,weight_kg=excluded.weight_kg,uploaded_at=excluded.uploaded_at`)
-      .run(today, articleId, totals.pieces, totals.weight_kg, uploadedAt);
-    helpers.audit(null, 'Wysłano produkcję z lokalnego panelu dziewiarza', null, JSON.stringify({ date: today, uploaded: valid.length, accepted: accepted.length, pieces: totals.pieces, kg: totals.weight_kg }), articleId);
-    return { acceptedIds: accepted, snapshot: { date: today, pieces: totals.pieces, weightKg: totals.weight_kg, uploadedAt } };
+    const snapshots = [];
+    for (const articleId of new Set([...articles.values()].map(article => article.id))) {
+      const totals = db.prepare('SELECT count(*) pieces,round(coalesce(sum(weight_kg),0),2) weight_kg FROM production_bales WHERE article_id=?').get(articleId);
+      db.prepare(`INSERT INTO production_stock_snapshots(snapshot_date,article_id,pieces,weight_kg,uploaded_at)
+        VALUES(?,?,?,?,?) ON CONFLICT(snapshot_date,article_id) DO UPDATE SET pieces=excluded.pieces,weight_kg=excluded.weight_kg,uploaded_at=excluded.uploaded_at`)
+        .run(today, articleId, totals.pieces, totals.weight_kg, uploadedAt);
+      snapshots.push({ articleId, pieces: totals.pieces, weightKg: totals.weight_kg });
+    }
+    const primarySnapshot = snapshots.find(snapshot => articles.values().some(article => article.id === snapshot.articleId && normalizeSymbol(article.symbol) === 'WT56-21(5)')) || snapshots[0] || { pieces: 0, weightKg: 0 };
+    helpers.audit(null, 'Wysłano produkcję z lokalnego panelu dziewiarza', null, JSON.stringify({ date: today, uploaded: valid.length, accepted: accepted.length, snapshots }), snapshots[0]?.articleId);
+    return { acceptedIds: accepted, snapshots, snapshot: { date: today, pieces: primarySnapshot.pieces, weightKg: primarySnapshot.weightKg, uploadedAt } };
   });
   return results;
 }
 
-function lastFiveDates(today) {
-  const base = new Date(`${today}T12:00:00Z`);
-  return Array.from({ length: 5 }, (_, index) => {
-    const date = new Date(base);
-    date.setUTCDate(date.getUTCDate() - (4 - index));
-    const iso = date.toISOString().slice(0, 10);
-    return { iso, label: new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long', day: '2-digit', month: '2-digit' }).format(date) };
-  });
-}
-
-function overviewPage(ctx, oneTimeToken = '') {
-  const today = ctx.todayWarsaw();
-  const dates = lastFiveDates(today);
-  const history = dbRows(ctx.db, dates[0].iso, today);
-  const byDay = new Map(history.map(row => [row.snapshot_date, row]));
-  let article = ctx.db.prepare('SELECT id,symbol FROM articles WHERE symbol_key=? ORDER BY id LIMIT 1').get(TEST_ARTICLE_KEY);
-  const symbol = article?.symbol || 'WT 56-21 (5)';
-  const values = dates.map(day => byDay.get(day.iso));
-  const dateHeaders = dates.map(day => `<th colspan="2"><span class="stock-date">${V.esc(day.label)}</span><small>${V.esc(day.iso.split('-').reverse().join('.'))}</small></th>`).join('');
-  const rows = dates.map((day, i) => {
-    const value = values[i];
-    return `<td>${value ? value.pieces : '—'}</td><td>${value ? `${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</td>`;
+function overviewPage(ctx) {
+  const dates = ctx.db.prepare(`SELECT snapshot_date,max(uploaded_at) uploaded_at
+    FROM production_stock_snapshots GROUP BY snapshot_date ORDER BY snapshot_date DESC LIMIT 5`).all().reverse();
+  const dateHeaders = dates.map(day => `<th colspan="2"><span class="stock-date">${V.esc(new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long' }).format(new Date(`${day.snapshot_date}T12:00:00Z`)))}</span><small>${V.esc(day.snapshot_date.split('-').reverse().join('.'))}</small></th>`).join('');
+  const latest = ctx.db.prepare(`SELECT a.id,a.symbol,coalesce(st.status,'standard') status,
+      s.snapshot_date,s.pieces,s.weight_kg,s.uploaded_at
+    FROM articles a
+    JOIN production_stock_snapshots s ON s.article_id=a.id
+      AND s.snapshot_date=(SELECT max(s2.snapshot_date) FROM production_stock_snapshots s2 WHERE s2.article_id=a.id)
+    LEFT JOIN production_article_status st ON st.article_id=a.id
+    ORDER BY CASE coalesce(st.status,'standard') WHEN 'in_production' THEN 0 WHEN 'standard' THEN 1 WHEN 'three_d' THEN 2 WHEN 'aging' THEN 3 WHEN 'baltex' THEN 4 WHEN 'second_grade' THEN 5 ELSE 6 END,
+      a.symbol_key,a.id`).all();
+  const snapshots = ctx.db.prepare(`SELECT article_id,snapshot_date,pieces,weight_kg
+    FROM production_stock_snapshots WHERE snapshot_date IN (${dates.map(() => '?').join(',') || "''"})`).all(...dates.map(day => day.snapshot_date));
+  const byArticleDay = new Map(snapshots.map(row => [`${row.article_id}:${row.snapshot_date}`, row]));
+  const pieces = latest.reduce((sum, row) => sum + row.pieces, 0);
+  const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);
+  const updatedAt = latest.map(row => row.uploaded_at).sort().at(-1);
+  const statusOptions = Object.entries(STOCK_STATES);
+  const rows = latest.map(article => {
+    const state = `<form method="post" action="/production/article-status" class="stock-state-form"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><input type="hidden" name="article_id" value="${article.id}"><select name="status" aria-label="Stan artykułu ${V.esc(article.symbol)}" class="stock-state stock-state-${V.esc(article.status)}"${ctx.req.user.role === 'viewer' ? ' disabled' : ''}>${statusOptions.map(([key,label]) => `<option value="${key}" ${article.status === key ? 'selected' : ''}>${V.esc(label)}</option>`).join('')}</select><button class="stock-state-save" aria-label="Zapisz stan artykułu ${V.esc(article.symbol)}">Zapisz</button></form>`;
+    const values = dates.map(day => {
+      const value = byArticleDay.get(`${article.id}:${day.snapshot_date}`);
+      return value ? `<td>${value.pieces}</td><td>${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : '<td>—</td><td>—</td>';
+    }).join('');
+    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/production/bales">${V.esc(article.symbol)}</a></td>${values}</tr>`;
   }).join('');
-  const admin = ctx.req.user.role === 'admin';
-  const syncStatus = ctx.db.prepare('SELECT created_at FROM production_sync_token WHERE id=1').get();
-  const setup = admin ? `<section class="panel padded production-setup"><h2>Połączenie z panelem lokalnym</h2><p class="muted">${syncStatus ? `Token aktywny · utworzony ${V.datepl(syncStatus.created_at)}.` : 'Utwórz token do jednorazowego wpisania w zabezpieczonych Ustawieniach panelu lokalnego.'} Po wygenerowaniu zastąp poprzedni token w panelu dziewiarza.</p><form method="post" action="/production/token"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><button class="primary" name="generate" value="1">${syncStatus ? 'Wygeneruj nowy token' : 'Utwórz token'}</button></form></section>` : '';
-  const tokenPanel = oneTimeToken && admin ? `<section class="notice success"><strong>Skopiuj token i wklej go w ustawieniach lokalnego panelu. Później nie będzie wyświetlany.</strong><p><code class="production-token">${V.esc(oneTimeToken)}</code></p></section>` : '';
-  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA · WT 56-21 (5)</span><h1>Stan bieżący</h1><p class="muted">Wartości zapisują się przy porannym wysłaniu danych przez kierownika.</p></div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div>${tokenPanel}${admin ? setup : ''}<div class="panel scroll production-stock"><table class="listing stock-table"><thead><tr><th rowspan="2">Stan</th><th rowspan="2">Symbol</th>${dateHeaders}</tr><tr>${dates.map(() => '<th>Szt</th><th>Kg</th>').join('')}</tr></thead><tbody><tr><td>2 standard</td><td><a class="item-title" href="/production/bales" target="_blank" rel="noopener">${V.esc(symbol)}</a></td>${rows}</tr></tbody></table></div><p class="muted small">Brak zapisu oznacza, że danych za ten dzień nie wysłano. Szt/Kg to suma belek zapisanych w kartotece. Program nie odejmuje jeszcze belek wydanych z magazynu.</p>`;
+  const summary = `<p class="stock-summary"><strong>Liczba sztuk: ${pieces}</strong><strong>Łączna waga: ${Number(weight).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</strong></p><p class="muted">Stan zaktualizowano: ${updatedAt ? V.datepl(updatedAt) : 'brak danych'}</p>`;
+  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div><div class="panel scroll production-stock"><table class="listing stock-table"><thead><tr><th rowspan="2">Stan</th><th rowspan="2">Symbol</th>${dateHeaders}</tr><tr>${dates.map(() => '<th>Szt</th><th>Kg</th>').join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + dates.length * 2}">Brak wysłanej produkcji.</td></tr>`}</tbody></table></div><p class="muted small">Tabela pokazuje pięć ostatnich dni z wysłaną produkcją. Szt/Kg to stan zapisany w kartotece w dniu wysyłki.</p>`;
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Stan bieżący · Marand', body });
 }
 
-function dbRows(db, from, to) {
-  return db.prepare(`SELECT s.snapshot_date,s.pieces,s.weight_kg,s.uploaded_at,a.symbol
-    FROM production_stock_snapshots s JOIN articles a ON a.id=s.article_id
-    WHERE s.snapshot_date BETWEEN ? AND ? AND a.symbol_key=? ORDER BY s.snapshot_date`)
-    .all(from, to, TEST_ARTICLE_KEY);
+function connectionPage(ctx, oneTimeToken = '') {
+  const syncStatus = ctx.db.prepare('SELECT created_at FROM production_sync_token WHERE id=1').get();
+  const setup = `<section class="panel padded production-setup"><h2>Połączenie z panelem lokalnym</h2><p class="muted">${syncStatus ? `Token aktywny · utworzony ${V.datepl(syncStatus.created_at)}.` : 'Utwórz token do jednorazowego wpisania w ustawieniach panelu lokalnego.'} Po wygenerowaniu zastąp poprzedni token w panelu dziewiarza.</p><form method="post" action="/production/token"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><button class="primary" name="generate" value="1">${syncStatus ? 'Wygeneruj nowy token' : 'Utwórz token'}</button></form></section>`;
+  const tokenPanel = oneTimeToken ? `<section class="notice success"><strong>Skopiuj token i wklej go w ustawieniach lokalnego panelu. Później nie będzie wyświetlany.</strong><p><code class="production-token">${V.esc(oneTimeToken)}</code></p></section>` : '';
+  const body = `<a class="breadcrumb" href="/production">← Stan bieżący</a><div class="pagehead"><div><span class="eyebrow">INTEGRACJE</span><h1>Połączenie z panelem lokalnym</h1></div></div>${tokenPanel}${setup}`;
+  return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Połączenie z panelem lokalnym · Marand', body });
 }
 
 function balesPage(ctx) {
@@ -190,7 +217,22 @@ async function handle(ctx) {
     db.prepare(`INSERT INTO production_sync_token(id,token_hash,created_at,created_by) VALUES(1,?,?,?)
       ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash,created_at=excluded.created_at,created_by=excluded.created_by`)
       .run(crypto.createHash('sha256').update(token).digest('hex'), ctx.now(), req.user.id);
-    return send(req, res, 200, overviewPage(ctx, token));
+    return send(req, res, 200, connectionPage(ctx, token));
+  }
+  if (p === '/production/connection' && req.method === 'GET') {
+    role(req.user, 'admin');
+    return send(req, res, 200, connectionPage(ctx));
+  }
+  if (p === '/production/article-status' && req.method === 'POST') {
+    role(req.user, 'admin', 'approver', 'technologist');
+    const articleId = Number(ctx.form.article_id);
+    const status = String(ctx.form.status || '');
+    if (!Number.isSafeInteger(articleId) || articleId < 1 || !Object.hasOwn(STOCK_STATES, status)) throw responseError(400, 'Nieprawidłowy artykuł lub stan.');
+    if (!db.prepare('SELECT id FROM articles WHERE id=?').get(articleId)) throw responseError(404, 'Nie znaleziono artykułu.');
+    db.prepare(`INSERT INTO production_article_status(article_id,status,updated_at) VALUES(?,?,?)
+      ON CONFLICT(article_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`).run(articleId, status, ctx.now());
+    ctx.audit(req.user, 'Zmieniono stan artykułu w produkcji', null, JSON.stringify({ status }), articleId);
+    return redirect(req, res, '/production');
   }
   if (p === '/production' && req.method === 'GET') return send(req, res, 200, overviewPage(ctx));
   if (p === '/production/bales' && req.method === 'GET') return send(req, res, 200, balesPage(ctx));
