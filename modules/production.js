@@ -144,9 +144,16 @@ function receiveUpload(db, authorization, payload, helpers) {
 }
 
 function overviewPage(ctx) {
-  const dates = ctx.db.prepare(`SELECT snapshot_date,max(uploaded_at) uploaded_at
+  const productionDates = ctx.db.prepare(`SELECT snapshot_date,max(uploaded_at) uploaded_at
     FROM production_stock_snapshots GROUP BY snapshot_date ORDER BY snapshot_date DESC LIMIT 5`).all().reverse();
-  const dateHeaders = dates.map(day => `<th colspan="2"><span class="stock-date">${V.esc(new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long' }).format(new Date(`${day.snapshot_date}T12:00:00Z`)))}</span><small>${V.esc(day.snapshot_date.split('-').reverse().join('.'))}</small></th>`).join('');
+  const dates = [
+    ...Array.from({ length: Math.max(0, 5 - productionDates.length) }, () => null),
+    ...productionDates,
+  ];
+  const dateHeaders = dates.map(day => day
+    ? `<th colspan="2"><span class="stock-date">${V.esc(new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long' }).format(new Date(`${day.snapshot_date}T12:00:00Z`)))}</span><small>${V.esc(day.snapshot_date.split('-').reverse().join('.'))}</small></th>`
+    : '<th colspan="2"><span class="stock-date">—</span><small>&nbsp;</small></th>'
+  ).join('');
   const latest = ctx.db.prepare(`SELECT a.id,a.symbol,coalesce(st.status,'standard') status,
       s.snapshot_date,s.pieces,s.weight_kg,s.uploaded_at
     FROM articles a
@@ -155,8 +162,11 @@ function overviewPage(ctx) {
     LEFT JOIN production_article_status st ON st.article_id=a.id
     ORDER BY CASE coalesce(st.status,'standard') WHEN 'in_production' THEN 0 WHEN 'standard' THEN 1 WHEN 'three_d' THEN 2 WHEN 'aging' THEN 3 WHEN 'baltex' THEN 4 WHEN 'second_grade' THEN 5 ELSE 6 END,
       a.symbol_key,a.id`).all();
-  const snapshots = ctx.db.prepare(`SELECT article_id,snapshot_date,pieces,weight_kg
-    FROM production_stock_snapshots WHERE snapshot_date IN (${dates.map(() => '?').join(',') || "''"})`).all(...dates.map(day => day.snapshot_date));
+  const snapshotDates = dates.filter(Boolean).map(day => day.snapshot_date);
+  const snapshots = snapshotDates.length
+    ? ctx.db.prepare(`SELECT article_id,snapshot_date,pieces,weight_kg
+      FROM production_stock_snapshots WHERE snapshot_date IN (${snapshotDates.map(() => '?').join(',')})`).all(...snapshotDates)
+    : [];
   const byArticleDay = new Map(snapshots.map(row => [`${row.article_id}:${row.snapshot_date}`, row]));
   const pieces = latest.reduce((sum, row) => sum + row.pieces, 0);
   const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);
@@ -165,6 +175,7 @@ function overviewPage(ctx) {
   const rows = latest.map(article => {
     const state = `<form method="post" action="/production/article-status" class="stock-state-form"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><input type="hidden" name="article_id" value="${article.id}"><select name="status" aria-label="Stan artykułu ${V.esc(article.symbol)}" class="stock-state stock-state-${V.esc(article.status)}"${ctx.req.user.role === 'viewer' ? ' disabled' : ' onchange="this.form.requestSubmit()"'}>${statusOptions.map(([key,label]) => `<option value="${key}" ${article.status === key ? 'selected' : ''}>${V.esc(label)}</option>`).join('')}</select></form>`;
     const values = dates.map(day => {
+      if (!day) return '<td>—</td><td>—</td>';
       const value = byArticleDay.get(`${article.id}:${day.snapshot_date}`);
       return value ? `<td>${value.pieces}</td><td>${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : '<td>—</td><td>—</td>';
     }).join('');
