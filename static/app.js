@@ -2,6 +2,16 @@
 let dirty=false,submitting=false;
 document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('input',()=>dirty=true);f.addEventListener('submit',()=>{submitting=true;});});
 document.querySelectorAll('select[data-auto-submit]').forEach(select=>select.addEventListener('change',()=>select.form?.requestSubmit()));
+document.querySelectorAll('.nav-group').forEach(group=>{const active=[...group.querySelectorAll('.nav-link')].find(link=>location.pathname===link.pathname||link.pathname!=='/'&&location.pathname.startsWith(`${link.pathname}/`));if(active){active.classList.add('nav-current');group.open=true;}});
+document.querySelectorAll('[data-range-selection]').forEach(form=>{
+ const boxes=[...form.querySelectorAll('[data-range-select]')],hidden=form.querySelector('[data-range-values]'),all=form.querySelector('[data-range-all]');let last=null;
+ const save=()=>{hidden.value=boxes.filter(box=>box.checked).map(box=>box.value).join(',');if(all)all.checked=boxes.length>0&&boxes.every(box=>box.checked);};
+ boxes.forEach(box=>box.addEventListener('click',event=>{if(event.shiftKey&&last){const from=boxes.indexOf(last),to=boxes.indexOf(box),checked=box.checked;for(let i=Math.min(from,to);i<=Math.max(from,to);i++)boxes[i].checked=checked;}last=box;save();}));
+ if(all)all.addEventListener('change',()=>{boxes.forEach(box=>box.checked=all.checked);save();});
+ form.addEventListener('submit',event=>{save();if(!hidden.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});
+});
+const warehouseBulkStatus=document.querySelector('#warehouse-bulk-status');
+if(warehouseBulkStatus){const selected=warehouseBulkStatus.querySelector('[data-warehouse-selected]');warehouseBulkStatus.addEventListener('submit',event=>{selected.value=[...document.querySelectorAll('[data-warehouse-check]:checked')].map(box=>box.value).join(',');if(!selected.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});}
 const sourceImportUpload=document.querySelector('form[data-source-import-upload]');
 if(sourceImportUpload){
  const fileInput=sourceImportUpload.querySelector('[data-source-import-file]'),status=sourceImportUpload.querySelector('[data-source-import-status]'),uploadButton=sourceImportUpload.querySelector('[data-import-upload-button]');

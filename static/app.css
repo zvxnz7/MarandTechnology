@@ -152,3 +152,89 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .article-current-stock>span{font-weight:600;color:#71777e}
 .article-current-stock strong{font-size:13px;color:#252b31;white-space:nowrap}
 .article-current-stock small{font-size:10px;font-weight:500;color:#71777e}
+
+/* Warehouse navigation, catalog and shipment preparation. */
+.nav-group{margin:0 0 6px;border:1px solid transparent;border-radius:6px}
+.nav-group>summary{list-style:none;padding:10px 12px;color:#343a40;font-size:13px;font-weight:750;letter-spacing:.45px}
+.nav-group>summary::-webkit-details-marker{display:none}
+.nav-group>summary::after{content:'⌄';float:right;color:var(--muted);font-size:15px;line-height:1}
+.nav-group:not([open])>summary::after{content:'›'}
+.nav-group[open]{background:#f8f9fa;border-color:#eceef0}
+.nav-children{padding:0 5px 5px}
+.sidebar .nav-link.nav-sublink{padding:8px 10px;margin:2px 0;font-size:13px;font-weight:550}
+.sidebar .nav-link.nav-current{background:#fceeee;color:#9e2528;border-left-color:var(--red);font-weight:700}
+.warehouse-search{display:flex;gap:8px;max-width:540px;margin:0 0 18px}
+.warehouse-search input{height:40px;padding:8px 11px}
+.warehouse-search button{padding:7px 14px}
+.warehouse-article-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:6px;margin:8px 0 18px}
+.warehouse-article-option{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.warehouse-article-option:hover,.warehouse-article-option.selected{border-color:#d79193;background:#fff8f8}
+.warehouse-article-option strong{overflow-wrap:anywhere;font-size:13px}
+.warehouse-article-option span{flex:0 0 auto;color:var(--muted);font-size:11px;text-align:right}
+.warehouse-content{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);gap:16px;align-items:start}
+.warehouse-content aside{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;padding:12px;background:#fff;border:1px solid var(--line);border-radius:7px}
+.warehouse-content aside h3{margin:0 0 8px;font-size:14px}
+.warehouse-content aside .warehouse-article-list{display:flex;flex-direction:column;gap:4px;margin:0}
+.warehouse-content aside .warehouse-article-option{align-items:flex-start;flex-direction:column;gap:1px;padding:7px 8px}
+.warehouse-content aside .warehouse-article-option span{text-align:left}
+.warehouse-selected{min-width:0}
+.warehouse-selected .pagehead{margin:0 0 8px}
+.warehouse-selected h2{margin:0;font-size:20px}
+.warehouse-stock-summary{display:flex;align-items:center;gap:12px;margin:3px 0 9px;font-size:13px}
+.warehouse-stock-summary strong{font-size:14px}
+.warehouse-lost-count{color:#9d2d32;font-size:12px;font-weight:700}
+.warehouse-bulk-status{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0;padding:8px;background:#fff;border:1px solid var(--line);border-radius:6px}
+.warehouse-bulk-status input[name=reason]{width:min(330px,100%);padding:7px 9px;font-size:12px}
+.warehouse-bulk-status button{padding:7px 10px;font-size:11px}
+.button.danger,.danger{color:#a82025}
+.warehouse-bales-table{min-width:1080px;font-size:11px}
+.warehouse-bales-table th{padding:7px 6px;font-size:9px;letter-spacing:.3px;white-space:nowrap}
+.warehouse-bales-table td{padding:5px 6px;font-size:11px;line-height:1.25;vertical-align:middle}
+.warehouse-bales-table td:first-child,.warehouse-bales-table td:nth-child(2),.warehouse-bales-table td:nth-child(4),.warehouse-bales-table td:nth-child(5),.warehouse-bales-table td:nth-child(6),.warehouse-bales-table td:nth-child(7),.warehouse-bales-table td:nth-child(8),.warehouse-bales-table td:nth-child(12){white-space:nowrap;text-align:center}
+.warehouse-pick input{width:15px;height:15px;margin:0;vertical-align:middle}
+.warehouse-pick{margin:0;text-align:center}
+.warehouse-row-lost td{background:#fff4f4;color:#7d2529}
+.warehouse-lost{background:#fde5e5;color:#9d2d32}
+.warehouse-row-lost td:first-child{border-left:3px solid #c83b40}
+.warehouse-note-form{display:flex;align-items:center;gap:3px;min-width:190px;margin:0}
+.warehouse-note-form input{min-width:125px;padding:4px 6px;font-size:10px}
+.warehouse-note-form button{font-size:10px;white-space:nowrap}
+.lot-chip{display:inline-block;min-width:32px;padding:2px 6px;border:1px solid #d8dce0;border-radius:4px;text-align:center;font-weight:700;white-space:nowrap}
+.lot-descriptive{background:#fff;color:#4d5359}
+.lot-color-0{background:#dceaf7;color:#174d79}.lot-color-1{background:#e2f1df;color:#31633a}
+.lot-color-2{background:#f9e5cf;color:#87480c}.lot-color-3{background:#eadff4;color:#62407c}
+.lot-color-4{background:#f6dfe4;color:#8c3048}.lot-color-5{background:#d9efef;color:#286466}
+.lot-color-6{background:#f3edce;color:#665813}.lot-color-7{background:#e4e7ec;color:#3e4b5b}
+.shipment-doc-list{margin:6px 0;padding-left:18px}.shipment-doc-list li{margin:3px 0;font-size:12px}
+.shipment-article{margin:10px 0;padding:12px;background:#fff;border:1px solid var(--line);border-radius:7px}
+.shipment-article>summary{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.shipment-article>summary span,.shipment-picked-article small{color:var(--muted);font-weight:500}
+.shipment-article-actions{margin:8px 0}.shipment-article-actions .button{padding:6px 10px;font-size:12px}
+.shipment-date-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0}
+.shipment-date-form label{width:180px;margin:0;font-size:11px}
+.shipment-date-form input{margin-top:4px;padding:7px}
+.shipment-totals{display:flex;gap:12px;align-items:center;white-space:nowrap}
+.shipment-totals strong{padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.shipment-final-actions{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;flex-wrap:wrap;margin:20px 0}
+.shipment-close-form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid #d9e7dc;border-radius:7px;background:#f3faf5}
+.shipment-close-form .check{margin:0;align-items:center;font-size:12px}
+.shipment-close-form button,.shipment-final-actions>form button{padding:8px 12px}
+.shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+.shipment-picker>section{min-width:0}.shipment-picker h2{font-size:17px;margin:12px 0}
+.shipment-select-article{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:12px 0}
+.shipment-select-article label{flex:1 1 220px;margin:0}.shipment-select-article button{height:40px}
+.shipment-available-form>.panel{max-height:65vh}
+.shipment-available-form .compact th,.shipment-available-form .compact td{padding:6px 8px;font-size:11px;white-space:nowrap}
+.shipment-available-form input[type=checkbox]{width:15px;height:15px;margin:0}
+.shipment-available-form>button{margin-top:10px}
+.shipment-select-all{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:12px}
+.shipment-select-all input{width:15px;height:15px;margin:0}
+.shipment-picked-article{margin-bottom:12px}
+.shipment-picked-article h3{font-size:14px;margin:9px 0}
+.shipment-correction{margin-top:24px}
+.shipment-correction form{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:10px 14px;align-items:end}
+.shipment-correction form label{margin:0;font-size:12px}
+.shipment-correction form button{justify-self:start}
+.shipment-correction h3{margin-top:18px;font-size:15px}
+@media(max-width:1000px){.warehouse-content{grid-template-columns:1fr}.warehouse-content aside{position:static;max-height:none}.warehouse-content aside .warehouse-article-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}.shipment-picker{grid-template-columns:1fr}}
+@media(max-width:650px){.warehouse-search{width:100%}.warehouse-article-list{grid-template-columns:1fr}.warehouse-content aside .warehouse-article-list{grid-template-columns:1fr}.warehouse-stock-summary{align-items:flex-start;flex-direction:column;gap:2px}.shipment-totals{flex-wrap:wrap}.shipment-correction form{grid-template-columns:1fr}.shipment-final-actions{align-items:stretch;flex-direction:column}.shipment-close-form{align-items:flex-start;flex-direction:column}.sidebar nav .nav-group{flex:1 1 100%}}

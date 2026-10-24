@@ -3,6 +3,7 @@ const V = require('../views');
 const Changes = require('./card-changes');
 const ArchiveCleanup = require('./archive-cleanup');
 const SourceImport = require('./source-import');
+const Warehouse = require('./warehouse');
 const { esc: e, datepl: date } = V;
 const writable = u => ['admin','approver','technologist'].includes(u.role);
 const input = (name, label, required = false) => `<label>${label}<input name="${name}" ${required ? 'required' : ''} maxlength="150"></label>`;
@@ -157,7 +158,9 @@ async function handle(ctx) {
   const projects=db.prepare('SELECT p.* FROM projects p JOIN project_articles pa ON pa.project_id=p.id WHERE pa.article_id=? ORDER BY p.created_at DESC,p.id DESC').all(id);
   const historyPage=Math.max(1,parseInt(url.searchParams.get('history_page'))||1);
   const recordCount=db.prepare('SELECT count(*) n FROM records WHERE article_id=? AND archived_at IS NULL').get(id).n;
-  const currentStock=db.prepare('SELECT pieces,weight_kg,snapshot_date FROM production_stock_snapshots WHERE article_id=? ORDER BY snapshot_date DESC LIMIT 1').get(id);
+  const currentStock=db.prepare(`SELECT count(b.local_id) pieces,round(coalesce(sum(b.weight_kg),0),2) weight_kg
+    FROM production_bales b LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
+    WHERE b.article_id=? AND ${Warehouse.activeStockSql()}`).get(id);
   const currentStockView=`<div class="article-current-stock"><span>Stan bieżący</span><strong>${currentStock?.pieces??0} <small>szt</small></strong><strong>${Number(currentStock?.weight_kg??0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} <small>kg</small></strong></div>`;
   const currentRecord=db.prepare('SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,1 is_current FROM records r WHERE r.id=? AND r.archived_at IS NULL').get(a.active_spec);
   const historyCount=recordCount-(currentRecord?1:0);

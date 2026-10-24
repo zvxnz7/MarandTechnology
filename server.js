@@ -13,6 +13,7 @@ const ArchiveCleanup = require('./modules/archive-cleanup');
 const SourceImport = require('./modules/source-import');
 const DatabaseSnapshot = require('./modules/database-snapshot');
 const Production = require('./modules/production');
+const Warehouse = require('./modules/warehouse');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -103,6 +104,7 @@ const Changes = require('./modules/card-changes');
 db.function('search_text', { deterministic: true }, normalize);
 const Photos = require('./modules/photos').create({db,DATA,fail,role,transaction,audit,now,send,redirect});
 Production.initialize(db);
+Warehouse.initialize(db);
 
 
 class HttpError extends Error {
@@ -629,7 +631,7 @@ async function handle(req, res) {
       const articles = db.prepare('SELECT id,symbol,archived_at FROM articles WHERE archived_at IS NOT NULL AND archived_at>=? AND purged_at IS NULL ORDER BY archived_at DESC,id DESC').all(cutoff);
       return send(req,res,200,V.archivePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),records,projects,articles}));
     }
-    if (Photos.handle(context) || await Production.handle(context) || await Catalog.handle(context)) return;
+    if (Photos.handle(context) || Warehouse.handle(context) || await Production.handle(context) || await Catalog.handle(context)) return;
 
     if (p === '/projects' && req.method === 'GET') {
       const q = (url.searchParams.get('q') || '').trim();

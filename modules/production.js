@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const V = require('../views');
+const Warehouse = require('./warehouse');
 
 const TEST_ARTICLE_KEY = 'WT56-21(5)';
 const STOCK_STATES = {
@@ -155,11 +156,12 @@ function overviewPage(ctx) {
     : '<th class="stock-day-header" colspan="2"><span class="stock-date">—</span><small>&nbsp;</small></th>'
   ).join('');
   const latest = ctx.db.prepare(`SELECT a.id,a.symbol,coalesce(st.status,'standard') status,
-      s.snapshot_date,s.pieces,s.weight_kg,s.uploaded_at
-    FROM articles a
-    JOIN production_stock_snapshots s ON s.article_id=a.id
-      AND s.snapshot_date=(SELECT max(s2.snapshot_date) FROM production_stock_snapshots s2 WHERE s2.article_id=a.id)
+      count(b.local_id) pieces,round(sum(b.weight_kg),2) weight_kg,max(b.uploaded_at) uploaded_at
+    FROM articles a JOIN production_bales b ON b.article_id=a.id
+    LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
     LEFT JOIN production_article_status st ON st.article_id=a.id
+    WHERE ${Warehouse.activeStockSql()}
+    GROUP BY a.id
     ORDER BY CASE coalesce(st.status,'standard') WHEN 'in_production' THEN 0 WHEN 'standard' THEN 1 WHEN 'three_d' THEN 2 WHEN 'aging' THEN 3 WHEN 'baltex' THEN 4 WHEN 'second_grade' THEN 5 ELSE 6 END,
       a.symbol_key,a.id`).all();
   const snapshotDates = dates.filter(Boolean).map(day => day.snapshot_date);
@@ -181,7 +183,7 @@ function overviewPage(ctx) {
       const value = byArticleDay.get(`${article.id}:${day.snapshot_date}`);
       return value ? `<td${separator}>${value.pieces}</td><td${endSeparator}>${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : `<td${separator}>—</td><td${endSeparator}>—</td>`;
     }).join('');
-    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/articles/${article.id}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
+    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/warehouse?article_id=${article.id}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
   }).join('');
   const summary = `<p class="stock-summary"><strong>Liczba sztuk: ${pieces}</strong><strong>Łączna waga: ${Number(weight).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</strong></p><p class="muted">Stan zaktualizowano: ${updatedAt ? V.datepl(updatedAt) : 'brak danych'}</p>`;
   const dayColumns = dates.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('');
