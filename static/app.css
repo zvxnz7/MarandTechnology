@@ -236,6 +236,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-select-all input{width:15px;height:15px;margin:0}
 .shipment-picked-article{margin-bottom:12px}
 .shipment-picked-article h3{font-size:14px;margin:9px 0}
+.shipment-delete-cell{width:38px;text-align:center!important}
+.shipment-delete-form{margin:0;display:flex;justify-content:center}
+.shipment-delete-button{width:24px;height:24px;padding:0;border:0;border-radius:50%;background:#fbe8e8;color:#b4232d;font-size:20px;line-height:20px;font-weight:700;cursor:pointer}
+.shipment-delete-button:hover{background:#c92a32;color:#fff}
 .shipment-correction{margin-top:24px}
 .shipment-correction form{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:10px 14px;align-items:end}
 .shipment-correction form label{margin:0;font-size:12px}

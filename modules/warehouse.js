@@ -238,6 +238,14 @@ function shipmentRecord(db, id) {
   return db.prepare('SELECT * FROM shipments WHERE id=?').get(id);
 }
 
+function eraseDraftShipment(db,id) {
+  const rows=db.prepare("SELECT id,detail FROM audit WHERE detail LIKE '%shipmentId%'").all().filter(row=>{try{return Number(JSON.parse(row.detail).shipmentId)===id}catch{return false}});
+  for(const row of rows){db.prepare('DELETE FROM audit_articles WHERE audit_id=?').run(row.id);db.prepare('DELETE FROM audit WHERE id=?').run(row.id);}
+  db.prepare('DELETE FROM shipment_bales WHERE shipment_article_id IN(SELECT id FROM shipment_articles WHERE shipment_id=?)').run(id);
+  db.prepare('DELETE FROM shipment_articles WHERE shipment_id=?').run(id);
+  db.prepare('DELETE FROM shipments WHERE id=?').run(id);
+}
+
 function shipmentArticles(db, shipmentId) {
   return db.prepare(`SELECT sa.id,sa.sequence,sa.closed_snapshot,sa.finishing_plant_id,fp.name finishing_plant_name,a.id article_id,a.symbol,
       count(sb.id) bale_count,round(coalesce(sum(b.weight_kg),0),2) weight_kg
@@ -263,15 +271,16 @@ function shipmentsPage(ctx) {
     FROM shipments s LEFT JOIN shipment_articles sa ON sa.shipment_id=s.id
     LEFT JOIN shipment_bales sb ON sb.shipment_article_id=sa.id AND sb.removed_at IS NULL
     LEFT JOIN production_bales b ON b.local_id=sb.bale_local_id
-    WHERE s.status!='cancelled' GROUP BY s.id ORDER BY s.shipment_year DESC,s.sequence DESC`).all();
+    GROUP BY s.id ORDER BY s.shipment_year DESC,s.sequence DESC`).all();
   const canPrepare = editableRoles.includes(ctx.req.user.role);
   const create = canPrepare ? `<form method="post" action="/shipments/create">${hidden('csrf',ctx.req.session.csrf)}<button class="primary">+ Przygotuj wysyłkę</button></form>` : '';
   const rows = shipments.map(s => {
     const items = shipmentArticles(ctx.db,s.id);
-    const itemRows = items.map(item => `<li><a href="/shipments/${s.id}/wz/${item.id}" target="_blank" rel="noopener">${articleNo(s,item)} ${V.esc(item.symbol)}</a> · ${item.bale_count} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · ${V.esc(item.finishing_plant_name)}`:''}</li>`).join('');
-    return `<tr><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td></tr>`;
+    const itemRows = s.status==='cancelled'?'':items.map(item => `<li><a href="/shipments/${s.id}/wz/${item.id}" target="_blank" rel="noopener">${articleNo(s,item)} ${V.esc(item.symbol)}</a> · ${item.bale_count} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · ${V.esc(item.finishing_plant_name)}`:''}</li>`).join('');
+    const remove=managerRoles.includes(ctx.req.user.role)&&s.status!=='closed'?`<form method="post" action="/shipments/${s.id}/delete" class="shipment-delete-form" onsubmit="return confirm('Usunąć tę roboczą wysyłkę i zwolnić przypisane belki?')">${hidden('csrf',ctx.req.session.csrf)}<button class="shipment-delete-button" title="Usuń wysyłkę" aria-label="Usuń wysyłkę">×</button></form>`:'';
+    return `<tr><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td><td class="shipment-delete-cell">${remove}</td></tr>`;
   }).join('');
-  const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłka</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div>${create}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Nie ma jeszcze wysyłek.</td></tr>'}</tbody></table></div>`;
+  const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłka</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div>${create}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8">Nie ma jeszcze wysyłek.</td></tr>'}</tbody></table></div>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Wysyłka · Marand',body});
 }
 
@@ -449,7 +458,7 @@ function handle(ctx) {
     ctx.audit(req.user,'Utworzono roboczą wysyłkę',null,JSON.stringify({shipmentId:id,year}),null);
     return redirect(req,res,`/shipments/${id}`,'Utworzono nową wysyłkę.');
   }
-  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|correct|wz\/(\d+)|correction\/(\d+)))?$/);
+  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|correct|wz\/(\d+)|correction\/(\d+)))?$/);
   if(pathMatch){
     const id=Number(pathMatch[1]),action=pathMatch[2]||'',itemId=Number(pathMatch[3]||0),correctionId=Number(pathMatch[4]||0),shipment=shipmentRecord(db,id);
     if(!shipment) throw Object.assign(new Error('Nie znaleziono wysyłki.'),{status:404});
@@ -463,6 +472,12 @@ function handle(ctx) {
       role(req.user,...editableRoles);
       if(shipment.status!=='draft') throw Object.assign(new Error('Zamkniętej wysyłki nie można zmieniać.'),{status:409});
       return send(req,res,200,shipmentSelectionPage(ctx,shipment));
+    }
+    if(action==='delete'&&req.method==='POST'){
+      role(req.user,...managerRoles);
+      if(!['draft','cancelled'].includes(shipment.status)) throw Object.assign(new Error('Można usuwać tylko robocze lub anulowane wysyłki.'),{status:409});
+      transaction(()=>eraseDraftShipment(db,id));
+      return redirect(req,res,'/shipments','Usunięto wysyłkę i zwolniono przypisane belki.');
     }
     if(action==='add'&&req.method==='POST'){
       role(req.user,...editableRoles);
@@ -520,13 +535,7 @@ function handle(ctx) {
     if(action==='cancel'&&req.method==='POST'){
       role(req.user,...managerRoles);
       if(shipment.status!=='draft') throw Object.assign(new Error('Można anulować tylko roboczą wysyłkę.'),{status:409});
-      transaction(()=>{
-        const auditRows=db.prepare("SELECT id,detail FROM audit WHERE detail LIKE '%shipmentId%'").all().filter(row=>{try{return Number(JSON.parse(row.detail).shipmentId)===id}catch{return false}});
-        for(const auditRow of auditRows){db.prepare('DELETE FROM audit_articles WHERE audit_id=?').run(auditRow.id);db.prepare('DELETE FROM audit WHERE id=?').run(auditRow.id);}
-        db.prepare('DELETE FROM shipment_bales WHERE shipment_article_id IN(SELECT id FROM shipment_articles WHERE shipment_id=?)').run(id);
-        db.prepare('DELETE FROM shipment_articles WHERE shipment_id=?').run(id);
-        db.prepare('DELETE FROM shipments WHERE id=?').run(id);
-      });
+      transaction(()=>eraseDraftShipment(db,id));
       return redirect(req,res,'/shipments','Wysyłkę usunięto. Belki są ponownie dostępne.');
     }
     if(action==='correct'&&req.method==='POST'){
