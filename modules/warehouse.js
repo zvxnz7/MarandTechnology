@@ -104,11 +104,6 @@ function baleAvailableForNewShipment(db, localId) {
 function baleRows(rows, options = {}) {
   const statusText = row => row.inventory_status === 'lost' ? '<span class="badge warehouse-lost">Zagubiona</span>'
     : row.reserved_status === 'draft' ? '<span class="badge submitted">W przygotowaniu</span>' : '<span class="badge approved">Dostępna</span>';
-  const workerText = row => {
-    let workers = [];
-    try { workers = JSON.parse(row.workers_json || '[]'); } catch {}
-    return workers.map(worker => `${worker.code ? `${V.esc(worker.code)} · ` : ''}${V.esc(worker.name)} · ${Number(worker.meters || 0).toLocaleString('pl-PL')} m`).join('<br>') || '—';
-  };
   const lotClass = lot => {
     const value = String(lot || '').trim();
     if (!value || /\s/.test(value) || !/\d/.test(value) || !/^[\p{L}\d#./_-]+$/u.test(value)) return 'lot-descriptive';
@@ -117,24 +112,30 @@ function baleRows(rows, options = {}) {
     return `lot-color-${hash % 8}`;
   };
   return rows.map((row, index) => {
-    const noteForm = options.editNotes && row.inventory_status !== 'lost' ? `<form method="post" action="/warehouse/bales/${encodeURIComponent(row.local_id)}/notes" class="warehouse-note-form">${hidden('csrf', options.csrf)}<input name="notes" value="${V.esc(row.notes)}" aria-label="Uwagi do belki ${V.esc(row.bale_number)}"><button class="link">Zapisz</button></form>` : V.esc(row.notes || '—');
+    const noteForm = options.editNotes ? `<form method="post" action="/warehouse/bales/${encodeURIComponent(row.local_id)}/notes" class="warehouse-note-form" data-warehouse-note-form>${hidden('csrf', options.csrf)}<input name="notes" value="${V.esc(row.notes)}" aria-label="Uwagi do belki ${V.esc(row.bale_number)}" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>` : V.esc(row.notes || '—');
     const statusAction = options.manageStatuses && row.inventory_status !== 'lost' && row.reserved_status !== 'draft'
       ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz belkę ${V.esc(row.bale_number)}"></label>`
       : options.manageStatuses && row.inventory_status === 'lost'
         ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz zagubioną belkę ${V.esc(row.bale_number)}"></label>`
         : '';
     const lot = String(row.lot || '').trim();
-    return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td>${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}</td><td>${V.esc(row.bale_number)}<br>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td>${workerText(row)}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
+    return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td>${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
   }).join('');
+}
+
+function articleSearchResults(ctx, q) {
+  if (!q) return '';
+  const matches = articleBalances(ctx.db, q).filter(article => article.stock_pieces > 0);
+  if (!matches.length) return '<p class="warehouse-search-empty">Brak artykułów z dostępnymi belkami.</p>';
+  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article => `<a role="option" href="/warehouse?article_id=${article.id}" class="warehouse-article-option"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
 }
 
 function catalogPage(ctx) {
   const q = String(ctx.url.searchParams.get('q') || '').trim();
   const rawArticleId = Number(ctx.url.searchParams.get('article_id') || 0);
-  const articles = articleBalances(ctx.db, q).filter(a=>a.stock_pieces>0||Boolean(q));
-  const current = Number.isSafeInteger(rawArticleId) && rawArticleId > 0 ? articles.find(a => a.id === rawArticleId) : null;
-  const search = `<form method="get" action="/warehouse" class="warehouse-search"><input name="q" value="${V.esc(q)}" placeholder="Szukaj artykułu" aria-label="Szukaj artykułu"><button class="primary">Szukaj</button></form>`;
-  const articleList = articles.length ? `<div class="warehouse-article-list">${articles.map(a => `<a class="warehouse-article-option${current?.id === a.id ? ' selected' : ''}" href="/warehouse?article_id=${a.id}${q ? `&q=${encodeURIComponent(q)}` : ''}"><strong>${V.esc(a.symbol)}</strong><span>${a.stock_pieces} szt · ${money(a.stock_weight)} kg${a.lost_pieces ? ` · ${a.lost_pieces} zagubionych` : ''}</span></a>`).join('')}</div>` : '<p class="muted">Brak artykułów z belkami w kartotece.</p>';
+  if (ctx.url.searchParams.get('partial') === 'search') return articleSearchResults(ctx, q);
+  const current = Number.isSafeInteger(rawArticleId) && rawArticleId > 0 ? articleBalances(ctx.db).find(a => a.id === rawArticleId) : null;
+  const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><input name="q" value="${V.esc(q)}" placeholder="Szukaj artykułu" aria-label="Szukaj artykułu" autocomplete="off" aria-controls="warehouse-search-results"><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
   let selectedView = '';
   if (current) {
     const bales = registeredBales(ctx.db, current.id);
@@ -143,11 +144,33 @@ function catalogPage(ctx) {
     const lostCount = bales.filter(b => b.inventory_status === 'lost').length;
     const canManageStatuses = managerRoles.includes(ctx.req.user.role);
     const lostForm = canManageStatuses ? `<form method="post" action="/warehouse/bales/status" id="warehouse-bulk-status" class="warehouse-bulk-status">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="article_id" value="${current.id}"><input type="hidden" name="bale_ids" value="" data-warehouse-selected><input name="reason" placeholder="Powód oznaczenia (wymagany dla zagubionych)" maxlength="500"><button name="status" value="lost" class="button danger">Oznacz zaznaczone jako zagubione</button>${lostCount ? '<button name="status" value="available" class="button">Przywróć zaznaczone do dostępnych</button>' : ''}</form>` : '';
-    const cols = canManageStatuses ? 12 : 11;
-    selectedView = `<section class="warehouse-selected"><div class="pagehead"><div><h2>${V.esc(current.symbol)}</h2><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th>✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`}</tbody></table></div></section>`;
+    const cols = canManageStatuses ? 11 : 10;
+    selectedView = `<section class="warehouse-selected"><div class="pagehead"><div><h2>${V.esc(current.symbol)}</h2><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th>✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`}</tbody></table></div></section>`;
   }
-  const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Kartoteka</h1><p class="muted">Wybierz artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${current ? `<div class="warehouse-content"><aside><h3>Artykuły</h3>${articleList}</aside>${selectedView}</div>` : articleList}`;
+  const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Kartoteka</h1><p class="muted">Wyszukaj artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${current ? selectedView : ''}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Kartoteka magazynowa · Marand',body});
+}
+
+function baleDetailPage(ctx, localId) {
+  const bale = ctx.db.prepare(`SELECT b.*,a.id article_id,a.symbol,coalesce(f.status,'available') inventory_status,f.reason status_reason,
+      sh.id shipment_id,sh.shipment_year,sh.sequence shipment_sequence,sh.status shipment_status,
+      sa.sequence article_sequence
+    FROM production_bales b JOIN articles a ON a.id=b.article_id
+    LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
+    LEFT JOIN shipment_bales sb ON sb.bale_local_id=b.local_id AND sb.removed_at IS NULL
+    LEFT JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
+    LEFT JOIN shipments sh ON sh.id=sa.shipment_id
+    WHERE b.local_id=?`).get(localId);
+  if (!bale) throw Object.assign(new Error('Nie znaleziono belki.'),{status:404});
+  let workers=[];try{workers=JSON.parse(bale.workers_json||'[]')}catch{}
+  const workerList=workers.length?`<ul>${workers.map(worker=>`<li>${worker.code?`${V.esc(worker.code)} · `:''}${V.esc(worker.name)} · ${Number(worker.meters||0).toLocaleString('pl-PL')} m</li>`).join('')}</ul>`:'—';
+  const status=bale.inventory_status==='lost'?'Zagubiona':bale.inventory_status==='shipped_out'?'Wysłana poza stan':'Dostępna';
+  const shipment=bale.shipment_id?`<a href="/shipments/${bale.shipment_id}">${shipmentNo({sequence:bale.shipment_sequence,shipment_year:bale.shipment_year})} · ${bale.shipment_status==='closed'?'Zamknięta':'W przygotowaniu'}</a>`:'—';
+  const canEditNote=editableRoles.includes(ctx.req.user.role)&&bale.shipment_status!=='closed'&&bale.inventory_status!=='shipped_out';
+  const noteForm=canEditNote?`<form method="post" action="/warehouse/bales/${encodeURIComponent(bale.local_id)}/notes" class="warehouse-detail-note" data-warehouse-note-form>${hidden('csrf',ctx.req.session.csrf)}<input name="notes" value="${V.esc(bale.notes)}" aria-label="Uwagi do belki" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>`:V.esc(bale.notes||'—');
+  const entries=[['Symbol artykułu',`<a href="/warehouse?article_id=${bale.article_id}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',noteForm],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
+  const body=`<a class="breadcrumb" href="/warehouse?article_id=${bale.article_id}">← Kartoteka ${V.esc(bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Belka ${bale.bale_number} · Kartoteka · Marand`,body});
 }
 
 function shipmentRecord(db, id) {
@@ -310,8 +333,11 @@ function handle(ctx) {
     if(!bale) throw Object.assign(new Error('Belka nie jest już w bieżącej kartotece.'),{status:404});
     db.prepare('UPDATE production_bales SET notes=? WHERE local_id=?').run(note,baleId);
     ctx.audit(req.user,'Zmieniono uwagi do belki',null,JSON.stringify({baleId,notes:note}),bale.article_id);
+    if(req.headers['x-requested-with']==='fetch') return send(req,res,200,JSON.stringify({ok:true}), 'application/json; charset=utf-8');
     return redirect(req,res,`/warehouse?article_id=${bale.article_id}`,'Uwagi do belki zapisano.');
   }
+  const baleDetailMatch=p.match(/^\/warehouse\/bales\/([^/]+)$/);
+  if(baleDetailMatch&&req.method==='GET') return send(req,res,200,baleDetailPage(ctx,decodeURIComponent(baleDetailMatch[1])));
   if(p==='/shipments'&&req.method==='GET') return send(req,res,200,shipmentsPage(ctx));
   if(p==='/shipments/create'&&req.method==='POST'){
     role(req.user,...editableRoles);

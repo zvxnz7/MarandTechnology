@@ -238,3 +238,29 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-correction h3{margin-top:18px;font-size:15px}
 @media(max-width:1000px){.warehouse-content{grid-template-columns:1fr}.warehouse-content aside{position:static;max-height:none}.warehouse-content aside .warehouse-article-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}.shipment-picker{grid-template-columns:1fr}}
 @media(max-width:650px){.warehouse-search{width:100%}.warehouse-article-list{grid-template-columns:1fr}.warehouse-content aside .warehouse-article-list{grid-template-columns:1fr}.warehouse-stock-summary{align-items:flex-start;flex-direction:column;gap:2px}.shipment-totals{flex-wrap:wrap}.shipment-correction form{grid-template-columns:1fr}.shipment-final-actions{align-items:stretch;flex-direction:column}.shipment-close-form{align-items:flex-start;flex-direction:column}.sidebar nav .nav-group{flex:1 1 100%}}
+.warehouse-search{display:block;position:relative;width:min(100%,540px);max-width:none}
+.warehouse-search input{display:block;width:100%;padding:8px 11px}
+.warehouse-search-results-wrap{position:absolute;z-index:20;top:calc(100% + 3px);left:0;right:0}
+.warehouse-search-results{display:flex;flex-direction:column;max-height:330px;overflow:auto;padding:4px;background:#fff;border:1px solid #cfd4da;border-radius:6px;box-shadow:0 8px 22px #18212a1c}
+.warehouse-search-results .warehouse-article-option{border:0;border-radius:4px;padding:7px 9px}
+.warehouse-search-results .warehouse-article-option:hover,.warehouse-search-results .warehouse-article-option:focus{background:#fceeee;outline:none}
+.warehouse-search-empty{margin:0;padding:10px 12px;background:white;border:1px solid var(--line);border-radius:6px;color:var(--muted);font-size:12px;box-shadow:0 8px 22px #18212a1c}
+.warehouse-bales-table{min-width:900px;table-layout:auto}
+.warehouse-bales-table th{padding:6px 5px;font-size:9px}
+.warehouse-bales-table td{padding:4px 5px;font-size:10px;line-height:1.15}
+.warehouse-bales-table td:nth-child(1),.warehouse-bales-table td:nth-child(2),.warehouse-bales-table td:nth-child(5),.warehouse-bales-table td:nth-child(6),.warehouse-bales-table td:nth-child(7),.warehouse-bales-table td:nth-child(8){text-align:center;white-space:nowrap}
+.warehouse-bales-table .warehouse-bale-number{white-space:nowrap}
+.warehouse-bale-number{display:flex;align-items:center;justify-content:center;gap:5px}
+.warehouse-bale-number a{font-weight:700;color:#334b63;text-decoration:underline;text-decoration-color:#c3ccd5;text-underline-offset:2px}
+.warehouse-bale-number .badge{padding:2px 6px;font-size:9px;line-height:1.1}
+.warehouse-note-form{display:block;position:relative;min-width:125px;margin:0}
+.warehouse-note-form input{min-width:125px;padding:3px 5px;font-size:10px}
+.warehouse-note-status{display:block;min-height:10px;font-size:9px;line-height:1;color:#737b82}
+.warehouse-detail-note{display:grid;gap:3px;width:min(420px,100%)}
+.warehouse-detail-note input{width:100%;padding:7px 9px}
+.warehouse-detail-note .warehouse-note-status{font-size:11px}
+.warehouse-bale-detail dl{grid-template-columns:minmax(160px,240px) minmax(0,1fr);gap:0 18px}
+.warehouse-bale-detail dt,.warehouse-bale-detail dd{padding:8px 0;border-bottom:1px solid #edf0f2}
+.warehouse-bale-detail dd{text-align:left;overflow-wrap:anywhere}
+.warehouse-bale-detail ul{margin:0;padding-left:18px}
+@media(max-width:650px){.warehouse-bale-detail dl{grid-template-columns:1fr;gap:0}.warehouse-bale-detail dd{padding-top:0;border-bottom:0}.warehouse-bale-detail dt{padding-bottom:2px}}

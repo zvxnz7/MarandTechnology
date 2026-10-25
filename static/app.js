@@ -12,6 +12,42 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
 });
 const warehouseBulkStatus=document.querySelector('#warehouse-bulk-status');
 if(warehouseBulkStatus){const selected=warehouseBulkStatus.querySelector('[data-warehouse-selected]');warehouseBulkStatus.addEventListener('submit',event=>{selected.value=[...document.querySelectorAll('[data-warehouse-check]:checked')].map(box=>box.value).join(',');if(!selected.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});}
+document.querySelectorAll('[data-warehouse-live-search]').forEach(form=>{
+ const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-warehouse-search-results]');let timer=null,controller=null;
+ const search=async()=>{
+  const q=input.value.trim();controller?.abort();controller=null;
+  if(!q){results.replaceChildren();input.setAttribute('aria-expanded','false');return;}
+  controller=new AbortController();
+  try{
+   const response=await fetch(`/warehouse?partial=search&q=${encodeURIComponent(q)}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});
+   if(!response.ok)throw new Error('Nie udało się wyszukać artykułów.');
+   results.innerHTML=await response.text();input.setAttribute('aria-expanded',String(Boolean(results.querySelector('a'))));
+  }catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać artykułów.';input.setAttribute('aria-expanded','false');}}
+ };
+ input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180);});
+ form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
+ document.addEventListener('click',event=>{if(!form.contains(event.target))input.setAttribute('aria-expanded','false');});
+});
+document.querySelectorAll('[data-warehouse-note-form]').forEach(form=>{
+ const input=form.querySelector('[data-warehouse-note]'),status=form.querySelector('.warehouse-note-status');let saved=input.value,timer=null,busy=false,pending=false;
+ const persist=async()=>{
+  clearTimeout(timer);if(busy){pending=true;return;}if(input.value===saved){status.textContent='';return;}
+  busy=true;
+  do{
+   pending=false;const value=input.value;status.textContent='Zapisywanie…';
+   try{
+    const body=new URLSearchParams(new FormData(form));
+    const response=await fetch(form.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-Requested-With':'fetch'},body});
+    const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Błąd zapisu.');
+    saved=value;if(input.value!==saved)pending=true;else status.textContent='Zapisano';
+   }catch{status.textContent='Błąd zapisu';break;}
+  }while(pending);
+  busy=false;
+ };
+ input.addEventListener('input',()=>{status.textContent='Niezapisane zmiany';clearTimeout(timer);timer=setTimeout(persist,500);});
+ input.addEventListener('change',persist);input.addEventListener('blur',persist);
+ form.addEventListener('submit',event=>{event.preventDefault();persist();});
+});
 const sourceImportUpload=document.querySelector('form[data-source-import-upload]');
 if(sourceImportUpload){
  const fileInput=sourceImportUpload.querySelector('[data-source-import-file]'),status=sourceImportUpload.querySelector('[data-source-import-status]'),uploadButton=sourceImportUpload.querySelector('[data-import-upload-button]');
