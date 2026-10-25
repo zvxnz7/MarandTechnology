@@ -631,7 +631,10 @@ async function handle(req, res) {
       const articles = db.prepare('SELECT id,symbol,archived_at FROM articles WHERE archived_at IS NOT NULL AND archived_at>=? AND purged_at IS NULL ORDER BY archived_at DESC,id DESC').all(cutoff);
       return send(req,res,200,V.archivePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),records,projects,articles}));
     }
-    if (Photos.handle(context) || Warehouse.handle(context) || await Production.handle(context) || await Catalog.handle(context)) return;
+    if (Photos.handle(context) || res.writableEnded) return;
+    if (Warehouse.handle(context) || res.writableEnded) return;
+    if (await Production.handle(context) || res.writableEnded) return;
+    if (await Catalog.handle(context) || res.writableEnded) return;
 
     if (p === '/projects' && req.method === 'GET') {
       const q = (url.searchParams.get('q') || '').trim();
@@ -1336,6 +1339,15 @@ async function handle(req, res) {
 
     fail(404, 'Nie znaleziono strony.');
   } catch (err) {
+    if (res.writableEnded) {
+      console.error('Request failed after its response was sent:', err && err.stack || err);
+      return;
+    }
+    if (res.headersSent) {
+      console.error('Request failed after response headers were sent:', err && err.stack || err);
+      res.destroy();
+      return;
+    }
     if (err instanceof HttpError) return send(req, res, err.status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: err.message }));
     if (err && (String(err.code || '').startsWith('SQLITE_') || err.code === 'ERR_SQLITE_ERROR')) {
       const reference = crypto.randomBytes(4).toString('hex').toUpperCase();

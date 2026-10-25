@@ -195,15 +195,24 @@ async function checkHealth(config, version) {
   if (!['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('health_url musi wskazywać lokalny serwer.');
   const expectedTag = sha(Buffer.from(path.resolve(config.data_dir).toLowerCase()));
   const end = Date.now() + 45000;
+  let lastFailure = 'Serwer nie odpowiedział na lokalne sprawdzenie /healthz.';
   while (Date.now() < end) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
-      const result = await response.json();
-      if (response.ok && result.ok && result.version === version && result.data_tag === expectedTag) return;
-    } catch {}
+      const body = await response.text();
+      let result;
+      try { result = JSON.parse(body); }
+      catch { lastFailure = `Lokalny serwer zwrócił HTTP ${response.status}, ale odpowiedź /healthz nie była prawidłowym JSON-em.`; }
+      if (result) {
+        if (!response.ok || !result.ok) lastFailure = `Lokalne /healthz zwraca HTTP ${response.status} lub status niezdrowy${result.error?`: ${String(result.error).slice(0,180)}`:'.'}`;
+        else if (result.version !== version) lastFailure = `Na porcie aktualizacji działa wersja ${String(result.version || 'nieznana')}, oczekiwano ${version}. Możliwy jest drugi proces programu albo nieudany restart.`;
+        else if (result.data_tag !== expectedTag) lastFailure = 'Uruchomiony program wskazuje inny folder danych niż konfiguracja aktualizatora.';
+        else return;
+      }
+    } catch (error) { lastFailure = `Nie można połączyć się z lokalnym /healthz: ${String(error.message || error).slice(0,180)}.`; }
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-  throw new Error(`Nowa wersja ${version} nie przeszła kontroli uruchomienia.`);
+  throw new Error(`Nowa wersja ${version} nie przeszła kontroli uruchomienia. ${lastFailure}`);
 }
 function rejectSymlinks(directory) { allFiles(directory); }
 async function preserveHistoricalSources(program, stage) {
