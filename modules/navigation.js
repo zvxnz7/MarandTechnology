@@ -9,5 +9,6 @@ module.exports = [
     { id: 'catalog', label: 'Kartoteka', href: '/warehouse' },
     { id: 'shipments', label: 'Wysyłka', href: '/shipments' },
   ] },
+  { id: 'settings', label: 'Ustawienia magazynu', href: '/settings', roles: ['admin','approver'] },
   { id: 'archive', label: 'Archiwum · 30 dni', href: '/archive' },
 ];

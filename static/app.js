@@ -28,6 +28,19 @@ document.querySelectorAll('[data-warehouse-live-search]').forEach(form=>{
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
  document.addEventListener('click',event=>{if(!form.contains(event.target))input.setAttribute('aria-expanded','false');});
 });
+document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
+ const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-shipment-search-results]');let timer=null,controller=null;
+ const search=async()=>{
+  const q=input.value.trim();controller?.abort();controller=null;
+  if(!q){results.replaceChildren();return;}
+  controller=new AbortController();
+  try{const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();}
+  catch(error){if(error.name!=='AbortError')results.textContent='Nie udało się wyszukać artykułów.';}
+ };
+ input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180);});
+ form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
+ document.addEventListener('click',event=>{if(!form.contains(event.target))results.replaceChildren();});
+});
 document.querySelectorAll('[data-warehouse-note-form]').forEach(form=>{
  const input=form.querySelector('[data-warehouse-note]'),status=form.querySelector('.warehouse-note-status');let saved=input.value,timer=null,busy=false,pending=false;
  const persist=async()=>{
