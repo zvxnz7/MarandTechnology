@@ -1,5 +1,16 @@
 'use strict';
 let dirty=false,submitting=false;
+document.querySelectorAll('[data-update-refresh]').forEach(marker=>{
+ const target=marker.dataset.updateVersion;
+ const poll=async()=>{
+  try{
+   const response=await fetch('/admin/update/status',{cache:'no-store',headers:{'X-Requested-With':'fetch'}});
+   if(response.ok){const result=await response.json();if(result.status?.pending!==true||result.version===target){location.reload();return;}}
+  }catch{}
+  setTimeout(poll,1000);
+ };
+ setTimeout(poll,1000);
+});
 document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('input',()=>dirty=true);f.addEventListener('submit',()=>{submitting=true;});});
 document.querySelectorAll('select[data-auto-submit]').forEach(select=>select.addEventListener('change',()=>select.form?.requestSubmit()));
 document.querySelectorAll('.nav-group').forEach(group=>{const active=[...group.querySelectorAll('.nav-link')].find(link=>location.pathname===link.pathname||link.pathname!=='/'&&location.pathname.startsWith(`${link.pathname}/`));if(active){active.classList.add('nav-current');group.open=true;}});

@@ -296,15 +296,19 @@ function sourceImportPage({ user, csrf, flashes, latestImport = null, restoreSta
 
 function updatePage({ user, csrf, flashes, current, latest, status, repo, canUpdate, updateAvailable, updateError }) {
   let latestInfo = latest ? `<p>Najnowsze wydanie: <strong>${esc(latest.tag_name)}</strong>${latest.name ? ` · ${esc(latest.name)}` : ''}</p>` : '<p>Nie sprawdzono jeszcze wydań.</p>';
-  const statusInfo = status ? `<div class="notice ${status.ok ? 'success' : 'warning'}">${status.ok ? `Ostatnia aktualizacja zakończyła się powodzeniem: ${esc(status.version || '')} · ${datepl(status.at)}` : `Ostatnia aktualizacja nie powiodła się: ${esc(status.error || 'sprawdź log aktualizacji')}`}</div>` : '';
-  const updateForm = !canUpdate
+  const updatePending=Boolean(status?.pending);
+  const statusInfo = updatePending ? `<div class="notice" role="status">Instaluję wersję ${esc(status.version||'')}… Ta strona odświeży się po zakończeniu.</div>` : status ? `<div class="notice ${status.ok ? 'success' : 'warning'}">${status.ok ? `Ostatnia aktualizacja zakończyła się powodzeniem: ${esc(status.version || '')} · ${datepl(status.at)}` : `Ostatnia aktualizacja nie powiodła się: ${esc(status.error || 'sprawdź log aktualizacji')}`}</div>` : '';
+  const updateForm = updatePending
+    ? ''
+    : !canUpdate
     ? `<div class="notice warning">Aktualizator nie jest skonfigurowany. Uruchom ponownie instalator Windows.</div>`
     : updateAvailable
       ? csrfForm(csrf, '/admin/update', button('Pobierz i zainstaluj aktualizację z GitHub', 'primary'))
       : latest
         ? '<div class="notice success">Masz już najnowszą wersję.</div>'
         : '<div class="notice">Aktualizacja pojawi się tutaj po opublikowaniu wydania na GitHub.</div>';
-  return layout({ user, csrf, flashes, title: 'Aktualizacje · Marand', body: `<a class="breadcrumb" href="/">← Artykuły i projekty</a><div class="pagehead"><div><span class="eyebrow">ADMINISTRACJA</span><h1>Aktualizacje programu</h1><p class="muted">Wersja zainstalowana: ${esc(current)}</p></div></div><div class="panel padded"><h2>Źródło aktualizacji</h2><p>${repo ? `Repozytorium GitHub: <strong>${esc(repo)}</strong>` : 'Repozytorium GitHub nie jest skonfigurowane.'}</p>${latestInfo}${updateError ? `<div class="notice warning">${esc(updateError)}</div>` : ''}${statusInfo}${updateForm}<p class="muted small">Po każdym wypchnięciu zmian na main GitHub przygotowuje wydanie. Aktualizacja sprawdza sumy SHA-256, wykonuje kopię bazy i w razie problemu przywraca poprzedni program. Dane pozostają osobno.</p></div>` });
+  const refresh=updatePending?`<div data-update-refresh data-update-version="${esc(status.version||'')}"></div>`:'';
+  return layout({ user, csrf, flashes, title: 'Aktualizacje · Marand', body: `<a class="breadcrumb" href="/">← Artykuły i projekty</a><div class="pagehead"><div><span class="eyebrow">ADMINISTRACJA</span><h1>Aktualizacje programu</h1><p class="muted">Wersja zainstalowana: ${esc(current)}</p></div></div><div class="panel padded"><h2>Źródło aktualizacji</h2><p>${repo ? `Repozytorium GitHub: <strong>${esc(repo)}</strong>` : 'Repozytorium GitHub nie jest skonfigurowane.'}</p>${latestInfo}${updateError ? `<div class="notice warning">${esc(updateError)}</div>` : ''}${statusInfo}${updateForm}${refresh}<p class="muted small">Po każdym wypchnięciu zmian na main GitHub przygotowuje wydanie. Aktualizacja sprawdza sumy SHA-256, wykonuje kopię bazy i w razie problemu przywraca poprzedni program. Dane pozostają osobno.</p></div>` });
 }
 
 module.exports = { TECH, RAW_METRICS, TARGET_METRICS, GB, FINISH, STATE, PROJECT_STATUS, LOGO_CACHE_VERSION, esc, datepl, layout, errorPage, loginPage, homePage, projectPage, editPage, recordPage, issuePage, issueConfirmPage, cardPage, confirmArchiveRecordPage, confirmArchiveProjectPage, confirmDeleteStagePage, confirmDeleteCommentPage, confirmDeleteStageCommentPage, confirmRemoveProjectArticlePage, confirmArchiveArticlePage, confirmPurgeArticlePage, archivePage, confirmRestoreImportPage, sourceImportPage, updatePage };

@@ -414,6 +414,12 @@ function writeSourceImportRestoreStatus(status) {
   fs.writeFileSync(temporary, JSON.stringify(status), { encoding: 'utf8', mode: 0o600 });
   fs.renameSync(temporary, destination);
 }
+function writeUpdateStatus(status) {
+  const destination = path.join(DATA, 'update_status.json');
+  const temporary = `${destination}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(status), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(temporary, destination);
+}
 async function syncExternalUpdater(updaterPath) {
   const bundled = path.join(ROOT, 'administracja', 'updater.js');
   const target = path.resolve(updaterPath);
@@ -495,6 +501,7 @@ async function startGithubUpdate(req) {
   await fsp.mkdir(staging, { recursive: true });
   const packagePath = path.join(staging, `marand-node-${remoteVersion}-${crypto.randomBytes(6).toString('hex')}.zip`);
   await fsp.writeFile(packagePath, bytes, { flag: 'wx' });
+  writeUpdateStatus({ ok: null, pending: true, version: remoteVersion, at: now() });
   const args = [updater, 'update', '--package', packagePath, '--version', remoteVersion, '--sha256', actual];
   const child = spawn(process.execPath, args, {
     cwd: path.dirname(updater), detached: true, windowsHide: true, stdio: 'ignore',
@@ -508,6 +515,7 @@ async function startGithubUpdate(req) {
     });
   } catch (error) {
     try { await fsp.rm(packagePath, { force: true }); } catch {}
+    try { writeUpdateStatus({ ok: false, pending: false, version: remoteVersion, at: now(), error: `Nie udało się uruchomić aktualizatora: ${error.message}` }); } catch {}
     throw new Error(`Nie udało się uruchomić aktualizatora: ${error.message}`);
   }
   child.unref();
@@ -1226,6 +1234,11 @@ async function handle(req, res) {
       const updateStatus = readJsonIfExists(path.join(DATA, 'update_status.json'));
       const updateAvailable = Boolean(latest && isNewer(String(latest.tag_name || '').replace(/^v/, ''), versionInfo.version));
       return send(req, res, 200, V.updatePage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), current: versionInfo.version, latest, status: updateStatus, repo, canUpdate: Boolean(repo && outside && fs.existsSync(updater) && fs.existsSync(updateConfig)), updateAvailable, updateError }));
+    }
+    if (p === '/admin/update/status' && req.method === 'GET') {
+      role(req.user, 'admin');
+      const updateStatus = readJsonIfExists(path.join(DATA, 'update_status.json'));
+      return send(req, res, 200, JSON.stringify({ version: versionInfo.version, status: updateStatus }), 'application/json; charset=utf-8', { 'Cache-Control': 'no-store' });
     }
     if (p === '/admin/update' && req.method === 'POST') {
       role(req.user, 'admin');
