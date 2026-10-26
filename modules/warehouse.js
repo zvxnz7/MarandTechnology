@@ -298,6 +298,14 @@ function shipmentConfirmPage(ctx, shipment, kind) {
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Potwierdź ${title.toLocaleLowerCase('pl-PL')} · Marand`,body});
 }
 
+function shipmentArticleDeleteConfirmPage(ctx, shipment, item) {
+  const cancelUrl=`/shipments/${shipment.id}`;
+  const action=`/shipments/${shipment.id}/specifications/${item.id}/delete`;
+  const bales=shipmentBales(ctx.db,item.id);
+  const body=`<a class="breadcrumb" href="${cancelUrl}">← Wróć do wysyłki</a><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Usuń specyfikację ${articleNo(shipment,item)}?</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><h2 class="delete-confirm-object">${articleNo(shipment,item)} · ${V.esc(item.symbol)}</h2><p>Specyfikacja wraz z ${bales.length} belkami zostanie usunięta z roboczej wysyłki. Belki wrócą do dostępnych, a numer specyfikacji będzie można wykorzystać ponownie.</p><form method="post" action="${action}" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_specification','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Potwierdź usunięcie specyfikacji</button></form></div></dialog>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Usuń specyfikację ${articleNo(shipment,item)} · Marand`,body});
+}
+
 function eraseDraftShipment(db,id) {
   // Audit records are immutable. Keep their history when a draft shipment is
   // removed; the shipment data can be deleted independently.
@@ -313,7 +321,14 @@ function shipmentArticles(db, shipmentId) {
     LEFT JOIN finishing_plants fp ON fp.id=sa.finishing_plant_id
     LEFT JOIN shipment_bales sb ON sb.shipment_article_id=sa.id AND sb.removed_at IS NULL
     LEFT JOIN production_bales b ON b.local_id=sb.bale_local_id
-    WHERE sa.shipment_id=? GROUP BY sa.id ORDER BY sa.sequence DESC`).all(shipmentId);
+    WHERE sa.shipment_id=? GROUP BY sa.id ORDER BY sa.id DESC`).all(shipmentId);
+}
+
+function nextShipmentArticleSequence(db, shipmentId) {
+  const used=new Set(db.prepare('SELECT sequence FROM shipment_articles WHERE shipment_id=?').all(shipmentId).map(row=>Number(row.sequence)));
+  let sequence=1;
+  while(used.has(sequence)) sequence++;
+  return sequence;
 }
 
 function shipmentBales(db, itemId) {
@@ -352,8 +367,9 @@ function shipmentPage(ctx, shipment) {
     const bales = shipmentBales(ctx.db,item.id);
     const baleRowsHtml = bales.map((b,index) => `<tr><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td>${V.esc(b.bale_number)}</td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td>${canEdit?`<td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td>`:''}</tr>`).join('');
     const correctionLink=shipment.status==='closed'&&managerRoles.includes(ctx.req.user.role)?`<a class="button" href="#correction-${item.id}">Koryguj tę specyfikację</a>`:'';
+    const deleteSpecification=canClose?`<a class="button danger" href="/shipments/${shipment.id}/specifications/${item.id}/delete">Usuń specyfikację</a>`:'';
     const plant=item.finishing_plant_name?`<span class="plant-chip ${plantColor(item.finishing_plant_id)}">${V.esc(item.finishing_plant_name)}</span>`:'';
-    return `<details class="shipment-article"><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${bales.length} szt · ${money(item.weight_kg)} kg ${plant}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${correctionLink}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="8">Brak belek.</td></tr>'}</tbody></table></div></details>`;
+    return `<details class="shipment-article"><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${bales.length} szt · ${money(item.weight_kg)} kg ${plant}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${correctionLink}${deleteSpecification}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="8">Brak belek.</td></tr>'}</tbody></table></div></details>`;
   }).join('');
   const status = shipment.status==='closed'?`<span class="badge approved">Zamknięta · ${V.datepl(shipment.closed_at)}</span>`:shipment.status==='cancelled'?'<span class="badge archived">Anulowana</span>':'<span class="badge submitted">W przygotowaniu</span>';
   const details = canEdit ? `<form method="post" action="/shipments/${shipment.id}/date" class="shipment-date-form" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="shipment_date" value="${V.esc(shipment.shipment_date)}" data-autosave-value required></label><span data-autosave-status class="autosave-status" aria-live="polite"></span></form>` : `<p>Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p>`;
@@ -415,8 +431,8 @@ function shipmentSelectionPage(ctx, shipment) {
       return `<tr><td><input type="checkbox" value="${V.esc(b.local_id)}" data-range-select data-bale-number="${V.esc(b.bale_number)}" data-weight="${V.esc(weight)}" data-meters="${V.esc(meters)}" data-lot="${V.esc(lot)}" data-date="${V.esc(productionDate)}" aria-label="Belka ${V.esc(b.bale_number)}"></td><td>${i+1}</td><td>${V.esc(b.bale_number)}</td><td>${weight}</td><td>${meters}</td><td>${V.esc(lot)}</td><td>${productionDate}</td></tr>`;
     }).join('')||'<tr><td colspan="7">Brak dostępnych belek.</td></tr>';
   }
-  const selectedBaleRows='<tr data-range-empty><td colspan="5">Zaznacz belki z tabeli po lewej.</td></tr>';
-  const picker=selectedArticle?`<form method="post" action="/shipments/${shipment.id}/add" data-range-selection class="shipment-picker shipment-available-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('article_id',selectedArticle.id)}<input type="hidden" name="bale_ids" value="" data-range-values><div class="shipment-picker-controls"><label>Wykończalnia<select name="finishing_plant_id" required><option value="">Wybierz aktywną wykończalnię</option>${plants.map(plant=>`<option value="${plant.id}">${V.esc(plant.name)}</option>`).join('')}</select></label><p class="form-alert">Wybór wykończalni jest wymagany przed dodaniem specyfikacji.</p><button class="primary">→ Dodaj specyfikację do wysyłki</button></div><section><h2>Dostępne belki · ${V.esc(selectedArticle.symbol)}</h2><label class="check shipment-select-all"><input type="checkbox" data-range-all> Zaznacz wszystkie dostępne belki artykułu</label><p class="muted small">Kliknij pierwszą belkę, a następnie ostatnią z wciśniętym Shift, aby zaznaczyć zakres.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><h2>Belki do dodania · <span data-range-selected-count>0</span></h2><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody data-range-picked-rows>${selectedBaleRows}</tbody></table></div></section></form>`:`<div class="shipment-picker"><section><h2>Dostępne belki</h2><div class="panel scroll"><table class="listing compact"><thead><tr><th></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><h2>Belki do dodania · 0</h2><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="6">Wybierz artykuł, a potem belki z tabeli po lewej.</td></tr></tbody></table></div></section></div>`;
+  const selectedBaleRows='<tr><td colspan="6">Zaznacz belki z tabeli po lewej.</td></tr>';
+  const picker=selectedArticle?`<form method="post" action="/shipments/${shipment.id}/add" data-range-selection class="shipment-picker shipment-available-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('article_id',selectedArticle.id)}<input type="hidden" name="bale_ids" value="" data-range-values><section><h2>Dostępne belki · ${V.esc(selectedArticle.symbol)}</h2><p class="muted small shipment-picker-hint">Zaznacz belki do nowej specyfikacji. Shift wybiera zakres.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th><input type="checkbox" data-range-all aria-label="Zaznacz wszystkie dostępne belki"></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><h2>Dodane belki · <span data-range-selected-count>0</span></h2><p class="muted small shipment-picker-hint">Belki wybrane do tej specyfikacji.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody data-range-picked-rows>${selectedBaleRows}</tbody></table></div><div class="shipment-picker-controls"><label>Aktywna wykończalnia<select name="finishing_plant_id" required><option value="">Wybierz wykończalnię</option>${plants.map(plant=>`<option value="${plant.id}">${V.esc(plant.name)}</option>`).join('')}</select></label><p class="form-alert">Wybór wykończalni jest wymagany.</p><button class="primary">→ Dodaj specyfikację</button></div></section></form>`:`<div class="shipment-picker"><section><h2>Dostępne belki</h2><p class="muted small shipment-picker-hint">Wybierz artykuł, aby zobaczyć stan magazynu.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><h2>Dodane belki · 0</h2><p class="muted small shipment-picker-hint">Belki wybrane do tej specyfikacji.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="6">Wybierz artykuł, a potem belki z tabeli po lewej.</td></tr></tbody></table></div></section></div>`;
   const totals = currentItems.reduce((s,x)=>({pieces:s.pieces+x.bale_count,weight:s.weight+x.weight_kg}),{pieces:0,weight:0});
   const body = `<a class="breadcrumb" href="/shipments/${shipment.id}">← Wysyłka ${shipmentNo(shipment)}</a><div class="pagehead"><div><span class="eyebrow">WYBÓR BELEK</span><h1>Dodaj specyfikację do wysyłki ${shipmentNo(shipment)}</h1><p class="muted">Jeden wybór artykułu i belek tworzy jedną nową specyfikację. Ten sam artykuł może mieć kilka specyfikacji.</p></div><div class="shipment-totals"><strong>${totals.pieces} szt</strong><strong>${money(totals.weight)} kg</strong></div></div>${articleForm}${picker}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Wybór belek · ${shipmentNo(shipment)} · Marand`,body});
@@ -615,9 +631,9 @@ function handle(ctx) {
     ctx.audit(req.user,'Utworzono roboczą wysyłkę',null,JSON.stringify({shipmentId:id,year}),null);
     return redirect(req,res,`/shipments/${id}`,'Utworzono nową wysyłkę.');
   }
-  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|wz\/(\d+)|correction\/(\d+)))?$/);
+  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/delete))?$/);
   if(pathMatch){
-    const id=Number(pathMatch[1]),action=pathMatch[2]||'',itemId=Number(pathMatch[3]||0),correctionId=Number(pathMatch[4]||0),shipment=shipmentRecord(db,id);
+    const id=Number(pathMatch[1]),action=pathMatch[2]||'',itemId=Number(pathMatch[3]||0),correctionId=Number(pathMatch[4]||0),specificationId=Number(pathMatch[5]||0),shipment=shipmentRecord(db,id);
     if(!shipment) throw Object.assign(new Error('Nie znaleziono wysyłki.'),{status:404});
     if(action.startsWith('wz/')){
       const item=shipmentArticles(db,id).find(x=>x.id===itemId);
@@ -625,6 +641,23 @@ function handle(ctx) {
       return send(req,res,200,wzPage(ctx,shipment,item),'text/html; charset=utf-8');
     }
     if(action.startsWith('correction/')) return send(req,res,200,correctionPage(ctx,shipment,correctionId),'text/html; charset=utf-8');
+    if(action.startsWith('specifications/')){
+      role(req.user,...managerRoles);
+      if(shipment.status!=='draft') throw Object.assign(new Error('Specyfikację można usunąć tylko z roboczej wysyłki.'),{status:409});
+      const item=shipmentArticles(db,id).find(row=>row.id===specificationId);
+      if(!item) throw Object.assign(new Error('Nie znaleziono specyfikacji w tej wysyłce.'),{status:404});
+      if(req.method==='GET') return send(req,res,200,shipmentArticleDeleteConfirmPage(ctx,shipment,item));
+      if(req.method==='POST'){
+        if(ctx.form.confirm_delete_specification!=='1') throw Object.assign(new Error('Potwierdź usunięcie specyfikacji.'),{status:400});
+        const baleIds=shipmentBales(db,item.id).map(bale=>bale.local_id);
+        transaction(()=>{
+          db.prepare('DELETE FROM shipment_bales WHERE shipment_article_id=?').run(item.id);
+          db.prepare('DELETE FROM shipment_articles WHERE id=? AND shipment_id=?').run(item.id,id);
+        });
+        ctx.audit(req.user,'Usunięto specyfikację z roboczej wysyłki',null,JSON.stringify({shipmentId:id,specificationId:item.id,sequence:item.sequence,articleId:item.article_id,baleIds}),null);
+        return redirect(req,res,`/shipments/${id}`,`Usunięto specyfikację ${articleNo(shipment,item)}; belki zwolniono, a jej numer będzie można wykorzystać ponownie.`);
+      }
+    }
     if(action==='select'&&req.method==='GET'){
       role(req.user,...editableRoles);
       if(shipment.status!=='draft') throw Object.assign(new Error('Zamkniętej wysyłki nie można zmieniać.'),{status:409});
@@ -656,7 +689,7 @@ function handle(ctx) {
           if(Number(bale.article_id)!==articleId) throw Object.assign(new Error('Wszystkie zaznaczone belki muszą pochodzić z wybranego artykułu.'),{status:400});
           verified.push(baleId);
         }
-        const seq=db.prepare('SELECT coalesce(max(sequence),0)+1 next FROM shipment_articles WHERE shipment_id=?').get(id).next;
+        const seq=nextShipmentArticleSequence(db,id);
         const itemId=Number(db.prepare('INSERT INTO shipment_articles(shipment_id,article_id,sequence,finishing_plant_id) VALUES(?,?,?,?)').run(id,articleId,seq,plantId).lastInsertRowid);
         for(const baleId of verified) db.prepare('INSERT INTO shipment_bales(shipment_article_id,bale_local_id,added_at) VALUES(?,?,?)').run(itemId,baleId,ctx.now());
       });

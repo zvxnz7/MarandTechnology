@@ -93,14 +93,15 @@ test('każde grupowe dodanie tworzy osobną specyfikację, a jedna belka nie tra
   }finally{f.db.close();}
 });
 
-test('przycisk dodawania pozostaje w środkowym, sticky panelu przy 200 belkach',()=>{
+test('przycisk dodawania znajduje się pod tabelą dodanych belek przy 200 belkach',()=>{
   const f=fixture(200);
   try{
     const created=createShipment(f),id=Number(created.location.split('/').pop());
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/select`,{},`?article_id=${f.articleId}`));
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
-    assert.match(page.body,/shipment-picker-controls/);
-    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:1\/-1/);
+    assert.ok(page.body.indexOf('data-range-picked-rows')<page.body.indexOf('shipment-picker-controls'));
+    assert.match(page.body,/Dodane belki/);
+    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{display:flex/);
   }finally{f.db.close();}
 });
 
