@@ -222,8 +222,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) 190px minmax(0,1fr);gap:14px;align-items:start}
 .shipment-picker>section{min-width:0}.shipment-picker h2{font-size:17px;margin:12px 0}
 .shipment-select-article{display:block;position:relative;width:min(100%,540px);margin:12px 0}
-.shipment-select-article label{display:block;margin:0}.shipment-picker-controls{align-self:center;display:flex;flex-direction:column;gap:10px;padding-top:36px}.shipment-picker-controls label{margin:0;font-size:12px}.shipment-picker-controls button{width:100%;white-space:normal}
+.shipment-select-article label{display:block;margin:0}.shipment-picker-controls{position:sticky;top:18px;z-index:2;align-self:start;display:flex;flex-direction:column;gap:10px;padding:12px 8px;margin-top:78px;border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 5px 18px #00000012}.shipment-picker-controls label{margin:0;font-size:12px}.shipment-picker-controls button{width:100%;white-space:normal}
 .finishing-plant-add{display:flex;align-items:end;gap:10px;margin-bottom:16px}.finishing-plant-add label{flex:1;margin:0}
+.library-add{display:flex;align-items:end;gap:10px;margin-bottom:18px}.library-add label{flex:1;margin:0}.library-edit{display:flex;align-items:center;gap:6px;margin:0}.library-edit input{min-width:130px;padding:7px}.library-edit button,.library-add button{padding:7px 11px}
 .shipment-available-form>.panel{max-height:65vh}
 .shipment-available-form .compact th,.shipment-available-form .compact td{padding:6px 8px;font-size:11px;white-space:nowrap}
 .shipment-available-form input[type=checkbox]{width:15px;height:15px;margin:0}
@@ -240,6 +241,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-delete-form{margin:0;display:flex;justify-content:center}
 .shipment-delete-button{width:24px;height:24px;padding:0;border:0;border-radius:50%;background:#fbe8e8;color:#b4232d;font-size:20px;line-height:20px;font-weight:700;cursor:pointer}
 .shipment-delete-button:hover{background:#c92a32;color:#fff}
+.shipment-delete-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 .shipment-correction{margin-top:24px}
 .shipment-correction form{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:10px 14px;align-items:end}
 .shipment-correction form label{margin:0;font-size:12px}

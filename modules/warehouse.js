@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const V = require('../views');
 
 const editableRoles = ['admin', 'approver', 'technologist'];
@@ -26,6 +27,16 @@ function initialize(db) {
       id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE,
       active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL,
       created_by INTEGER REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS knitting_workers (
+      employee_uid TEXT PRIMARY KEY, code TEXT NOT NULL DEFAULT '', name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL, updated_by INTEGER REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS finishing_types (
+      id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL, updated_by INTEGER REFERENCES users(id)
     );
     CREATE TABLE IF NOT EXISTS shipment_articles (
       id INTEGER PRIMARY KEY, shipment_id INTEGER NOT NULL REFERENCES shipments(id) ON DELETE CASCADE,
@@ -82,16 +93,13 @@ function initialize(db) {
     created_at TEXT NOT NULL, created_by INTEGER REFERENCES users(id),
     PRIMARY KEY(bale_local_id,tag)
   );`);
-  const insertPlant=db.prepare('INSERT OR IGNORE INTO finishing_plants(name,name_key,created_at) VALUES(?,?,?)');
-  for(const name of ['AN-FARB','MARKO-KOLOR','FEMINA','SAGAN Textiles']) insertPlant.run(name,normalizeSearch(name),new Date().toISOString());
-  const cancelled=db.prepare("SELECT id FROM shipments WHERE status='cancelled'").all();
-  for(const shipment of cancelled){
-    const rows=db.prepare("SELECT id,detail FROM audit WHERE detail LIKE '%shipmentId%'").all().filter(row=>{try{return Number(JSON.parse(row.detail).shipmentId)===shipment.id}catch{return false}});
-    for(const row of rows){db.prepare('DELETE FROM audit_articles WHERE audit_id=?').run(row.id);db.prepare('DELETE FROM audit WHERE id=?').run(row.id);}
-    db.prepare('DELETE FROM shipment_bales WHERE shipment_article_id IN(SELECT id FROM shipment_articles WHERE shipment_id=?)').run(shipment.id);
-    db.prepare('DELETE FROM shipment_articles WHERE shipment_id=?').run(shipment.id);
-    db.prepare('DELETE FROM shipments WHERE id=?').run(shipment.id);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS knitting_workers_identity ON knitting_workers(lower(trim(name)),lower(trim(code)));');
+  // Keep stable IDs while normalizing the original seed names to the library labels.
+  for(const [oldName,newName] of [['AN-FARB','Anfarb'],['MARKO-KOLOR','MarkoColor'],['FEMINA','Femina'],['SAGAN Textiles','Sagan']]){
+    db.prepare('UPDATE finishing_plants SET name=?,name_key=? WHERE name_key=?').run(newName,normalizeSearch(newName),normalizeSearch(oldName));
   }
+  const insertPlant=db.prepare('INSERT OR IGNORE INTO finishing_plants(name,name_key,created_at) VALUES(?,?,?)');
+  for(const name of ['Anfarb','MarkoColor','Femina','Sagan']) insertPlant.run(name,normalizeSearch(name),new Date().toISOString());
 }
 
 const money = value => Number(value || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -238,9 +246,20 @@ function shipmentRecord(db, id) {
   return db.prepare('SELECT * FROM shipments WHERE id=?').get(id);
 }
 
+function shipmentConfirmPage(ctx, shipment, kind) {
+  const cancelUrl=`/shipments/${shipment.id}`;
+  const isCancel=kind==='cancel';
+  const action=`/shipments/${shipment.id}/${kind}`;
+  const title=isCancel?'Anuluj wysyłkę':'Usuń wysyłkę';
+  const text=isCancel?'Anulowanie całkowicie usunie roboczą wysyłkę.':'Usunięcie całkowicie usunie roboczą wysyłkę.';
+  const details=`<p>${text} Belki zostaną zwolnione i ponownie pojawią się jako dostępne. Numer WZ będzie mógł być użyty ponownie, jeśli jest ostatnim numerem w tym roku.</p>`;
+  const body=`<a class="breadcrumb" href="${cancelUrl}">← Wróć do wysyłki</a><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>${title} ${shipmentNo(shipment)}?</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><h2 class="delete-confirm-object">Wysyłka ${shipmentNo(shipment)}</h2>${details}<form method="post" action="${action}" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden(isCancel?'confirm_cancel':'confirm_delete','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">${isCancel?'Potwierdź anulowanie':'Potwierdź całkowite usunięcie'}</button></form></div></dialog>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Potwierdź ${title.toLocaleLowerCase('pl-PL')} · Marand`,body});
+}
+
 function eraseDraftShipment(db,id) {
-  const rows=db.prepare("SELECT id,detail FROM audit WHERE detail LIKE '%shipmentId%'").all().filter(row=>{try{return Number(JSON.parse(row.detail).shipmentId)===id}catch{return false}});
-  for(const row of rows){db.prepare('DELETE FROM audit_articles WHERE audit_id=?').run(row.id);db.prepare('DELETE FROM audit WHERE id=?').run(row.id);}
+  // Audit records are immutable. Keep their history when a draft shipment is
+  // removed; the shipment data can be deleted independently.
   db.prepare('DELETE FROM shipment_bales WHERE shipment_article_id IN(SELECT id FROM shipment_articles WHERE shipment_id=?)').run(id);
   db.prepare('DELETE FROM shipment_articles WHERE shipment_id=?').run(id);
   db.prepare('DELETE FROM shipments WHERE id=?').run(id);
@@ -271,13 +290,13 @@ function shipmentsPage(ctx) {
     FROM shipments s LEFT JOIN shipment_articles sa ON sa.shipment_id=s.id
     LEFT JOIN shipment_bales sb ON sb.shipment_article_id=sa.id AND sb.removed_at IS NULL
     LEFT JOIN production_bales b ON b.local_id=sb.bale_local_id
-    GROUP BY s.id ORDER BY s.shipment_year DESC,s.sequence DESC`).all();
+    WHERE s.status!='cancelled' GROUP BY s.id ORDER BY s.shipment_year DESC,s.sequence DESC`).all();
   const canPrepare = editableRoles.includes(ctx.req.user.role);
   const create = canPrepare ? `<form method="post" action="/shipments/create">${hidden('csrf',ctx.req.session.csrf)}<button class="primary">+ Przygotuj wysyłkę</button></form>` : '';
   const rows = shipments.map(s => {
     const items = shipmentArticles(ctx.db,s.id);
     const itemRows = s.status==='cancelled'?'':items.map(item => `<li><a href="/shipments/${s.id}/wz/${item.id}" target="_blank" rel="noopener">${articleNo(s,item)} ${V.esc(item.symbol)}</a> · ${item.bale_count} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · ${V.esc(item.finishing_plant_name)}`:''}</li>`).join('');
-    const remove=managerRoles.includes(ctx.req.user.role)&&s.status!=='closed'?`<form method="post" action="/shipments/${s.id}/delete" class="shipment-delete-form" onsubmit="return confirm('Usunąć tę roboczą wysyłkę i zwolnić przypisane belki?')">${hidden('csrf',ctx.req.session.csrf)}<button class="shipment-delete-button" title="Usuń wysyłkę" aria-label="Usuń wysyłkę">×</button></form>`:'';
+    const remove=managerRoles.includes(ctx.req.user.role)&&s.status!=='closed'?`<a class="shipment-delete-button shipment-delete-link" href="/shipments/${s.id}/delete" title="Usuń wysyłkę" aria-label="Usuń wysyłkę ${shipmentNo(s)}">×</a>`:'';
     return `<tr><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td><td class="shipment-delete-cell">${remove}</td></tr>`;
   }).join('');
   const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłka</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div>${create}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8">Nie ma jeszcze wysyłek.</td></tr>'}</tbody></table></div>`;
@@ -291,23 +310,27 @@ function shipmentPage(ctx, shipment) {
   const itemViews = items.map(item => {
     const bales = shipmentBales(ctx.db,item.id);
     const baleRowsHtml = bales.map((b,index) => `<tr><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td>${V.esc(b.bale_number)}</td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td>${canEdit?`<td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td>`:''}</tr>`).join('');
-    return `<details class="shipment-article" open><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${bales.length} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · ${V.esc(item.finishing_plant_name)}`:''}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a></div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="8">Brak belek.</td></tr>'}</tbody></table></div></details>`;
+    return `<details class="shipment-article" open><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${bales.length} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · ${V.esc(item.finishing_plant_name)}`:''}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${canEdit?`<a class="button" href="/shipments/${shipment.id}/select?article_id=${item.article_id}&specification_id=${item.id}">Dodaj kolejne belki</a>`:''}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="8">Brak belek.</td></tr>'}</tbody></table></div></details>`;
   }).join('');
   const status = shipment.status==='closed'?`<span class="badge approved">Zamknięta · ${V.datepl(shipment.closed_at)}</span>`:shipment.status==='cancelled'?'<span class="badge archived">Anulowana</span>':'<span class="badge submitted">W przygotowaniu</span>';
   const details = canEdit ? `<form method="post" action="/shipments/${shipment.id}/date" class="shipment-date-form">${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="shipment_date" value="${V.esc(shipment.shipment_date)}" required></label><button>Zapisz datę</button></form>` : `<p>Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p>`;
   const actions = canEdit ? `<div class="actions"><a class="button primary" href="/shipments/${shipment.id}/select">+ Dodaj artykuł / belki</a></div>` : '';
   const close = canClose && items.some(item=>item.bale_count>0) ? `<form method="post" action="/shipments/${shipment.id}/close" class="shipment-close-form">${hidden('csrf',ctx.req.session.csrf)}<label class="check"><input type="checkbox" name="confirm_close" value="1" required> Potwierdzam zamknięcie wysyłki. Belki znikną z bieżącego rejestru.</label><button class="primary">Zamknij wysyłkę</button></form>` : '';
-  const cancel = canClose ? `<form method="post" action="/shipments/${shipment.id}/cancel">${hidden('csrf',ctx.req.session.csrf)}<button class="danger">Anuluj wysyłkę i zwolnij belki</button></form>` : '';
+  const cancel = canClose ? `<a class="button danger" href="/shipments/${shipment.id}/cancel">Anuluj wysyłkę i zwolnij belki</a>` : '';
   const correction = shipment.status==='closed' && managerRoles.includes(ctx.req.user.role) ? correctionForm(ctx,shipment,items) : '';
   const body = `<a class="breadcrumb" href="/shipments">← Wysyłki</a><div class="pagehead"><div><span class="eyebrow">${status}</span><h1>Wysyłka ${shipmentNo(shipment)}</h1>${details}</div><div class="shipment-totals"><strong>${items.reduce((s,x)=>s+x.bale_count,0)} szt</strong><strong>${money(items.reduce((s,x)=>s+x.weight_kg,0))} kg</strong></div></div>${actions}${itemViews||'<p class="muted">Dodaj artykuł i wybierz belki do wysyłki.</p>'}<div class="shipment-final-actions">${close}${cancel}</div>${correction}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Wysyłka ${shipmentNo(shipment)} · Marand`,body});
 }
 
 function finishingPlantsPage(ctx) {
-  role(ctx.req.user,...managerRoles);
+  if(!managerRoles.includes(ctx.req.user.role)) throw Object.assign(new Error('Brak uprawnień do bibliotek.'),{status:403});
   const plants=ctx.db.prepare('SELECT id,name,active FROM finishing_plants ORDER BY active DESC,name COLLATE NOCASE').all();
-  const rows=plants.map(plant=>`<tr><td>${V.esc(plant.name)}</td><td><span class="badge ${plant.active?'approved':'archived'}">${plant.active?'Aktywna':'Nieaktywna'}</span></td><td><form method="post" action="/settings/finishing-plants/${plant.id}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${plant.active?'Dezaktywuj':'Aktywuj'}</button></form></td></tr>`).join('');
-  const body=`<div class="pagehead"><div><span class="eyebrow">USTAWIENIA MAGAZYNU</span><h1>Wykończalnie</h1><p class="muted">Lista jest używana przy dodawaniu belek do specyfikacji wysyłki.</p></div></div><section class="panel padded"><form method="post" action="/settings/finishing-plants" class="finishing-plant-add">${hidden('csrf',ctx.req.session.csrf)}<label>Nowa wykończalnia<input name="name" maxlength="100" required placeholder="Nazwa wykończalni"></label><button class="primary">Dodaj</button></form><div class="scroll"><table class="listing compact"><thead><tr><th>Nazwa</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  const rows=plants.map(plant=>`<tr><td><form method="post" action="/settings/finishing-plants/${plant.id}/edit" class="library-edit">${hidden('csrf',ctx.req.session.csrf)}<input name="name" value="${V.esc(plant.name)}" maxlength="100" required><button>Zapisz</button></form></td><td><span class="badge ${plant.active?'approved':'archived'}">${plant.active?'Aktywna':'Nieaktywna'}</span></td><td><form method="post" action="/settings/finishing-plants/${plant.id}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${plant.active?'Dezaktywuj':'Aktywuj'}</button></form></td></tr>`).join('');
+  const workers=ctx.db.prepare('SELECT employee_uid,code,name,active FROM knitting_workers ORDER BY active DESC,name COLLATE NOCASE,code COLLATE NOCASE').all();
+  const workerRows=workers.map(worker=>`<tr><td><form method="post" action="/settings/libraries/workers/${encodeURIComponent(worker.employee_uid)}/edit" class="library-edit">${hidden('csrf',ctx.req.session.csrf)}<input name="code" value="${V.esc(worker.code)}" maxlength="20" aria-label="Oznaczenie"><input name="name" value="${V.esc(worker.name)}" maxlength="100" required aria-label="Imię i nazwisko"><button>Zapisz</button></form><small>ID ${V.esc(worker.employee_uid)}</small></td><td><span class="badge ${worker.active?'approved':'archived'}">${worker.active?'Aktywny':'Nieaktywny'}</span></td><td><form method="post" action="/settings/libraries/workers/${encodeURIComponent(worker.employee_uid)}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${worker.active?'Dezaktywuj':'Aktywuj'}</button></form></td></tr>`).join('');
+  const finishTypes=ctx.db.prepare('SELECT id,name,active FROM finishing_types ORDER BY active DESC,name COLLATE NOCASE').all();
+  const finishRows=finishTypes.map(item=>`<tr><td><form method="post" action="/settings/libraries/finishes/${item.id}/edit" class="library-edit">${hidden('csrf',ctx.req.session.csrf)}<input name="name" value="${V.esc(item.name)}" maxlength="100" required><button>Zapisz</button></form></td><td><span class="badge ${item.active?'approved':'archived'}">${item.active?'Aktywne':'Nieaktywne'}</span></td><td><form method="post" action="/settings/libraries/finishes/${item.id}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${item.active?'Dezaktywuj':'Aktywuj'}</button></form></td></tr>`).join('');
+  const body=`<div class="pagehead"><div><span class="eyebrow">USTAWIENIA</span><h1>Biblioteki</h1><p class="muted">Centralne słowniki używane w programie głównym i lokalnym panelu dziewiarni.</p></div></div><section class="panel padded"><h2>Artykuły</h2><p class="muted">Program główny jest źródłem kartotek artykułów. Lokalny panel pobiera połączenia z aktywną, zatwierdzoną technologią.</p><a class="button" href="/articles">Otwórz bibliotekę artykułów</a></section><section class="panel padded"><h2>Wykończalnie</h2><p class="muted">Aktywne pozycje można przypisywać niezależnie do każdej specyfikacji WZ.</p><form method="post" action="/settings/finishing-plants" class="finishing-plant-add">${hidden('csrf',ctx.req.session.csrf)}<label>Nowa wykończalnia<input name="name" maxlength="100" required placeholder="Nazwa wykończalni"></label><button class="primary">Dodaj</button></form><div class="scroll"><table class="listing compact"><thead><tr><th>Nazwa</th><th>Status</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="3">Brak wykończalni.</td></tr>'}</tbody></table></div></section><section class="panel padded"><h2>Dziewiarze</h2><p class="muted">Trwałe identyfikatory employee_uid są zgodne z identyfikatorami zapisywanymi przy belkach w panelu lokalnym.</p><form method="post" action="/settings/libraries/workers" class="library-add">${hidden('csrf',ctx.req.session.csrf)}<label>Oznaczenie<input name="code" maxlength="20"></label><label>Imię i nazwisko<input name="name" maxlength="100" required></label><button class="primary">Dodaj dziewiarza</button></form><div class="scroll"><table class="listing compact"><thead><tr><th>Osoba</th><th>Status</th><th></th></tr></thead><tbody>${workerRows||'<tr><td colspan="3">Brak dziewiarzy w bibliotece.</td></tr>'}</tbody></table></div></section><section class="panel padded"><h2>Wykończenia</h2><p class="muted">Słownik jest przygotowany do przyszłego modułu zleceń na wykańczalnię. Zmiany nie wpływają na specyfikacje WZ.</p><form method="post" action="/settings/libraries/finishes" class="library-add">${hidden('csrf',ctx.req.session.csrf)}<label>Rodzaj wykończenia<input name="name" maxlength="100" required></label><button class="primary">Dodaj</button></form><div class="scroll"><table class="listing compact"><thead><tr><th>Nazwa</th><th>Status</th><th></th></tr></thead><tbody>${finishRows||'<tr><td colspan="3">Brak rodzajów wykończeń.</td></tr>'}</tbody></table></div></section>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Wykończalnie · Marand',body});
 }
 
@@ -329,12 +352,14 @@ function correctionForm(ctx, shipment, items) {
 function shipmentSelectionPage(ctx, shipment) {
   const q = String(ctx.url.searchParams.get('q') || '').trim();
   const articles = articleBalances(ctx.db,q).filter(a=>a.stock_pieces>0);
-  if(ctx.url.searchParams.get('partial')==='search') return shipmentArticleSearchResults(articles,shipment.id);
-  const articleId = Number(ctx.url.searchParams.get('article_id') || 0);
-  const selectedArticle = articles.find(a=>a.id===articleId);
-  const articleForm = `<form method="get" action="/shipments/${shipment.id}/select" class="shipment-select-article" data-shipment-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Wpisz symbol artykułu" autocomplete="off" aria-controls="shipment-search-results"></label><input type="hidden" name="article_id" value="${selectedArticle?selectedArticle.id:''}"><div id="shipment-search-results" class="warehouse-search-results-wrap" data-shipment-search-results>${q?shipmentArticleSearchResults(articles,shipment.id):''}</div></form>`;
-  const plants=ctx.db.prepare('SELECT id,name FROM finishing_plants WHERE active=1 ORDER BY name COLLATE NOCASE').all();
+  const requestedSpecId=Number(ctx.url.searchParams.get('specification_id')||0);
   const currentItems = shipmentArticles(ctx.db,shipment.id);
+  const targetSpec=currentItems.find(item=>item.id===requestedSpecId);
+  if(ctx.url.searchParams.get('partial')==='search') return shipmentArticleSearchResults(articles,shipment.id,targetSpec?.id||0);
+  const articleId = Number(ctx.url.searchParams.get('article_id') || 0);
+  const selectedArticle = articles.find(a=>a.id===articleId&&(!targetSpec||a.id===targetSpec.article_id));
+  const articleForm = `<form method="get" action="/shipments/${shipment.id}/select" class="shipment-select-article" data-shipment-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Wpisz symbol artykułu" autocomplete="off" aria-controls="shipment-search-results"></label><input type="hidden" name="article_id" value="${selectedArticle?selectedArticle.id:''}"><input type="hidden" name="specification_id" value="${targetSpec?.id||''}"><div id="shipment-search-results" class="warehouse-search-results-wrap" data-shipment-search-results>${q?shipmentArticleSearchResults(articles,shipment.id,targetSpec?.id||0):''}</div></form>`;
+  const plants=ctx.db.prepare('SELECT id,name FROM finishing_plants WHERE active=1 ORDER BY name COLLATE NOCASE').all();
   const chosenRows = currentItems.map(item => {
     const bales = shipmentBales(ctx.db,item.id);
     return `<section class="shipment-picked-article"><h3>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <small>${bales.length} szt · ${money(item.weight_kg)} kg</small></h3><div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr szt.</th><th>Masa kg</th><th>Data</th><th></th></tr></thead><tbody>${bales.map(b=>`<tr><td>${V.esc(b.bale_number)}</td><td>${money(b.weight_kg)}</td><td>${date(b.production_date)}</td><td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td></tr>`).join('')}</tbody></table></div></section>`;
@@ -348,16 +373,18 @@ function shipmentSelectionPage(ctx, shipment) {
     const trs = available.map((b,i)=>`<tr><td><input type="checkbox" value="${V.esc(b.local_id)}" data-range-select aria-label="Belka ${V.esc(b.bale_number)}"></td><td>${i+1}</td><td>${V.esc(b.bale_number)}</td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td></tr>`).join('');
     availablePanel = `<div class="panel scroll"><table class="listing compact"><thead><tr><th></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${trs||'<tr><td colspan="7">Brak dostępnych belek.</td></tr>'}</tbody></table></div>`;
   }
-  const picker=selectedArticle?`<form method="post" action="/shipments/${shipment.id}/add" data-range-selection class="shipment-picker shipment-available-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('article_id',selectedArticle.id)}<input type="hidden" name="bale_ids" value="" data-range-values><section><h2>Dostępne belki · ${V.esc(selectedArticle.symbol)}</h2><label class="check shipment-select-all"><input type="checkbox" data-range-all> Zaznacz wszystkie dostępne belki artykułu</label><p class="muted small">Kliknij pierwszą belkę, a następnie ostatnią z wciśniętym Shift, aby zaznaczyć zakres.</p>${availablePanel}</section><div class="shipment-picker-controls"><label>Wykończalnia<select name="finishing_plant_id" required><option value="">Wybierz</option>${plants.map(plant=>`<option value="${plant.id}">${V.esc(plant.name)}</option>`).join('')}</select></label><button class="primary">Dodaj belki</button></div><section><h2>Belki w wysyłce</h2>${chosenRows}</section></form>`:`<div class="shipment-picker"><section><h2>Dostępne belki</h2><p class="muted">Wpisz symbol i wybierz artykuł.</p></section><section></section><section><h2>Belki w wysyłce</h2>${chosenRows}</section></div>`;
+  const assignedPlantId=targetSpec?.finishing_plant_id||'';
+  const assignedPlant=targetSpec?.finishing_plant_name||'';
+  const picker=selectedArticle?`<form method="post" action="/shipments/${shipment.id}/add" data-range-selection class="shipment-picker shipment-available-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('article_id',selectedArticle.id)}${hidden('shipment_article_id',targetSpec?.id||'')}<input type="hidden" name="bale_ids" value="" data-range-values><section><h2>Dostępne belki · ${V.esc(selectedArticle.symbol)}</h2><label class="check shipment-select-all"><input type="checkbox" data-range-all> Zaznacz wszystkie dostępne belki artykułu</label><p class="muted small">Kliknij pierwszą belkę, a następnie ostatnią z wciśniętym Shift, aby zaznaczyć zakres.</p>${availablePanel}</section><div class="shipment-picker-controls"><label>Wykończalnia<select name="finishing_plant_id" required><option value="">Wybierz</option>${assignedPlantId&&!plants.some(p=>p.id===assignedPlantId)?`<option value="${assignedPlantId}" selected>${V.esc(assignedPlant)} (nieaktywna)</option>`:''}${plants.map(plant=>`<option value="${plant.id}" ${plant.id===assignedPlantId?'selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label><button class="primary">→ ${targetSpec?'Dodaj belki do tej specyfikacji':'Dodaj belki do specyfikacji WZ'}</button></div><section><h2>Belki w wysyłce</h2>${chosenRows}</section></form>`:`<div class="shipment-picker"><section><h2>Dostępne belki</h2><p class="muted">Wpisz symbol i wybierz artykuł.</p></section><section></section><section><h2>Belki w wysyłce</h2>${chosenRows}</section></div>`;
   const totals = currentItems.reduce((s,x)=>({pieces:s.pieces+x.bale_count,weight:s.weight+x.weight_kg}),{pieces:0,weight:0});
   const body = `<a class="breadcrumb" href="/shipments/${shipment.id}">← Wysyłka ${shipmentNo(shipment)}</a><div class="pagehead"><div><span class="eyebrow">WYBÓR BELEK</span><h1>Dodaj artykuł do wysyłki ${shipmentNo(shipment)}</h1></div><div class="shipment-totals"><strong>${totals.pieces} szt</strong><strong>${money(totals.weight)} kg</strong></div></div>${articleForm}${picker}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Wybór belek · ${shipmentNo(shipment)} · Marand`,body});
 }
 
-function shipmentArticleSearchResults(articles, shipmentId) {
+function shipmentArticleSearchResults(articles, shipmentId, specificationId=0) {
   const matches=articles.filter(article=>article.stock_pieces>0);
   if(!matches.length) return '<p class="warehouse-search-empty">Brak artykułów z dostępnymi belkami.</p>';
-  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article=>`<a role="option" class="warehouse-article-option" href="/shipments/${shipmentId}/select?article_id=${article.id}&q=${encodeURIComponent(article.symbol)}"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
+  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article=>`<a role="option" class="warehouse-article-option" href="/shipments/${shipmentId}/select?article_id=${article.id}&${specificationId?`specification_id=${specificationId}&`:''}q=${encodeURIComponent(article.symbol)}"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
 }
 
 function wzPage(ctx, shipment, item) {
@@ -370,16 +397,7 @@ function wzPage(ctx, shipment, item) {
   const finishingPlant=snapshot?.finishingPlant||item.finishing_plant_name||'';
   const rows = bales.map((b,i)=>`<tr><td>${i+1}</td><td>${V.esc(b.symbol)}</td><td>${V.esc(b.bale_number)}</td><td>${money(b.weight_kg)}</td><td>${b.errors}</td><td>${b.stops}</td><td>${V.esc(b.lot||'')}</td><td>${V.esc(b.notes||'')}</td><td>${date(b.production_date)}</td></tr>`).join('');
   const totalWeight = bales.reduce((sum,b)=>sum+b.weight_kg,0);
-  const finish = Array.isArray(payload.finished) ? payload.finished : [];
-  const raw = payload.raw && typeof payload.raw === 'object' ? payload.raw : {};
-  const targets = payload.targets && typeof payload.targets === 'object' ? payload.targets : {};
-  const techRows = [
-    ...V.RAW_METRICS.map(([key,label])=>[`${label} · surowa`,raw[key]]),
-    ...V.TARGET_METRICS.map(([key,label])=>[`${label} · docelowa`,targets[key]]),
-  ].filter(([,value])=>value!==undefined&&value!==null&&String(value).trim()!=='');
-  const finishTable = techRows.length||finish.length ? `<h2>Dane technologiczne artykułu</h2><table class="tech"><thead><tr><th>Pozycja</th><th>Parametry</th></tr></thead><tbody>${techRows.map(([label,value])=>`<tr><td>${V.esc(label)}</td><td>${V.esc(value)}</td></tr>`).join('')}${finish.map((row,index)=>`<tr><td>Wykończenie ${index+1}${row.name?` · ${V.esc(row.name)}`:''}</td><td>${V.FINISH.filter(([key])=>key!=='name'&&row[key]).map(([key,label])=>`${V.esc(label)}: ${V.esc(row[key])}`).join(' · ')||'—'}</td></tr>`).join('')}</tbody></table>` : '';
-  const notes = [payload.raw_comments,payload.finished_comments,payload.comments].filter(Boolean).map(V.esc).join('<br>');
-  return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${articleNo(shipment,item)} ${V.esc(article?.symbol||'')} · WZ</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/app.js"></script><style>@page{size:A4 portrait;margin:9mm}.wz-page{max-width:210mm;margin:12px auto;background:#fff;padding:8mm;color:#111;font:10px/1.25 Arial,sans-serif}.wz-toolbar{display:flex;justify-content:space-between;align-items:center;max-width:210mm;margin:12px auto}.wz-page h1{font-size:18px;letter-spacing:0;margin:4px 0;text-align:center}.wz-page h2{background:#555;color:#fff;font-size:10px;text-align:center;padding:4px;margin:10px 0 0}.wz-meta{display:grid;grid-template-columns:1fr 1fr;gap:3px;border:1px solid #555;padding:6px;margin:8px 0}.wz-page table{width:100%;border-collapse:collapse;table-layout:fixed}.wz-page th,.wz-page td{border:1px solid #555;padding:3px 2px;vertical-align:middle;text-align:center;overflow-wrap:anywhere}.wz-page th{background:#eee;font-weight:600}.wz-page td{font-weight:600}.wz-page .bales th:nth-child(1){width:5%}.wz-page .bales th:nth-child(2){width:16%}.wz-page .bales th:nth-child(3){width:11%}.wz-page .bales th:nth-child(4){width:8%}.wz-page .bales th:nth-child(5),.wz-page .bales th:nth-child(6){width:6%}.wz-page .bales th:nth-child(7){width:18%}.wz-page .bales th:nth-child(8){width:17%}.wz-page .bales th:nth-child(9){width:13%}.wz-page .notes{margin-top:6px;white-space:pre-wrap}.wz-page .wz-total{font-weight:bold;text-align:right;margin:8px 0}.wz-page .tech td{text-align:left}.wz-page .signatures{display:flex;gap:25px;margin:20px 0}.wz-page .signatures span{flex:1;border-bottom:1px solid #555;padding-bottom:18px}@media print{body{background:#fff}.wz-toolbar{display:none}.wz-page{margin:0;padding:0;max-width:none}.wz-page h2{print-color-adjust:exact;-webkit-print-color-adjust:exact}.bales tr,.tech tr{break-inside:avoid}}</style></head><body><div class="wz-toolbar"><button data-print>Drukuj / zapisz jako PDF</button><a href="/shipments/${shipment.id}">Wróć do wysyłki</a></div><main class="wz-page"><h1>SPECYFIKACJA WYSYŁKI · ${V.esc(article?.symbol||'')}</h1><div class="wz-meta"><div><b>Klient:</b> ${V.esc(payload.client||'—')}</div><div><b>Symbol:</b> ${V.esc(payload.symbol||article?.symbol||'')}</div><div><b>Dostawca:</b> MARAND · ul. Szadkowska 72, 98-220 Zduńska Wola</div><div><b>Przesunięcie magazynowe:</b> ${shipmentNo(shipment)}</div><div><b>Odbiorca:</b> MARAND · ul. Burtowa 10, 93-478 Łódź</div><div><b>Dnia:</b> ${date(shipment.shipment_date)} · <b>Dokument:</b> ${articleNo(shipment,item)}</div></div><h2>Wykaz belek</h2><table class="bales"><thead><tr><th>Lp.</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Błędy</th><th>Stop</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${rows||'<tr><td colspan="9">Brak belek.</td></tr>'}</tbody></table><div class="wz-total">Suma: ${bales.length} szt. · ${money(totalWeight)} kg</div>${finishingPlant?`<div><b>Wykończalnia:</b> ${V.esc(finishingPlant)}</div>`:''}${finishTable}${notes?`<div class="notes">${notes}</div>`:''}<div class="signatures"><span>Wydano</span><span>Odebrano</span></div></main></body></html>`;
+  return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${articleNo(shipment,item)} ${V.esc(article?.symbol||'')} · WZ</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/app.js"></script><style>@page{size:A4 portrait;margin:9mm}.wz-page{max-width:210mm;margin:12px auto;background:#fff;padding:8mm;color:#111;font:10px/1.25 Arial,sans-serif}.wz-toolbar{display:flex;justify-content:space-between;align-items:center;max-width:210mm;margin:12px auto}.wz-page h1{font-size:18px;letter-spacing:0;margin:4px 0;text-align:center}.wz-page h2{background:#555;color:#fff;font-size:10px;text-align:center;padding:4px;margin:10px 0 0}.wz-meta{display:grid;grid-template-columns:1fr 1fr;gap:3px;border:1px solid #555;padding:6px;margin:8px 0}.wz-page table{width:100%;border-collapse:collapse;table-layout:fixed}.wz-page th,.wz-page td{border:1px solid #555;padding:3px 2px;vertical-align:middle;text-align:center;overflow-wrap:anywhere}.wz-page th{background:#eee;font-weight:600}.wz-page td{font-weight:600}.wz-page .bales th:nth-child(1){width:5%}.wz-page .bales th:nth-child(2){width:16%}.wz-page .bales th:nth-child(3){width:11%}.wz-page .bales th:nth-child(4){width:8%}.wz-page .bales th:nth-child(5),.wz-page .bales th:nth-child(6){width:6%}.wz-page .bales th:nth-child(7){width:18%}.wz-page .bales th:nth-child(8){width:17%}.wz-page .bales th:nth-child(9){width:13%}.wz-page .wz-total{font-weight:bold;text-align:right;margin:8px 0}.wz-page .signatures{display:flex;gap:25px;margin:20px 0}.wz-page .signatures span{flex:1;border-bottom:1px solid #555;padding-bottom:18px}@media print{body{background:#fff}.wz-toolbar{display:none}.wz-page{margin:0;padding:0;max-width:none}.wz-page h2{print-color-adjust:exact;-webkit-print-color-adjust:exact}.bales tr{break-inside:avoid}}</style></head><body><div class="wz-toolbar"><button data-print>Drukuj / zapisz jako PDF</button><a href="/shipments/${shipment.id}">Wróć do wysyłki</a></div><main class="wz-page"><h1>SPECYFIKACJA WYSYŁKI · ${V.esc(article?.symbol||'')}</h1><div class="wz-meta"><div><b>Klient:</b> ${V.esc(payload.client||'—')}</div><div><b>Symbol:</b> ${V.esc(payload.symbol||article?.symbol||'')}</div><div><b>Dostawca:</b> MARAND · ul. Szadkowska 72, 98-220 Zduńska Wola</div><div><b>Przesunięcie magazynowe:</b> ${shipmentNo(shipment)}</div><div><b>Wykończalnia / odbiorca:</b> ${V.esc(finishingPlant||'—')}</div><div><b>Dnia:</b> ${date(shipment.shipment_date)} · <b>Dokument:</b> ${articleNo(shipment,item)}</div></div><h2>Wykaz belek</h2><table class="bales"><thead><tr><th>Lp.</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Błędy</th><th>Stop</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${rows||'<tr><td colspan="9">Brak belek.</td></tr>'}</tbody></table><div class="wz-total">Suma: ${bales.length} szt. · ${money(totalWeight)} kg</div><div class="signatures"><span>Wydano</span><span>Odebrano</span></div></main></body></html>`;
 }
 
 function correctionPage(ctx, shipment, correctionId) {
@@ -396,21 +414,84 @@ function correctionPage(ctx, shipment, correctionId) {
 
 function handle(ctx) {
   const {req,res,p,db,send,redirect,role,transaction}=ctx;
-  if(p==='/settings'&&req.method==='GET') return send(req,res,200,finishingPlantsPage(ctx));
+  if(p==='/settings'&&req.method==='GET') return redirect(req,res,'/settings/libraries');
+  if(p==='/settings/libraries'&&req.method==='GET') return send(req,res,200,finishingPlantsPage(ctx));
   if(p==='/settings/finishing-plants'&&req.method==='POST'){
     role(req.user,...managerRoles);
     const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100);
     if(!name) throw Object.assign(new Error('Wpisz nazwę wykończalni.'),{status:400});
     try{db.prepare('INSERT INTO finishing_plants(name,name_key,active,created_at,created_by) VALUES(?,?,1,?,?)').run(name,normalizeSearch(name),ctx.now(),req.user.id);}
     catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Wykończalnia o takiej nazwie już istnieje.'),{status:409});throw error;}
-    return redirect(req,res,'/settings','Dodano wykończalnię.');
+    return redirect(req,res,'/settings/libraries','Dodano wykończalnię.');
+  }
+  const plantEdit=p.match(/^\/settings\/finishing-plants\/(\d+)\/edit$/);
+  if(plantEdit&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100);
+    if(!name) throw Object.assign(new Error('Wpisz nazwę wykończalni.'),{status:400});
+    try{
+      const result=db.prepare('UPDATE finishing_plants SET name=?,name_key=? WHERE id=?').run(name,normalizeSearch(name),Number(plantEdit[1]));
+      if(!result.changes) throw Object.assign(new Error('Nie znaleziono wykończalni.'),{status:404});
+    }catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Wykończalnia o takiej nazwie już istnieje.'),{status:409});throw error;}
+    return redirect(req,res,'/settings/libraries','Zapisano nazwę wykończalni.');
   }
   const plantToggle=p.match(/^\/settings\/finishing-plants\/(\d+)\/toggle$/);
   if(plantToggle&&req.method==='POST'){
     role(req.user,...managerRoles);
     const result=db.prepare('UPDATE finishing_plants SET active=1-active WHERE id=?').run(Number(plantToggle[1]));
     if(!result.changes) throw Object.assign(new Error('Nie znaleziono wykończalni.'),{status:404});
-    return redirect(req,res,'/settings','Zmieniono status wykończalni.');
+    return redirect(req,res,'/settings/libraries','Zmieniono status wykończalni.');
+  }
+  if(p==='/settings/libraries/workers'&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100),code=String(ctx.form.code||'').trim().slice(0,20);
+    if(!name) throw Object.assign(new Error('Wpisz imię i nazwisko dziewiarza.'),{status:400});
+    const employeeUid=crypto.randomUUID();
+    try{db.prepare('INSERT INTO knitting_workers(employee_uid,code,name,active,created_at,updated_at,updated_by) VALUES(?,?,?,1,?,?,?)').run(employeeUid,code,name,ctx.now(),ctx.now(),req.user.id);}
+    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki dziewiarz jest już w bibliotece.'),{status:409});throw error;}
+    return redirect(req,res,'/settings/libraries','Dodano dziewiarza.');
+  }
+  const workerEdit=p.match(/^\/settings\/libraries\/workers\/([0-9a-f-]+)\/edit$/i);
+  if(workerEdit&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100),code=String(ctx.form.code||'').trim().slice(0,20);
+    if(!name) throw Object.assign(new Error('Wpisz imię i nazwisko dziewiarza.'),{status:400});
+    let result;
+    try{result=db.prepare('UPDATE knitting_workers SET code=?,name=?,updated_at=?,updated_by=? WHERE employee_uid=?').run(code,name,ctx.now(),req.user.id,workerEdit[1]);}
+    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki dziewiarz jest już w bibliotece.'),{status:409});throw error;}
+    if(!result.changes) throw Object.assign(new Error('Nie znaleziono dziewiarza.'),{status:404});
+    return redirect(req,res,'/settings/libraries','Zapisano dane dziewiarza.');
+  }
+  const workerToggle=p.match(/^\/settings\/libraries\/workers\/([0-9a-f-]+)\/toggle$/i);
+  if(workerToggle&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const result=db.prepare('UPDATE knitting_workers SET active=1-active,updated_at=?,updated_by=? WHERE employee_uid=?').run(ctx.now(),req.user.id,workerToggle[1]);
+    if(!result.changes) throw Object.assign(new Error('Nie znaleziono dziewiarza.'),{status:404});
+    return redirect(req,res,'/settings/libraries','Zmieniono status dziewiarza.');
+  }
+  if(p==='/settings/libraries/finishes'&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100);
+    if(!name) throw Object.assign(new Error('Wpisz rodzaj wykończenia.'),{status:400});
+    try{db.prepare('INSERT INTO finishing_types(name,name_key,active,created_at,updated_at,updated_by) VALUES(?,?,1,?,?,?)').run(name,normalizeSearch(name),ctx.now(),ctx.now(),req.user.id);}
+    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki rodzaj wykończenia już istnieje.'),{status:409});throw error;}
+    return redirect(req,res,'/settings/libraries','Dodano rodzaj wykończenia.');
+  }
+  const finishEdit=p.match(/^\/settings\/libraries\/finishes\/(\d+)\/edit$/);
+  if(finishEdit&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100);
+    if(!name) throw Object.assign(new Error('Wpisz rodzaj wykończenia.'),{status:400});
+    try{const result=db.prepare('UPDATE finishing_types SET name=?,name_key=?,updated_at=?,updated_by=? WHERE id=?').run(name,normalizeSearch(name),ctx.now(),req.user.id,Number(finishEdit[1]));if(!result.changes)throw Object.assign(new Error('Nie znaleziono rodzaju wykończenia.'),{status:404});}
+    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki rodzaj wykończenia już istnieje.'),{status:409});throw error;}
+    return redirect(req,res,'/settings/libraries','Zapisano rodzaj wykończenia.');
+  }
+  const finishToggle=p.match(/^\/settings\/libraries\/finishes\/(\d+)\/toggle$/);
+  if(finishToggle&&req.method==='POST'){
+    role(req.user,...managerRoles);
+    const result=db.prepare('UPDATE finishing_types SET active=1-active,updated_at=?,updated_by=? WHERE id=?').run(ctx.now(),req.user.id,Number(finishToggle[1]));
+    if(!result.changes) throw Object.assign(new Error('Nie znaleziono rodzaju wykończenia.'),{status:404});
+    return redirect(req,res,'/settings/libraries','Zmieniono status rodzaju wykończenia.');
   }
   if(p==='/warehouse'&&req.method==='GET') return send(req,res,200,catalogPage(ctx));
   if(p==='/warehouse/bales/status'&&req.method==='POST') {
@@ -473,9 +554,14 @@ function handle(ctx) {
       if(shipment.status!=='draft') throw Object.assign(new Error('Zamkniętej wysyłki nie można zmieniać.'),{status:409});
       return send(req,res,200,shipmentSelectionPage(ctx,shipment));
     }
+    if(action==='delete'&&req.method==='GET'){
+      role(req.user,...managerRoles);
+      if(!['draft','cancelled'].includes(shipment.status)) throw Object.assign(new Error('Można usuwać tylko robocze wysyłki.'),{status:409});
+      return send(req,res,200,shipmentConfirmPage(ctx,shipment,'delete'));
+    }
     if(action==='delete'&&req.method==='POST'){
       role(req.user,...managerRoles);
-      if(!['draft','cancelled'].includes(shipment.status)) throw Object.assign(new Error('Można usuwać tylko robocze lub anulowane wysyłki.'),{status:409});
+      if(!['draft','cancelled'].includes(shipment.status)||ctx.form.confirm_delete!=='1') throw Object.assign(new Error('Potwierdź całkowite usunięcie roboczej wysyłki.'),{status:400});
       transaction(()=>eraseDraftShipment(db,id));
       return redirect(req,res,'/shipments','Usunięto wysyłkę i zwolniono przypisane belki.');
     }
@@ -484,8 +570,10 @@ function handle(ctx) {
       if(shipment.status!=='draft') throw Object.assign(new Error('Zamkniętej wysyłki nie można zmieniać.'),{status:409});
       const ids=[...new Set(String(ctx.form.bale_ids||'').split(',').filter(Boolean))];
       if(!ids.length) throw Object.assign(new Error('Zaznacz belki do dodania.'),{status:400});
-      const articleId=Number(ctx.form.article_id),plantId=Number(ctx.form.finishing_plant_id);
-      if(!articleId||!plantId||!db.prepare('SELECT id FROM finishing_plants WHERE id=? AND active=1').get(plantId)) throw Object.assign(new Error('Wybierz aktywną wykończalnię.'),{status:400});
+      const articleId=Number(ctx.form.article_id),plantId=Number(ctx.form.finishing_plant_id),specificationId=Number(ctx.form.shipment_article_id||0);
+      const existing=specificationId?db.prepare('SELECT id,article_id,finishing_plant_id FROM shipment_articles WHERE id=? AND shipment_id=?').get(specificationId,id):null;
+      if(!articleId||!plantId||specificationId&&!existing||existing&&Number(existing.article_id)!==articleId||
+        !db.prepare('SELECT id FROM finishing_plants WHERE id=? AND active=1').get(plantId)&&Number(existing?.finishing_plant_id)!==plantId) throw Object.assign(new Error('Wybierz aktywną wykończalnię dla tej specyfikacji.'),{status:400});
       transaction(()=>{
         const verified=[];
         for(const baleId of ids){
@@ -494,12 +582,17 @@ function handle(ctx) {
           if(Number(bale.article_id)!==articleId) throw Object.assign(new Error('Wszystkie zaznaczone belki muszą pochodzić z wybranego artykułu.'),{status:400});
           verified.push(baleId);
         }
-        const seq=db.prepare('SELECT coalesce(max(sequence),0)+1 next FROM shipment_articles WHERE shipment_id=?').get(id).next;
-        const itemId=Number(db.prepare('INSERT INTO shipment_articles(shipment_id,article_id,sequence,finishing_plant_id) VALUES(?,?,?,?)').run(id,articleId,seq,plantId).lastInsertRowid);
+        let itemId=specificationId;
+        if(existing){
+          db.prepare('UPDATE shipment_articles SET finishing_plant_id=? WHERE id=?').run(plantId,itemId);
+        }else{
+          const seq=db.prepare('SELECT coalesce(max(sequence),0)+1 next FROM shipment_articles WHERE shipment_id=?').get(id).next;
+          itemId=Number(db.prepare('INSERT INTO shipment_articles(shipment_id,article_id,sequence,finishing_plant_id) VALUES(?,?,?,?)').run(id,articleId,seq,plantId).lastInsertRowid);
+        }
         for(const baleId of verified) db.prepare('INSERT INTO shipment_bales(shipment_article_id,bale_local_id,added_at) VALUES(?,?,?)').run(itemId,baleId,ctx.now());
       });
-      ctx.audit(req.user,'Dodano belki do roboczej wysyłki',null,JSON.stringify({shipmentId:id,baleIds:ids}),null);
-      return redirect(req,res,`/shipments/${id}/select?article_id=${articleId}&q=${encodeURIComponent(db.prepare('SELECT symbol FROM articles WHERE id=?').get(articleId)?.symbol||'')}`,'Dodano zaznaczone belki do nowej specyfikacji.');
+      ctx.audit(req.user,'Dodano belki do roboczej wysyłki',null,JSON.stringify({shipmentId:id,specificationId:specificationId||null,baleIds:ids}),null);
+      return redirect(req,res,`/shipments/${id}/select?article_id=${articleId}&specification_id=${specificationId||''}&q=${encodeURIComponent(db.prepare('SELECT symbol FROM articles WHERE id=?').get(articleId)?.symbol||'')}`,specificationId?'Dodano zaznaczone belki do wybranej specyfikacji.':'Dodano zaznaczone belki do nowej specyfikacji.');
     }
     if(action==='remove'&&req.method==='POST'){
       role(req.user,...editableRoles);
@@ -532,9 +625,14 @@ function handle(ctx) {
       ctx.audit(req.user,'Zamknięto wysyłkę',null,JSON.stringify({shipmentId:id,bales:active}),null);
       return redirect(req,res,`/shipments/${id}`,'Wysyłka została zamknięta. Belki zniknęły z bieżącej kartoteki.');
     }
-    if(action==='cancel'&&req.method==='POST'){
+    if(action==='cancel'&&req.method==='GET'){
       role(req.user,...managerRoles);
       if(shipment.status!=='draft') throw Object.assign(new Error('Można anulować tylko roboczą wysyłkę.'),{status:409});
+      return send(req,res,200,shipmentConfirmPage(ctx,shipment,'cancel'));
+    }
+    if(action==='cancel'&&req.method==='POST'){
+      role(req.user,...managerRoles);
+      if(shipment.status!=='draft'||ctx.form.confirm_cancel!=='1') throw Object.assign(new Error('Potwierdź anulowanie i całkowite usunięcie roboczej wysyłki.'),{status:400});
       transaction(()=>eraseDraftShipment(db,id));
       return redirect(req,res,'/shipments','Wysyłkę usunięto. Belki są ponownie dostępne.');
     }

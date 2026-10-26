@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, settingsToken: null, settingsSetup: false };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -48,7 +48,6 @@ function fillCommonControls() {
   if (!$('#production-date').value) $('#production-date').value = state.data.today;
   $('#setup-notice').hidden = articles.length > 0 && state.data.workers.length > 0;
   fillWorkerControls($('#worker-primary').value);
-  updateSequenceWarning();
 }
 function fillWorkerControls(selected = '') {
   const workers = state.data.workers;
@@ -91,31 +90,19 @@ function updateShareSummary() {
   }
   summary.innerHTML = `<strong>Udział ${escapeHtml(primaryLabel)}:</strong> ${fmt(remainder)} m`;
 }
-function updateSequenceWarning() {
-  if (!state.data) return;
-  const date = $('#production-date').value || state.data.today;
-  const year = String(date).slice(0, 4);
-  const machine = $('#machine').value;
-  const configured = Boolean(machine && state.data.sequences?.[year]?.[machine] !== undefined);
-  const notice = $('#sequence-warning');
-  notice.hidden = configured;
-  notice.textContent = machine
-    ? `Przed wpisaniem belki ustaw licznik ${machine} na rok ${year} w Ustawieniach.`
-    : 'Przed produkcją ustaw liczniki używanych maszyn w Ustawieniach.';
-}
-function resetBaleFields(repeat = null) {
-  $('#weight-kg').value = repeat?.weightKg ?? '';
-  $('#meters').value = repeat?.meters ?? '';
+function resetBaleFields(prefill = null) {
+  $('#weight-kg').value = prefill?.weightKg ?? '';
+  $('#meters').value = prefill?.meters ?? '';
   $('#errors').value = '';
-  $('#stops').value = repeat?.stops ?? '';
-  $('#notes').value = repeat?.notes ?? '';
+  $('#stops').value = prefill?.stops ?? '';
+  $('#notes').value = prefill?.notes ?? '';
   $('#extra-workers').replaceChildren();
-  if (repeat) {
-    for (const worker of repeat.extraWorkers || []) addExtraWorkerRow(worker);
+  if (prefill) {
+    for (const worker of prefill.extraWorkers || []) addExtraWorkerRow(worker);
   }
   updateShareSummary();
 }
-function setFreshForm(keepCommon = true, repeat = null) {
+function setFreshForm(keepCommon = true, prefill = null) {
   const common = keepCommon ? {
     article: $('#article').value,
     machine: $('#machine').value,
@@ -125,130 +112,77 @@ function setFreshForm(keepCommon = true, repeat = null) {
   $('#article').value = common.article || '';
   $('#machine').value = common.machine || '';
   $('#production-date').value = common.date || state.data.today;
-  fillWorkerControls(repeat?.primaryWorkerId || common.worker || '');
-  resetBaleFields(repeat);
+  fillWorkerControls(prefill?.primaryWorkerId || common.worker || '');
+  resetBaleFields(prefill);
   state.editingId = null;
   $('#save-bale').textContent = 'Zapisz belkę';
   $('#save-bale').disabled = false;
-  $('#bale-form-title').textContent = 'Nowa belka';
-  updateSequenceWarning();
+  $('#bale-form-title').textContent = 'Wprowadź nową belkę do rejestru';
+  $('#cancel-report-add').hidden = true;
 }
 function renderBales() {
   const tbody = $('#bale-list');
   if (!state.data.bales.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty">Brak wpisów z ostatnich 30 dni.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">Brak belek na bieżącej liście. Belki przypisane do raportów są w zakładce Produkcja dzienna.</td></tr>';
     return;
   }
+  const chronological = [...state.data.bales].sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
+  const ordinals = new Map(chronological.map((row,index) => [row.id,index + 1]));
   tbody.innerHTML = state.data.bales.map(row => `<tr>
-    <td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}</td><td>${dateFmt(row.production_date)}</td>
+    <td>${ordinals.get(row.id)}</td><td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}</td><td>${dateFmt(row.production_date)}</td>
     <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
     <td>${row.workers.map(worker => `${escapeHtml(worker.code ? `${worker.code} · ${worker.name}` : worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
     <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Do sprawdzenia' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
-    <td class="actions-cell">${row.sync_status === 'pending' ? `<button type="button" class="table-action copy-bale" data-id="${escapeHtml(row.id)}">Kopiuj belkę</button><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? 'Cofnij flagę' : 'Sprawdź'}</button><button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : '—'}</td>
+    <td class="actions-cell">${row.sync_status === 'pending' ? `<button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? 'Cofnij flagę' : 'Sprawdź'}</button><button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : '—'}</td>
   </tr>`).join('');
   tbody.querySelectorAll('.edit-bale').forEach(button => button.addEventListener('click', () => startEdit(button.dataset.id)));
-  tbody.querySelectorAll('.copy-bale').forEach(button => button.addEventListener('click', () => startCopy(button.dataset.id)));
   tbody.querySelectorAll('.review-bale').forEach(button => button.addEventListener('click', () => setReviewFlag(button.dataset.id, button.dataset.check === '1')));
   tbody.querySelectorAll('.delete-bale').forEach(button => button.addEventListener('click', () => deleteBale(button.dataset.id)));
 }
 function render(data) {
   state.data = data;
   fillCommonControls();
+  $('#copy-last-bale').disabled = !data.lastBale;
+  $('#production-day-heading').textContent = `Produkcja dnia ${dateFmt(data.productionDay || data.today)}`;
   $('#pending-pill').textContent = `${data.pending} ${data.pending === 1 ? 'belka' : 'belek'} w kolejce lokalnej`;
-  $('#history-caption').textContent = `${data.bales.length} wpisów · ostatnie 30 dni`;
+  $('#history-caption').textContent = `${data.bales.length} belek w bieżącej produkcji · najnowsze na górze`;
   renderBales();
 }
 async function refresh() {
   try {
     render(await api('/api/bootstrap'));
     $('#boot-error').hidden = true;
-    $('#view-production').hidden = false;
+    await loadDailyReports();
     return true;
   } catch (error) {
     $('#boot-error').hidden = false;
     $('#view-production').hidden = true;
+    $('#view-daily-production').hidden = true;
     $('#view-settings').hidden = true;
     toast(`Nie udało się połączyć z panelem lokalnym: ${error.message}`, true);
     return false;
   }
 }
-async function openSettingsGate() {
-  try {
-    const status = await api('/api/settings-auth/status');
-    state.settingsSetup = !status.configured;
-    $('#settings-auth-title').textContent = state.settingsSetup ? 'Ustaw hasło kierownika' : 'Odblokuj ustawienia';
-    $('#settings-auth-description').textContent = state.settingsSetup
-      ? 'To pierwsze uruchomienie ochrony. Ustal hasło, które będzie wymagane do zmian ustawień.'
-      : 'Wpisz hasło kierownika, aby zmieniać artykuły, pracowników i liczniki.';
-    $('#settings-password').value = '';
-    $('#settings-password').autocomplete = state.settingsSetup ? 'new-password' : 'current-password';
-    $('#settings-password-confirm-wrap').hidden = !state.settingsSetup;
-    $('#settings-password-confirm').required = state.settingsSetup;
-    $('#settings-password-confirm').value = '';
-    $('#settings-auth-submit').textContent = state.settingsSetup ? 'Zapisz hasło i otwórz' : 'Odblokuj';
-    $('#settings-auth-error').hidden = true;
-    $('#settings-auth-modal').hidden = false;
-    $('#settings-password').focus();
-  } catch (error) {
-    const message = error.status === 404
-      ? 'Panel działa w starej wersji. Zamknij jego okno uruchomieniowe i uruchom ponownie START_DZIEWIARNIA.cmd.'
-      : `Nie udało się sprawdzić dostępu do ustawień: ${error.message}`;
-    toast(message, true);
-  }
-}
-function showAuthError(message) {
-  const element = $('#settings-auth-error');
-  element.textContent = message;
-  element.hidden = false;
-}
-async function authenticateSettings(event) {
-  event.preventDefault();
-  const password = $('#settings-password').value;
-  if (password.length < 8) { showAuthError('Hasło musi mieć co najmniej 8 znaków.'); return; }
-  if (state.settingsSetup && password !== $('#settings-password-confirm').value) { showAuthError('Wpisane hasła różnią się.'); return; }
-  const button = $('#settings-auth-submit');
-  button.disabled = true;
-  try {
-    const result = await api(state.settingsSetup ? '/api/settings-auth/setup' : '/api/settings-auth/unlock', {
-      method: 'POST', body: JSON.stringify({ password }),
-    });
-    state.settingsToken = result.token;
-    $('#settings-auth-modal').hidden = true;
-    $('#view-production').hidden = true;
-    $('#view-settings').hidden = false;
-    document.querySelectorAll('.nav-button').forEach(item => item.classList.toggle('active', item.dataset.view === 'settings'));
-    loadSettings();
-  } catch (error) { showAuthError(error.message); }
-  finally { button.disabled = false; }
-}
 function showView(name) {
   hideKeypad();
-  if (name === 'settings' && !state.settingsToken) { openSettingsGate(); return; }
-  if (name === 'production' && state.settingsToken) {
-    const token = state.settingsToken;
-    state.settingsToken = null;
-    api('/api/settings-auth/lock', { method: 'POST', headers: { 'X-Settings-Token': token }, body: '{}' }).catch(() => {});
-  }
   $('#view-production').hidden = name !== 'production';
+  $('#view-daily-production').hidden = name !== 'daily-production';
   $('#view-settings').hidden = name !== 'settings';
   document.querySelectorAll('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.view === name));
   if (name === 'settings') loadSettings();
 }
 
 async function loadSettings() {
+  let settingsData={centralCatalogSyncedAt:''};
   try {
-    const data = await api('/api/settings', { headers: { 'X-Settings-Token': state.settingsToken || '' } });
-    const connection = data.productionConnection || {};
-    $('#production-server-url').value = connection.serverUrl || '';
-    $('#production-api-token').value = '';
-    $('#production-api-token').placeholder = connection.configured ? 'Token jest zapisany; wklej nowy tylko przy zmianie' : 'Wklej token wygenerowany na serwerze';
-    $('#production-connection-status').textContent = connection.configured ? 'Połączenie z programem głównym jest skonfigurowane.' : 'Brak skonfigurowanego połączenia.';
+    settingsData = await api('/api/settings');
   } catch (error) {
-    if (/wygasła|ponownie hasło/i.test(error.message)) { state.settingsToken = null; $('#view-settings').hidden = true; openSettingsGate(); }
     toast(error.message, true);
   }
-  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '' }));
+  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
   state.catalogWorkers = state.data.workers.map(item => ({ employee_uid: item.employee_uid, code: item.code, name: item.name }));
+  const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
+  $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
   $('#sequence-year').value = state.data.today.slice(0, 4);
   const yearSequences = state.data.sequences?.[$('#sequence-year').value] || {};
   $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
@@ -256,7 +190,7 @@ async function loadSettings() {
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
     const item = state.catalogArticles[Number(input.dataset.index)];
     if (item) item.lot = input.value;
@@ -283,11 +217,30 @@ function addArticle(event) {
   if (state.catalogArticles.some(item => item.symbol.toLocaleUpperCase('pl-PL') === symbol.toLocaleUpperCase('pl-PL'))) {
     toast('Ten artykuł jest już na liście.', true); return;
   }
-  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim() });
+  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null });
   $('#article-new').value = '';
   $('#article-new-lot').value = '';
   renderCatalogs();
   $('#article-new').focus();
+}
+let catalogSearchTimer;
+async function searchCentralArticles() {
+  const input=$('#central-article-search'),host=$('#central-article-results'),q=input.value.trim();
+  if(!q){host.replaceChildren();return;}
+  host.textContent='Wyszukiwanie…';
+  try{
+    const data=await api(`/api/catalog/search?q=${encodeURIComponent(q)}`);
+    host.innerHTML=data.articles.length?data.articles.map(item=>`<button type="button" class="central-article-result" data-central-id="${Number(item.id)}" data-symbol="${escapeHtml(item.symbol)}"><span><strong>${escapeHtml(item.symbol)}</strong><small>${escapeHtml(item.description||'')}</small></span><span>Dodaj</span></button>`).join(''):'<span class="catalog-empty">Brak dopasowań w zatwierdzonych technologiach.</span>';
+  }catch(error){host.textContent=error.message;}
+}
+function addCentralArticleFromSearch(event) {
+  const button=event.target.closest('[data-central-id]');
+  if(!button)return;
+  const symbol=button.dataset.symbol,centralId=Number(button.dataset.centralId);
+  if(state.catalogArticles.some(item=>item.symbol.toLocaleUpperCase('pl-PL')===symbol.toLocaleUpperCase('pl-PL'))){toast('Ten artykuł jest już na lokalnej liście.',true);return;}
+  state.catalogArticles.push({symbol,lot:'',centralId});
+  renderCatalogs();
+  button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
 function addWorker(event) {
   event.preventDefault();
@@ -305,57 +258,228 @@ function addWorker(event) {
 }
 async function saveSettings() {
   try {
-    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '' }));
+    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', code: item.code || '', name: item.name }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
-    const productionServerUrl = $('#production-server-url').value.trim();
-    const productionApiToken = $('#production-api-token').value.trim();
-    const data = await api('/api/settings', { method: 'POST', headers: { 'X-Settings-Token': state.settingsToken || '' }, body: JSON.stringify({ articles, workers, sequenceYear, sequences, productionServerUrl, productionApiToken }) });
+    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
     render(data);
-    $('#production-api-token').value = '';
-    $('#production-connection-status').textContent = productionServerUrl ? 'Zapisano adres serwera. Token jest przechowywany lokalnie.' : 'Brak skonfigurowanego połączenia.';
     toast('Zapisano listy i liczniki.');
     showView('production');
-  } catch (error) { if (/wygasła|ponownie hasło/i.test(error.message)) { state.settingsToken = null; $('#view-settings').hidden = true; openSettingsGate(); } toast(error.message, true); }
+  } catch (error) { toast(error.message, true); }
 }
 
-async function syncProduction() {
-  const button = $('#sync-production');
+async function verifyProductionToken() {
+  const button = $('#verify-production-token');
   button.disabled = true;
-  $('#sync-production-status').textContent = 'Wysyłam produkcję do programu głównego…';
+  $('#sync-production-status').textContent = 'Sprawdzam token bez wysyłania produkcji…';
   try {
-    const result = await api('/api/sync', { method: 'POST', headers: { 'X-Settings-Token': state.settingsToken || '' }, body: '{}' });
-    render(result.bootstrap);
-    const snapshot = result.snapshot;
-    const other = result.otherPending ? ` Pozostało ${result.otherPending} belek innych artykułów; w tej wersji wysyłany jest tylko WT 56-21 (5).` : '';
-    const summary = `Wysłano ${result.uploaded} belek. Stan WT 56-21 (5): ${snapshot.pieces} szt., ${fmt(snapshot.weightKg)} kg · ${dateFmt(snapshot.date)}.${other}`;
-    $('#sync-production-status').textContent = summary;
-    toast(summary);
+    const result = await api('/api/production/verify-token', {
+      method: 'POST',
+      body: JSON.stringify({
+        productionServerUrl: 'http://192.168.1.14:8765',
+        productionApiToken: $('#production-api-token').value.trim(),
+      }),
+    });
+    $('#production-api-token').value = '';
+    $('#production-connection-status').textContent = 'Adres programu głównego jest zapisany na stałe. Token jest aktywny i zapisany.';
+    $('#sync-production-status').textContent = result.message;
+    toast(result.message);
   } catch (error) {
     $('#sync-production-status').textContent = error.message;
+    $('#production-connection-status').textContent = error.message;
     toast(error.message, true);
   } finally { button.disabled = false; }
 }
 
-async function changeManagerPassword(event) {
-  event.preventDefault();
-  const currentPassword = $('#current-manager-password').value;
-  const newPassword = $('#new-manager-password').value;
-  if (newPassword !== $('#confirm-manager-password').value) { toast('Nowe hasła różnią się.', true); return; }
+const reportStatusLabel = status => ({
+  draft: 'Roboczy', approved_pending: 'Zatwierdzony, oczekuje na wysyłkę', sent: 'Wysłany', send_error: 'Błąd wysyłki',
+}[status] || 'Do wygenerowania');
+function reportDateTime(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+function reportSummaryStatus(item) {
+  if (item.status === 'sent') return `<span class="report-status report-status-sent">Wysłano · ${escapeHtml(reportDateTime(item.sent_at))}</span>`;
+  if (item.status === 'send_error') return '<span class="report-status report-status-error">Błąd wysyłki</span>';
+  if (item.status) return `<span class="report-status">${escapeHtml(reportStatusLabel(item.status))}</span>`;
+  return '<span class="report-status">Raport do wygenerowania</span>';
+}
+async function loadDailyReports() {
   try {
-    const result = await api('/api/settings-auth/change-password', { method: 'POST', headers: { 'X-Settings-Token': state.settingsToken || '' }, body: JSON.stringify({ currentPassword, newPassword }) });
-    state.settingsToken = result.token;
-    $('#change-password-form').reset();
-    toast('Zmieniono hasło kierownika.');
-  } catch (error) {
-    if (/wygasła|ponownie hasło/i.test(error.message)) { state.settingsToken = null; $('#view-settings').hidden = true; openSettingsGate(); }
-    toast(error.message, true);
+    const data = await api('/api/daily-production');
+    state.dailyReports = data.reports || [];
+    updateGenerateReportButton();
+    const connection = data.productionConnection || {};
+    $('#production-server-url').value = connection.serverUrl || 'http://192.168.1.14:8765';
+    $('#production-api-token').placeholder = connection.configured ? 'Token zapisany; wpisz ponownie tylko po zmianie' : 'Wklej token wygenerowany na serwerze';
+    $('#production-connection-status').textContent = connection.configured ? 'Token jest zapisany lokalnie. Adres programu głównego jest stały.' : 'Wklej token z programu głównego i wybierz „Sprawdź i zapisz token”.';
+    renderDailyReports();
+  } catch (error) { $('#daily-report-list').textContent = error.message; }
+}
+function updateGenerateReportButton() {
+  const button = $('#generate-current-report');
+  if (!button) return;
+  const latest = [...state.dailyReports]
+    .sort((a,b) => String(b.report_date).localeCompare(String(a.report_date)))
+    .find(item => !item.status);
+  button.disabled = !latest;
+  button.dataset.date = latest?.report_date || '';
+  button.textContent = latest
+    ? `Wygeneruj raport dzienny z dnia ${dateFmt(latest.report_date)}`
+    : 'Brak raportu do wygenerowania';
+}
+function renderDailyReports() {
+  const host = $('#daily-report-list');
+  host.innerHTML = state.dailyReports.map(item => {
+    const dateLabel = dateFmt(item.report_date);
+    return `<article class="daily-report-card" data-report-date="${escapeHtml(item.report_date)}"><div class="daily-report-summary"><details class="daily-report-details"><summary><span class="daily-report-name">Produkcja dzienna ${dateLabel}</span><span class="daily-report-totals"><strong class="summary-pieces">${Number(item.pieces || 0)} szt.</strong> · <strong class="summary-weight">${fmt(item.weight_kg)} kg</strong></span>${reportSummaryStatus(item)}</summary><div class="daily-report-content muted">Rozwiń, aby otworzyć raport.</div></details>${!item.status ? `<button type="button" class="primary generate-report" data-date="${escapeHtml(item.report_date)}">Wygeneruj raport dzienny</button>` : ''}</div></article>`;
+  }).join('') || '<div class="panel padded muted">Brak raportów z ostatnich 30 dni.</div>';
+  host.querySelectorAll('.daily-report-details').forEach(details => details.addEventListener('toggle', () => {
+    if (details.open) loadDailyReport(details.closest('[data-report-date]').dataset.reportDate, details.querySelector('.daily-report-content'));
+  }));
+  host.querySelectorAll('.generate-report').forEach(button => button.addEventListener('click', () => generateDailyReport(button.dataset.date, button)));
+}
+async function refreshDailySummary() {
+  const data = await api('/api/daily-production');
+  state.dailyReports = data.reports || [];
+  updateGenerateReportButton();
+  for (const item of state.dailyReports) {
+    const card = document.querySelector(`.daily-report-card[data-report-date="${item.report_date}"]`);
+    if (!card) continue;
+    card.querySelector('.summary-pieces').textContent = `${Number(item.pieces || 0)} szt.`;
+    card.querySelector('.summary-weight').textContent = `${fmt(item.weight_kg)} kg`;
+    const summary = card.querySelector('summary');
+    summary.querySelector('.report-status')?.remove();
+    summary.insertAdjacentHTML('beforeend', reportSummaryStatus(item));
   }
 }
-
+async function loadDailyReport(reportDate, container) {
+  try {
+    const data = await api(`/api/daily-production?date=${encodeURIComponent(reportDate)}`);
+    if (!data.report) {
+      container.innerHTML = '<p>Raport nie jest jeszcze wygenerowany. Wybierz „Wygeneruj raport dzienny”, aby przenieść belki z tej doby do raportu.</p>';
+      return;
+    }
+    state.reportCache.set(reportDate, data.report);
+    renderDailyReportDetails(reportDate, container, data.report);
+  } catch (error) { container.textContent = error.message; }
+}
+function editableReportInput(bale, field, value, type = 'text') {
+  return `<input class="daily-cell-edit" type="${type}" data-id="${escapeHtml(bale.id)}" data-field="${field}" value="${escapeHtml(value)}" aria-label="${field}">`;
+}
+function renderDailyReportDetails(reportDate, container, report) {
+  const editable = report.status !== 'sent';
+  const bales = [...report.bales].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id.localeCompare(a.id));
+  const rows = bales.map(bale => `<tr><td>${bale.ordinal}</td><td>${escapeHtml(bale.number)}</td><td>${escapeHtml(bale.symbol)}</td><td>${escapeHtml(bale.machine)}</td><td>${editable ? editableReportInput(bale,'production_date',bale.production_date,'date') : dateFmt(bale.production_date)}</td><td>${editable ? editableReportInput(bale,'weight_kg',String(bale.weight_kg).replace('.',',')) : fmt(bale.weight_kg)}</td><td>${editable ? editableReportInput(bale,'meters',String(bale.meters).replace('.',',')) : fmt(bale.meters)}</td><td>${editable ? editableReportInput(bale,'errors',bale.errors) : bale.errors}</td><td>${editable ? editableReportInput(bale,'stops',bale.stops) : bale.stops}</td><td>${bale.workers.map(worker => `${escapeHtml(worker.code ? `${worker.code} · ${worker.name}` : worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td><td>${escapeHtml(bale.lot)}</td><td>${editable ? editableReportInput(bale,'notes',bale.notes || '') : escapeHtml(bale.notes)}</td><td>${editable ? `<button class="table-action remove-report-bale" data-id="${escapeHtml(bale.id)}">Usuń z raportu</button>` : '—'}</td></tr>`).join('');
+  const statusText = report.last_error ? `<p class="report-error">${escapeHtml(report.last_error)}</p>` : report.status === 'sent'
+    ? `<p class="muted">Wysłano ${escapeHtml(reportDateTime(report.sent_at))}. Wysłanego raportu nie można zmieniać w panelu lokalnym; korekty wykonuje się w programie głównym.</p>`
+    : `<p class="muted">Status: ${escapeHtml(reportStatusLabel(report.status))}</p>`;
+  container.classList.remove('muted');
+  container.innerHTML = `${statusText}<div class="table-wrap"><table class="daily-report-table"><thead><tr><th>Lp.</th><th>Belka</th><th>Artykuł</th><th>Maszyna</th><th>Data prod.</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział</th><th>LOT</th><th>Uwagi</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="13" class="empty">Brak belek w tym raporcie.</td></tr>'}</tbody></table></div><div class="daily-actions">${editable ? `<button type="button" class="secondary add-report-bale" data-date="${escapeHtml(reportDate)}">＋ Dopisz belkę</button><button type="button" class="primary send-report" data-date="${escapeHtml(reportDate)}">${report.status === 'send_error' || report.status === 'approved_pending' ? 'Ponów wysyłkę' : 'Zatwierdź i wyślij produkcję na serwer'}</button>` : `<button type="button" class="primary sent-report" disabled>Wysłano · ${escapeHtml(reportDateTime(report.sent_at))}</button>`}</div>`;
+  container.querySelectorAll('.daily-cell-edit').forEach(input => {
+    input.addEventListener('change', () => saveInlineReportValue(reportDate,input,container));
+    input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
+  });
+  container.querySelectorAll('.remove-report-bale').forEach(button => button.addEventListener('click', () => removeReportBale(reportDate,button.dataset.id,container)));
+  container.querySelector('.add-report-bale')?.addEventListener('click', () => beginAddReportBale(reportDate));
+  container.querySelector('.send-report')?.addEventListener('click', () => sendDailyReport(reportDate,container));
+}
+async function saveInlineReportValue(reportDate,input,container) {
+  const report = state.reportCache.get(reportDate);
+  const bale = report?.bales.find(row => row.id === input.dataset.id);
+  if (!bale) return;
+  const field = input.dataset.field;
+  const value = ['weight_kg','meters','errors','stops'].includes(field) ? number(input.value) : input.value;
+  const body = { articleId: bale.article_id, machine: bale.machine, productionDate: field === 'production_date' ? value : bale.production_date,
+    weightKg: field === 'weight_kg' ? value : bale.weight_kg, meters: field === 'meters' ? value : bale.meters,
+    errors: field === 'errors' ? value : bale.errors, stops: field === 'stops' ? value : bale.stops,
+    notes: field === 'notes' ? value : bale.notes,
+    workers: bale.workers.map(worker => ({ workerId: worker.workerId, meters: worker.meters })) };
+  input.disabled = true;
+  try {
+    const result = await api(`/api/daily-production/${reportDate}/bales/${encodeURIComponent(bale.id)}`, { method: 'POST', body: JSON.stringify(body) });
+    state.reportCache.set(reportDate,result.report);
+    render(result.bootstrap);
+    await refreshDailySummary();
+    renderDailyReportDetails(reportDate,container,result.report);
+    toast('Zapisano zmianę w raporcie.');
+  } catch (error) { input.value = field === 'production_date' || field === 'notes' ? String(bale[field] || '') : String(bale[field] ?? '').replace('.', ','); input.disabled = false; toast(error.message,true); }
+}
+async function removeReportBale(reportDate,baleId,container) {
+  const report = state.reportCache.get(reportDate);
+  const bale = report?.bales.find(row => row.id === baleId);
+  if (!bale || !window.confirm(`Usunąć belkę ${bale.number} z raportu i przywrócić ją do zakładki Produkcja?`)) return;
+  try {
+    const result = await api(`/api/daily-production/${reportDate}/bales/${encodeURIComponent(baleId)}/remove`,{method:'POST',body:'{}'});
+    state.reportCache.set(reportDate,result.report);
+    render(result.bootstrap);
+    await refreshDailySummary();
+    renderDailyReportDetails(reportDate,container,result.report);
+    toast(`Belka ${bale.number} wróciła do Produkcji.`);
+  } catch (error) { toast(error.message,true); }
+}
+async function generateDailyReport(reportDate,button) {
+  if (button) button.disabled = true;
+  try {
+    const result = await api('/api/daily-production/generate',{method:'POST',body:JSON.stringify(reportDate ? {reportDate} : {})});
+    reportDate = result.report.report_date;
+    state.reportCache.set(reportDate,result.report);
+    await loadDailyReports();
+    render(await api('/api/bootstrap'));
+    const card = document.querySelector(`.daily-report-card[data-report-date="${reportDate}"]`);
+    const details = card?.querySelector('.daily-report-details');
+    if (details) {
+      details.open = true;
+      renderDailyReportDetails(reportDate,details.querySelector('.daily-report-content'),result.report);
+    }
+    toast(`Wygenerowano raport ${dateFmt(reportDate)}.`);
+  } catch (error) { toast(error.message,true); }
+  finally { if (button) button.disabled = false; }
+}
+function beginAddReportBale(reportDate) {
+  state.addToReportDate = reportDate;
+  state.editingId = null;
+  showView('production');
+  $('#article').value = '';
+  $('#machine').value = '';
+  $('#production-date').value = reportDate;
+  fillCommonControls();
+  $('#production-date').value = reportDate;
+  resetBaleFields();
+  $('#bale-form-title').textContent = `Dopisz belkę do raportu ${dateFmt(reportDate)}`;
+  $('#save-bale').textContent = 'Zapisz i dopisz do raportu';
+  $('#cancel-report-add').hidden = false;
+  document.querySelector('.production-entry')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+async function returnToDailyReport(reportDate) {
+  showView('daily-production');
+  await loadDailyReports();
+  const card = document.querySelector(`.daily-report-card[data-report-date="${reportDate}"]`);
+  const details = card?.querySelector('.daily-report-details');
+  if (details) {
+    details.open = true;
+    await loadDailyReport(reportDate, details.querySelector('.daily-report-content'));
+  }
+}
+async function sendDailyReport(reportDate,container) {
+  const button = container.querySelector('.send-report'); if (button) button.disabled = true;
+  $('#daily-action-status').textContent = 'Zapisuję zatwierdzoną wersję i wysyłam ją na serwer…';
+  try {
+    const token = $('#production-api-token').value.trim();
+    if (token) await api('/api/settings/production-connection',{method:'POST',body:JSON.stringify({productionServerUrl:'http://192.168.1.14:8765',productionApiToken:token})});
+    const result = await api(`/api/daily-production/${reportDate}/send`,{method:'POST',body:'{}'});
+    state.reportCache.set(reportDate,result.report);
+    $('#production-api-token').value = '';
+    $('#daily-action-status').textContent = `Serwer potwierdził odbiór ${result.uploaded} belek.`;
+    render(await api('/api/bootstrap'));
+    await refreshDailySummary();
+    renderDailyReportDetails(reportDate,container,result.report);
+    toast($('#daily-action-status').textContent);
+  } catch (error) { $('#daily-action-status').textContent=error.message; toast(error.message,true); await loadDailyReport(reportDate,container); }
+}
 function collectBale() {
   const meters = number($('#meters').value);
   const primaryId = Number($('#worker-primary').value);
@@ -387,12 +511,12 @@ async function saveProduction(event) {
   if (!state.data.articles.length || !state.data.workers.length) { toast('Najpierw dodaj artykuły i pracowników w Ustawieniach.', true); return; }
   const common = { articleId: $('#article').value, machine: $('#machine').value, productionDate: $('#production-date').value };
   const year = String(common.productionDate).slice(0, 4);
-  if (state.data.sequences?.[year]?.[common.machine] === undefined) { updateSequenceWarning(); toast('Najpierw ustaw ostatni użyty numer tej maszyny i roku w Ustawieniach.', true); return; }
+  if (state.data.sequences?.[year]?.[common.machine] === undefined) { toast('Najpierw ustaw ostatni użyty numer tej maszyny i roku w Ustawieniach.', true); return; }
   let bale;
   try { bale = collectBale(); }
   catch (error) { toast(error.message, true); return; }
   if (!$('#production-form').reportValidity()) return;
-  const repeat = !state.editingId && $('#repeat-next').checked ? { ...bale } : null;
+  const returnReportDate = state.addToReportDate;
   $('#save-bale').disabled = true;
   hideKeypad();
   try {
@@ -400,19 +524,26 @@ async function saveProduction(event) {
       await api(`/api/bales/${encodeURIComponent(state.editingId)}`, { method: 'POST', body: JSON.stringify({ ...common, ...bale }) });
       toast('Poprawiony wpis zapisano lokalnie.');
     } else {
-      const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ ...common, bales: [bale] }) });
-      toast(`Zapisano belkę ${result.created[0].number}.`);
+      if (state.addToReportDate) {
+        const result = await api(`/api/daily-production/${state.addToReportDate}/bales`, { method: 'POST', body: JSON.stringify({ ...common, bales: [bale] }) });
+        toast(`Dopisano belkę ${result.created[0].number} do raportu ${dateFmt(state.addToReportDate)}.`);
+        state.addToReportDate = null;
+      } else {
+        const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ ...common, bales: [bale] }) });
+        toast(`Zapisano belkę ${result.created[0].number}.`);
+      }
     }
     const data = await api('/api/bootstrap');
     render(data);
-    setFreshForm(true, repeat);
-    if (repeat) $('#errors').focus();
+    setFreshForm(true);
+    await loadDailyReports();
+    if (returnReportDate) await returnToDailyReport(returnReportDate);
   } catch (error) { toast(error.message, true); }
   finally { $('#save-bale').disabled = false; }
 }
 function startEdit(id) {
   const row = state.data.bales.find(item => item.id === id);
-  if (!row || row.sync_status !== 'pending') { toast('Można poprawiać tylko wpisy oczekujące na synchronizację.', true); return; }
+  if (!row || row.sync_status !== 'pending') { toast('Można poprawiać tylko belki oczekujące na wysłanie.', true); return; }
   showView('production');
   if (!state.data.articles.some(item => Number(item.id) === Number(row.article_id))) {
     state.data.articles.push({ id: row.article_id, symbol: row.symbol, lot: row.lot || '' });
@@ -429,21 +560,19 @@ function startEdit(id) {
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
   const primary = contributions[0];
   fillWorkerControls(String(primary?.workerId || ''));
-  const repeat = {
+  const prefill = {
     weightKg: row.weight_kg, meters: row.meters, stops: row.stops, notes: row.notes,
     extraWorkers: contributions.slice(1).map(worker => ({ workerId: worker.workerId, meters: worker.meters })),
   };
-  resetBaleFields(repeat);
+  resetBaleFields(prefill);
   $('#errors').value = String(row.errors);
-  $('#repeat-next').checked = false;
   state.editingId = row.id;
   $('#save-bale').textContent = 'Zapisz poprawkę';
   $('#bale-form-title').textContent = 'Poprawa belki';
-  updateSequenceWarning();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function startCopy(id) {
-  const row = state.data.bales.find(item => item.id === id);
+  const row = id === 'last' ? state.data.lastBale : state.data.bales.find(item => item.id === id);
   if (!row) { toast('Nie znaleziono belki do skopiowania.', true); return; }
   if (!state.data.articles.some(item => Number(item.id) === Number(row.article_id))) {
     toast('Artykuł z tej belki jest wyłączony. Włącz go w Ustawieniach, aby skopiować wpis.', true);
@@ -468,12 +597,10 @@ function startCopy(id) {
     extraWorkers: contributions.slice(1).map(worker => ({ workerId: worker.workerId, meters: worker.meters })),
   });
   $('#errors').value = '';
-  $('#repeat-next').checked = false;
   state.editingId = null;
   $('#save-bale').textContent = 'Zapisz skopiowaną belkę';
   $('#bale-form-title').textContent = `Kopia belki ${row.number}`;
   $('#save-bale').disabled = false;
-  updateSequenceWarning();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Skopiowano dane belki ${row.number} i dziewiarza. Błędy wyzerowano; nowa belka otrzyma własny numer.`);
   $('#errors').focus();
@@ -547,22 +674,35 @@ function moveToNextField() {
 
 $('#production-form').addEventListener('submit', saveProduction);
 $('#article-add-form').addEventListener('submit', addArticle);
+$('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(searchCentralArticles,180);});
+$('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
 $('#worker-add-form').addEventListener('submit', addWorker);
 $('#add-extra-worker').addEventListener('click', () => { addExtraWorkerRow(); updateShareSummary(); });
 $('#save-settings').addEventListener('click', saveSettings);
-$('#sync-production').addEventListener('click', syncProduction);
-$('#settings-auth-form').addEventListener('submit', authenticateSettings);
-$('#change-password-form').addEventListener('submit', changeManagerPassword);
-$('#settings-auth-cancel').addEventListener('click', () => { $('#settings-auth-modal').hidden = true; showView('production'); });
+$('#verify-production-token').addEventListener('click', verifyProductionToken);
+$('#generate-current-report').addEventListener('click', event => {
+  if (event.currentTarget.dataset.date) generateDailyReport(event.currentTarget.dataset.date,event.currentTarget);
+});
+$('#copy-last-bale').addEventListener('click', () => {
+  if (!state.data?.lastBale) { toast('Nie ma jeszcze belki, którą można skopiować.', true); return; }
+  startCopy('last');
+});
+$('#cancel-report-add').addEventListener('click', async () => {
+  const reportDate = state.addToReportDate;
+  state.addToReportDate = null;
+  setFreshForm(true);
+  if (reportDate) await returnToDailyReport(reportDate);
+});
 $('#refresh').addEventListener('click', refresh);
 $('#retry-startup').addEventListener('click', refresh);
 $('#back-to-production').addEventListener('click', () => showView('production'));
-$('#machine').addEventListener('change', updateSequenceWarning);
-$('#production-date').addEventListener('change', updateSequenceWarning);
 $('#worker-primary').addEventListener('change', updateShareSummary);
 $('#meters').addEventListener('input', updateShareSummary);
 $('#sequence-year').addEventListener('change', () => renderSequenceList($('#sequence-year').value));
-document.querySelectorAll('.nav-button').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
+document.querySelectorAll('.nav-button').forEach(button => button.addEventListener('click', () => {
+  showView(button.dataset.view);
+  if (button.dataset.view === 'daily-production') loadDailyReports();
+}));
 // Delegation also covers numeric fields added later (for example, extra worker shares).
 document.addEventListener('focusin', event => {
   const input = event.target.closest?.('[data-numeric]');

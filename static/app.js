@@ -45,7 +45,7 @@ document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
   const q=input.value.trim();controller?.abort();controller=null;
   if(!q){results.replaceChildren();return;}
   controller=new AbortController();
-  try{const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();}
+  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();}
   catch(error){if(error.name!=='AbortError')results.textContent='Nie udało się wyszukać artykułów.';}
  };
  input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180);});

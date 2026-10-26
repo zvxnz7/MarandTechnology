@@ -71,6 +71,17 @@ function tokenMatches(db, authorization) {
   return expected.length === candidate.length && crypto.timingSafeEqual(expected, candidate);
 }
 
+function catalogPayload(db, authorization) {
+  if (!tokenMatches(db, authorization)) throw responseError(401, 'Brak uprawnień do pobrania bibliotek produkcji. Sprawdź token w ustawieniach lokalnych.');
+  return {
+    articles: db.prepare(`SELECT a.id,a.symbol,a.description FROM articles a JOIN records r ON r.id=a.active_spec
+      WHERE a.archived_at IS NULL AND a.purged_at IS NULL AND r.kind='spec' AND r.state='approved'
+        AND r.archived_at IS NULL ORDER BY a.symbol_key,a.id`).all(),
+    workers: db.prepare('SELECT employee_uid,code,name FROM knitting_workers WHERE active=1 ORDER BY name COLLATE NOCASE,code COLLATE NOCASE').all(),
+    syncedAt: new Date().toISOString(),
+  };
+}
+
 function receiveUpload(db, authorization, payload, helpers) {
   if (!tokenMatches(db, authorization)) throw responseError(401, 'Brak uprawnień do wysłania produkcji. Sprawdź token w ustawieniach lokalnych.');
   if (!payload || !Array.isArray(payload.bales) || payload.bales.length > 5000) throw responseError(400, 'Nieprawidłowa lista belek.');
@@ -255,4 +266,4 @@ async function handle(ctx) {
   return false;
 }
 
-module.exports = { initialize, receiveUpload, handle };
+module.exports = { initialize, receiveUpload, catalogPayload, handle };

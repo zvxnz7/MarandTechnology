@@ -544,6 +544,15 @@ async function handle(req, res) {
         return send(req, res, status, JSON.stringify({ ok: false, error: error.message || 'Nie udało się zapisać produkcji.' }), 'application/json; charset=utf-8');
       }
     }
+    if (p === '/api/production/catalog' && req.method === 'GET') {
+      try {
+        const catalog = Production.catalogPayload(db, req.headers.authorization);
+        return send(req, res, 200, JSON.stringify({ ok: true, ...catalog }), 'application/json; charset=utf-8');
+      } catch (error) {
+        const status = error.status || 500;
+        return send(req, res, status, JSON.stringify({ ok: false, error: error.message || 'Nie udało się pobrać bibliotek.' }), 'application/json; charset=utf-8');
+      }
+    }
     if (p === '/admin/import/preview' && req.method === 'POST') {
       try {
         if (!req.user || !req.user.active) return send(req, res, 401, JSON.stringify({ ok: false, error: 'Zaloguj się ponownie.' }), 'application/json; charset=utf-8');

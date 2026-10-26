@@ -190,15 +190,18 @@ async function backupDatabase(config, filename) {
     if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok') throw new Error('Kontrola kopii bazy nie powiodła się.');
   } finally { check.close(); }
 }
-async function checkHealth(config, version) {
+async function checkHealth(config, version, options = {}) {
   const url = new URL(config.health_url || 'http://127.0.0.1:8765/healthz');
   if (!['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('health_url musi wskazywać lokalny serwer.');
   const expectedTag = sha(Buffer.from(path.resolve(config.data_dir).toLowerCase()));
-  const end = Date.now() + 45000;
+  const request = options.fetchImpl || fetch;
+  const now = options.now || Date.now;
+  const sleep = options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  const end = now() + (options.timeoutMs ?? 45000);
   let lastFailure = 'Serwer nie odpowiedział na lokalne sprawdzenie /healthz.';
-  while (Date.now() < end) {
+  while (now() < end) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
+      const response = await request(url, { signal: AbortSignal.timeout(options.requestTimeoutMs ?? 2500) });
       const body = await response.text();
       let result;
       try { result = JSON.parse(body); }
@@ -210,7 +213,7 @@ async function checkHealth(config, version) {
         else return;
       }
     } catch (error) { lastFailure = `Nie można połączyć się z lokalnym /healthz: ${String(error.message || error).slice(0,180)}.`; }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await sleep(options.pollIntervalMs ?? 1000);
   }
   throw new Error(`Nowa wersja ${version} nie przeszła kontroli uruchomienia. ${lastFailure}`);
 }
@@ -326,5 +329,7 @@ async function main() {
   process.env.MARAND_UPDATE_PACKAGE = path.resolve(args.package);
   await update(path.resolve(args.package), args.version, args.sha256);
 }
-main().catch(error => { console.error(`UPDATE ERROR: ${error.stack || error.message}`); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error(`UPDATE ERROR: ${error.stack || error.message}`); process.exitCode = 1; });
+
+module.exports = { checkHealth };
 
