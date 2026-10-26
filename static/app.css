@@ -185,6 +185,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-lost-count{color:#9d2d32;font-size:12px;font-weight:700}
 .warehouse-bulk-status{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0;padding:8px;background:#fff;border:1px solid var(--line);border-radius:6px}
 .warehouse-bulk-status input[name=reason]{width:min(330px,100%);padding:7px 9px;font-size:12px}
+.warehouse-bulk-status input[name=custom_status]{width:160px;flex:0 0 160px;padding:7px 9px;font-size:12px}
 .warehouse-bulk-status button{padding:7px 10px;font-size:11px}
 .button.danger,.danger{color:#a82025}
 .warehouse-bales-table{min-width:1080px;font-size:11px}
@@ -228,7 +229,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-close-form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid #d9e7dc;border-radius:7px;background:#f3faf5}
 .shipment-close-form .check{margin:0;align-items:center;font-size:12px}
 .shipment-close-form button,.shipment-final-actions>form button{padding:8px 12px}
-.shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) 190px minmax(0,1fr);gap:14px;align-items:start}
+.shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:14px;align-items:start}
 .shipment-picker>section{min-width:0}.shipment-picker h2{font-size:17px;margin:12px 0}
 .shipment-select-article{display:block;position:relative;width:min(100%,540px);margin:12px 0}
 .shipment-select-article label{display:block;margin:0}.shipment-picker-controls{position:sticky;top:18px;z-index:2;align-self:start;display:flex;flex-direction:column;gap:10px;padding:12px 8px;margin-top:78px;border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 5px 18px #00000012}.shipment-picker-controls label{margin:0;font-size:12px}.shipment-picker-controls button{width:100%;white-space:normal}
