@@ -246,7 +246,11 @@ function catalogPage(ctx) {
     const cols = canManageStatuses ? 11 : 10;
     selectedView = `<section class="warehouse-selected"><div class="pagehead"><div><h2>${V.esc(current.symbol)}</h2><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th>✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`}</tbody></table></div></section>`;
   }
-    const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Kartoteka</h1><p class="muted">Wyszukaj artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${current ? selectedView : ''}`;
+  if (!current) {
+    const canManageStatuses=managerRoles.includes(ctx.req.user.role),cols=canManageStatuses?11:10;
+    selectedView=`<section class="warehouse-selected"><div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses?'<th>LP</th><th>✓</th>':'<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="${cols}">Wybierz artykuł, aby wyświetlić jego belki.</td></tr></tbody></table></div></section>`;
+  }
+    const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Kartoteka</h1><p class="muted">Wyszukaj artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${selectedView}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Kartoteka magazynowa · Marand',body});
 }
 

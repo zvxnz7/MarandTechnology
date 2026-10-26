@@ -100,7 +100,7 @@ test('przycisk dodawania pozostaje w środkowym, sticky panelu przy 200 belkach'
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/select`,{},`?article_id=${f.articleId}`));
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
     assert.match(page.body,/shipment-picker-controls/);
-    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{position:sticky/);
+    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:1\/-1/);
   }finally{f.db.close();}
 });
 
