@@ -195,6 +195,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-pick{margin:0;text-align:center}
 .warehouse-row-lost td{background:#fff4f4;color:#7d2529}
 .warehouse-lost{background:#fde5e5;color:#9d2d32}
+.warehouse-second-grade{background:#ffe0b2;color:#874400}
+.warehouse-stripe-risk{background:#fff0b3;color:#795600}
+.warehouse-custom-status{background:#e8e2f4;color:#563d78;white-space:normal}
+.warehouse-action-second-grade{background:#f2a43a;border-color:#d98a20;color:#382300}
+.warehouse-action-second-grade:hover{background:#e99522;border-color:#cb7811}
+.warehouse-action-stripe-risk{background:#fff0b3;border-color:#e3b846;color:#6d4e00}
+.warehouse-action-stripe-risk:hover{background:#ffe28a;border-color:#d3a32d}
+.warehouse-action-custom-status{background:#ece7f4;border-color:#c7b9dc;color:#503a70}
+.warehouse-search-hint{margin:6px 0;padding:8px 10px;color:var(--muted);font-size:12px}
 .warehouse-row-lost td:first-child{border-left:3px solid #c83b40}
 .warehouse-note-form{display:flex;align-items:center;gap:3px;min-width:190px;margin:0}
 .warehouse-note-form input{min-width:125px;padding:4px 6px;font-size:10px}
@@ -208,7 +217,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-doc-list{margin:6px 0;padding-left:18px}.shipment-doc-list li{margin:3px 0;font-size:12px}
 .shipment-article{margin:10px 0;padding:12px;background:#fff;border:1px solid var(--line);border-radius:7px}
 .shipment-article>summary{display:flex;justify-content:space-between;gap:12px;font-size:14px}
-.shipment-article>summary span,.shipment-picked-article small{color:var(--muted);font-weight:500}
+.shipment-article>summary span:not(.plant-chip),.shipment-picked-article small{color:var(--muted);font-weight:500}
 .shipment-article-actions{margin:8px 0}.shipment-article-actions .button{padding:6px 10px;font-size:12px}
 .shipment-date-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0}
 .shipment-date-form label{width:180px;margin:0;font-size:11px}
@@ -236,6 +245,16 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-select-all{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:12px}
 .shipment-select-all input{width:15px;height:15px;margin:0}
 .shipment-picked-article{margin-bottom:12px}
+.shipment-picked-article>summary{cursor:pointer;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff;font-weight:600}
+.form-alert{margin:0;padding:7px 9px;border-radius:5px;background:#fff4e5;color:#9b4b00;font-size:11px;font-weight:600}
+.autosave-status{font-size:10px;color:var(--muted);min-width:110px}
+.plant-chip{display:inline-block;padding:2px 7px;border:1px solid transparent;border-radius:999px;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.plant-color-orange{background:#fff0dc;color:#934900;border-color:#ffd49f}
+.plant-color-blue{background:#e8f2ff;color:#174f86;border-color:#bfdcff}
+.plant-color-green{background:#e8f7ed;color:#21623a;border-color:#bde5ca}
+.plant-color-purple{background:#f3eaff;color:#663b89;border-color:#dfc6fa}
+.plant-color-teal{background:#e2f6f3;color:#12665c;border-color:#afe2d9}
+.plant-color-red{background:#ffebeb;color:#9b2828;border-color:#ffc5c5}
 .shipment-picked-article h3{font-size:14px;margin:9px 0}
 .shipment-delete-cell{width:38px;text-align:center!important}
 .shipment-delete-form{margin:0;display:flex;justify-content:center}
@@ -261,7 +280,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-bales-table td{padding:4px 5px;font-size:10px;line-height:1.15}
 .warehouse-bales-table td:nth-child(1),.warehouse-bales-table td:nth-child(2),.warehouse-bales-table td:nth-child(5),.warehouse-bales-table td:nth-child(6),.warehouse-bales-table td:nth-child(7),.warehouse-bales-table td:nth-child(8){text-align:center;white-space:nowrap}
 .warehouse-bales-table .warehouse-bale-number{white-space:nowrap}
-.warehouse-bale-number{display:flex;align-items:center;justify-content:center;gap:5px}
+.warehouse-bale-number{display:table-cell;text-align:center;white-space:nowrap}
+.warehouse-bale-number a,.warehouse-bale-number .badge{display:inline-block;vertical-align:middle;margin:0 2px}
 .warehouse-bale-number a{font-weight:700;color:#334b63;text-decoration:underline;text-decoration-color:#c3ccd5;text-underline-offset:2px}
 .warehouse-bale-number .badge{padding:2px 6px;font-size:9px;line-height:1.1}
 .warehouse-note-form{display:block;position:relative;min-width:125px;margin:0}

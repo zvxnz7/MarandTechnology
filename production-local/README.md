@@ -24,6 +24,10 @@ dziewiarz nadal widzi tylko wybrane pozycje. Lokalna kopia biblioteki jest
 zachowywana przy braku połączenia, a odświeżenie nie zmienia identyfikatorów
 artykułów, belek ani przypisań do maszyn. Do czasu odbioru synchronizacji
 pozostaje dostępne przejściowe ręczne dodawanie artykułów.
+Biblioteki są pobierane jeden raz podczas uruchamiania panelu. Wyszukiwanie
+artykułów korzysta wyłącznie z zapisanej kopii lokalnej. Po zmianie tokenu lub
+gdy program główny był niedostępny podczas startu, uruchom panel ponownie,
+aby wykonać następną próbę synchronizacji.
 
 ## Zapis produkcji
 

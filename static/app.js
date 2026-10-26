@@ -27,7 +27,8 @@ document.querySelectorAll('[data-warehouse-live-search]').forEach(form=>{
  const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-warehouse-search-results]');let timer=null,controller=null;
  const search=async()=>{
   const q=input.value.trim();controller?.abort();controller=null;
-  if(!q){results.replaceChildren();input.setAttribute('aria-expanded','false');return;}
+   if(!q){results.replaceChildren();input.setAttribute('aria-expanded','false');return;}
+   if(q.length<2){results.innerHTML='<p class="warehouse-search-hint">Wpisz co najmniej 2 znaki.</p>';input.setAttribute('aria-expanded','false');return;}
   controller=new AbortController();
   try{
    const response=await fetch(`/warehouse?partial=search&q=${encodeURIComponent(q)}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});

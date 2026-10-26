@@ -77,7 +77,7 @@ function catalogPayload(db, authorization) {
     articles: db.prepare(`SELECT a.id,a.symbol,a.description FROM articles a JOIN records r ON r.id=a.active_spec
       WHERE a.archived_at IS NULL AND a.purged_at IS NULL AND r.kind='spec' AND r.state='approved'
         AND r.archived_at IS NULL ORDER BY a.symbol_key,a.id`).all(),
-    workers: db.prepare('SELECT employee_uid,code,name FROM knitting_workers WHERE active=1 ORDER BY name COLLATE NOCASE,code COLLATE NOCASE').all(),
+    workers: db.prepare('SELECT employee_uid,name FROM knitting_workers WHERE active=1 ORDER BY name COLLATE NOCASE').all(),
     syncedAt: new Date().toISOString(),
   };
 }
@@ -102,7 +102,6 @@ function receiveUpload(db, authorization, payload, helpers) {
     if (!Number.isSafeInteger(errors) || errors < 0 || !Number.isSafeInteger(stops) || stops < 0) throw responseError(400, `Belka ${index + 1}: błędy i stopy muszą być nieujemnymi liczbami całkowitymi.`);
     const workers = Array.isArray(row.workers) ? row.workers.slice(0, 25).map(worker => ({
       employeeUid: String(worker.employeeUid || '').slice(0, 36),
-      code: String(worker.code || '').slice(0, 20),
       name: String(worker.name || '').trim().slice(0, 100),
       meters: Number(worker.meters) || 0,
     })) : [];
@@ -228,7 +227,7 @@ function balesPage(ctx) {
   const rows = items.map(row => {
     let workers = [];
     try { workers = JSON.parse(row.workers_json || '[]'); } catch {}
-    const workerText = workers.map(worker => `${worker.code ? `${V.esc(worker.code)} · ` : ''}${V.esc(worker.name)} · ${Number(worker.meters).toLocaleString('pl-PL')} m`).join('<br>') || '—';
+    const workerText = workers.map(worker => `${V.esc(worker.name)} · ${Number(worker.meters).toLocaleString('pl-PL')} m`).join('<br>') || '—';
     return `<tr><td>${V.esc(row.bale_number)}</td><td>${V.esc(row.symbol)}</td><td>${V.esc(row.machine)}</td><td>${V.esc(row.production_date.split('-').reverse().join('.'))}</td><td>${Number(row.weight_kg).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td>${workerText}</td><td>${V.esc(row.lot)}</td><td>${V.esc(row.notes)}</td><td>${row.needs_check ? 'Do sprawdzenia' : '—'}</td><td>${V.datepl(row.uploaded_at)}</td></tr>`;
   }).join('');
   const form = `<form class="searchbar production-bale-filters"><input name="q" value="${V.esc(query)}" placeholder="Szukaj belki, dziewiarza lub LOT"><label class="date-filter">Od<input type="date" name="date_from" value="${V.esc(from)}"></label><label class="date-filter">Do<input type="date" name="date_to" value="${V.esc(to)}"></label><button class="primary">Szukaj</button></form>`;

@@ -36,7 +36,7 @@ function options(items, valueKey, labelFn, selected) {
   return items.map(item => `<option value="${escapeHtml(item[valueKey])}" ${String(item[valueKey]) === String(selected) ? 'selected' : ''}>${escapeHtml(labelFn(item))}</option>`).join('');
 }
 function articleLabel(item) { return item.symbol; }
-function workerLabel(worker) { return worker.code ? `${worker.code} · ${worker.name}` : worker.name; }
+function workerLabel(worker) { return worker.name; }
 function fillCommonControls() {
   const oldArticle = $('#article').value;
   const oldMachine = $('#machine').value;
@@ -131,7 +131,7 @@ function renderBales() {
   tbody.innerHTML = state.data.bales.map(row => `<tr>
     <td>${ordinals.get(row.id)}</td><td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}</td><td>${dateFmt(row.production_date)}</td>
     <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
-    <td>${row.workers.map(worker => `${escapeHtml(worker.code ? `${worker.code} · ${worker.name}` : worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
+    <td>${row.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
     <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Do sprawdzenia' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
     <td class="actions-cell">${row.sync_status === 'pending' ? `<button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? 'Cofnij flagę' : 'Sprawdź'}</button><button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : '—'}</td>
   </tr>`).join('');
@@ -180,7 +180,7 @@ async function loadSettings() {
     toast(error.message, true);
   }
   state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
-  state.catalogWorkers = state.data.workers.map(item => ({ employee_uid: item.employee_uid, code: item.code, name: item.name }));
+  state.catalogWorkers = state.data.workers.map(item => ({ employee_uid: item.employee_uid, name: item.name }));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
   $('#sequence-year').value = state.data.today.slice(0, 4);
@@ -200,7 +200,7 @@ function renderCatalogs() {
     renderCatalogs();
   }));
   const workerList = $('#worker-list');
-  workerList.innerHTML = state.catalogWorkers.length ? state.catalogWorkers.map((item, index) => `<div class="catalog-row"><div><strong>${escapeHtml(item.name)}</strong><small>${item.code ? `Oznaczenie: ${escapeHtml(item.code)} · ` : ''}ID: ${escapeHtml(item.employee_uid ? item.employee_uid.slice(0, 8) : 'utworzy się przy zapisie')}</small></div><button type="button" class="catalog-remove remove-worker-catalog" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych pracowników.</div>';
+  workerList.innerHTML = state.catalogWorkers.length ? state.catalogWorkers.map((item, index) => `<div class="catalog-row"><div><strong>${escapeHtml(item.name)}</strong></div><button type="button" class="catalog-remove remove-worker-catalog" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych pracowników.</div>';
   workerList.querySelectorAll('.remove-worker-catalog').forEach(button => button.addEventListener('click', () => {
     state.catalogWorkers.splice(Number(button.dataset.index), 1);
     renderCatalogs();
@@ -245,21 +245,20 @@ function addCentralArticleFromSearch(event) {
 function addWorker(event) {
   event.preventDefault();
   const name = $('#worker-new-name').value.trim();
-  const code = $('#worker-new-code').value.trim();
   if (!name) return;
-  if (state.catalogWorkers.some(item => item.name.toLocaleUpperCase('pl-PL') === name.toLocaleUpperCase('pl-PL') && item.code.toLocaleUpperCase('pl-PL') === code.toLocaleUpperCase('pl-PL'))) {
-    toast('Ta osoba z takim oznaczeniem jest już na liście.', true); return;
+  const key = value => value.toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');
+  if (state.catalogWorkers.some(item => key(item.name) === key(name))) {
+    toast('Osoba o tym imieniu i nazwisku jest już na liście.', true); return;
   }
-  state.catalogWorkers.push({ employee_uid: '', code, name });
+  state.catalogWorkers.push({ employee_uid: '', name });
   $('#worker-new-name').value = '';
-  $('#worker-new-code').value = '';
   renderCatalogs();
   $('#worker-new-name').focus();
 }
 async function saveSettings() {
   try {
     const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
-    const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', code: item.code || '', name: item.name }));
+    const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
@@ -373,7 +372,7 @@ function editableReportInput(bale, field, value, type = 'text') {
 function renderDailyReportDetails(reportDate, container, report) {
   const editable = report.status !== 'sent';
   const bales = [...report.bales].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id.localeCompare(a.id));
-  const rows = bales.map(bale => `<tr><td>${bale.ordinal}</td><td>${escapeHtml(bale.number)}</td><td>${escapeHtml(bale.symbol)}</td><td>${escapeHtml(bale.machine)}</td><td>${editable ? editableReportInput(bale,'production_date',bale.production_date,'date') : dateFmt(bale.production_date)}</td><td>${editable ? editableReportInput(bale,'weight_kg',String(bale.weight_kg).replace('.',',')) : fmt(bale.weight_kg)}</td><td>${editable ? editableReportInput(bale,'meters',String(bale.meters).replace('.',',')) : fmt(bale.meters)}</td><td>${editable ? editableReportInput(bale,'errors',bale.errors) : bale.errors}</td><td>${editable ? editableReportInput(bale,'stops',bale.stops) : bale.stops}</td><td>${bale.workers.map(worker => `${escapeHtml(worker.code ? `${worker.code} · ${worker.name}` : worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td><td>${escapeHtml(bale.lot)}</td><td>${editable ? editableReportInput(bale,'notes',bale.notes || '') : escapeHtml(bale.notes)}</td><td>${editable ? `<button class="table-action remove-report-bale" data-id="${escapeHtml(bale.id)}">Usuń z raportu</button>` : '—'}</td></tr>`).join('');
+  const rows = bales.map(bale => `<tr><td>${bale.ordinal}</td><td>${escapeHtml(bale.number)}</td><td>${escapeHtml(bale.symbol)}</td><td>${escapeHtml(bale.machine)}</td><td>${editable ? editableReportInput(bale,'production_date',bale.production_date,'date') : dateFmt(bale.production_date)}</td><td>${editable ? editableReportInput(bale,'weight_kg',String(bale.weight_kg).replace('.',',')) : fmt(bale.weight_kg)}</td><td>${editable ? editableReportInput(bale,'meters',String(bale.meters).replace('.',',')) : fmt(bale.meters)}</td><td>${editable ? editableReportInput(bale,'errors',bale.errors) : bale.errors}</td><td>${editable ? editableReportInput(bale,'stops',bale.stops) : bale.stops}</td><td>${bale.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td><td>${escapeHtml(bale.lot)}</td><td>${editable ? editableReportInput(bale,'notes',bale.notes || '') : escapeHtml(bale.notes)}</td><td>${editable ? `<button class="table-action remove-report-bale" data-id="${escapeHtml(bale.id)}">Usuń z raportu</button>` : '—'}</td></tr>`).join('');
   const statusText = report.last_error ? `<p class="report-error">${escapeHtml(report.last_error)}</p>` : report.status === 'sent'
     ? `<p class="muted">Wysłano ${escapeHtml(reportDateTime(report.sent_at))}. Wysłanego raportu nie można zmieniać w panelu lokalnym; korekty wykonuje się w programie głównym.</p>`
     : `<p class="muted">Status: ${escapeHtml(reportStatusLabel(report.status))}</p>`;
@@ -551,7 +550,7 @@ function startEdit(id) {
   }
   for (const worker of row.workers) {
     if (!state.data.workers.some(item => Number(item.id) === Number(worker.workerId))) {
-      state.data.workers.push({ id: worker.workerId, employee_uid: worker.employeeUid || '', code: worker.code || '', name: worker.name });
+      state.data.workers.push({ id: worker.workerId, employee_uid: worker.employeeUid || '', name: worker.name });
     }
   }
   $('#article').value = String(row.article_id);

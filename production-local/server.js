@@ -23,7 +23,7 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
 const startingSchemaVersion = db.prepare('PRAGMA user_version').get().user_version;
-if (startingSchemaVersion > 5) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
+if (startingSchemaVersion > 6) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY,
@@ -57,6 +57,7 @@ db.exec(`
     central_managed INTEGER NOT NULL DEFAULT 0 CHECK(central_managed IN (0,1)),
     central_active INTEGER NOT NULL DEFAULT 1 CHECK(central_active IN (0,1)),
     created_at TEXT NOT NULL,
+    name_key TEXT NOT NULL DEFAULT '',
     UNIQUE(code,name)
   );
   CREATE TABLE IF NOT EXISTS bale_sequences (
@@ -103,6 +104,23 @@ if (startingSchemaVersion < 2) {
   const setWorkerId = db.prepare('UPDATE workers SET employee_uid=? WHERE id=?');
   for (const row of missingWorkerIds) setWorkerId.run(crypto.randomUUID(), row.id);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS workers_employee_uid ON workers(employee_uid); PRAGMA user_version=2;');
+}
+if(startingSchemaVersion<6){
+  const workerColumns=db.prepare('PRAGMA table_info(workers)').all().map(column=>column.name);
+  if(!workerColumns.includes('name_key')) db.exec("ALTER TABLE workers ADD COLUMN name_key TEXT NOT NULL DEFAULT '';");
+  const normalizeName=value=>String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'').trim();
+  const rows=db.prepare('SELECT id,name,active,central_managed,central_active FROM workers ORDER BY central_managed DESC,active DESC,id').all();
+  const groups=new Map();
+  for(const row of rows){const key=normalizeName(row.name);if(!key){db.prepare('UPDATE workers SET name_key=? WHERE id=?').run(`legacy-empty:${row.id}`,row.id);continue;}const group=groups.get(key)||[];group.push(row);groups.set(key,group);}
+  db.exec('BEGIN IMMEDIATE;');
+  try{
+    const add=db.prepare(`INSERT INTO bale_workers(bale_id,worker_id,meters) VALUES(?,?,?) ON CONFLICT(bale_id,worker_id) DO UPDATE SET meters=bale_workers.meters+excluded.meters`);
+    const assignments=db.prepare('SELECT bale_id,meters FROM bale_workers WHERE worker_id=?');
+    const archive=db.prepare("UPDATE workers SET active=0,central_active=0,name_key=? WHERE id=?");
+    for(const [key,group] of groups){const canonical=group[0];db.prepare('UPDATE workers SET name_key=?,active=?,central_managed=?,central_active=max(central_active,?) WHERE id=?').run(key,group.some(w=>w.active)?1:0,group.some(w=>w.central_managed)?1:0,group.some(w=>w.central_managed&&w.active)?1:0,canonical.id);
+      for(const duplicate of group.slice(1)){for(const a of assignments.all(duplicate.id))add.run(a.bale_id,canonical.id,a.meters);db.prepare('DELETE FROM bale_workers WHERE worker_id=?').run(duplicate.id);archive.run(`archived:${duplicate.id}`,duplicate.id);}}
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS workers_name_key ON workers(name_key); PRAGMA user_version=6; COMMIT;');
+  }catch(error){try{db.exec('ROLLBACK;')}catch{}throw error;}
 }
 if (startingSchemaVersion < 3) {
   db.exec(`
@@ -234,6 +252,7 @@ function cleanText(value, maxLength, label) {
   if (result.length > maxLength) fail(400, `${label}: maksymalnie ${maxLength} znaków.`);
   return result;
 }
+function normalizeWorkerName(value){return String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'').trim();}
 function positiveNumber(value, label, maximum) {
   const result = Number(value);
   if (!Number.isFinite(result) || result <= 0 || result > maximum) fail(400, `${label}: podaj wartość większą od zera.`);
@@ -294,7 +313,7 @@ function baleRows() {
     WHERE NOT EXISTS (SELECT 1 FROM daily_production_report_bales rb WHERE rb.bale_id=b.id AND rb.state='included')
     ORDER BY b.created_at DESC,b.id DESC`).all().map(row => ({
       ...row,
-      workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.code,w.name,bw.meters FROM bale_workers bw
+      workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
         JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`).all(row.id),
     }));
 }
@@ -306,7 +325,7 @@ function lastBaleRow() {
     ...row,
     number: `${row.machine}/${row.serial_number}`,
     needs_check: Boolean(row.needs_check),
-    workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.code,w.name,bw.meters FROM bale_workers bw
+    workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
       JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`).all(row.id),
   };
 }
@@ -329,7 +348,7 @@ function bootstrap() {
     machines: MACHINES,
     articles: db.prepare(`SELECT a.id,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot FROM articles a
       LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE`).all(),
-    workers: db.prepare('SELECT id,employee_uid,code,name FROM workers WHERE active=1 AND (central_managed=0 OR central_active=1) ORDER BY name COLLATE NOCASE,code COLLATE NOCASE').all(),
+    workers: db.prepare('SELECT id,employee_uid,name FROM workers WHERE active=1 AND (central_managed=0 OR central_active=1) ORDER BY name COLLATE NOCASE').all(),
     sequences,
     bales: rows,
     lastBale: lastBaleRow(),
@@ -367,17 +386,16 @@ function validateCatalog(body, key) {
       if(centralId!==null&&(!Number.isSafeInteger(centralId)||centralId<1)) fail(400,'Identyfikator artykułu z centrali jest nieprawidłowy.');
       return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId };
     }
-    const code = cleanText(item.code, 20, 'Oznaczenie dziewiarza');
     const name = cleanText(item.name, 100, 'Nazwa dziewiarza');
     const employeeUid = cleanText(item.employeeUid, 36, 'Identyfikator pracownika') || crypto.randomUUID();
     if (!name) fail(400, 'Podaj imię i nazwisko pracownika.');
     if (!/^[0-9a-f-]{32,36}$/i.test(employeeUid)) fail(400, 'Nieprawidłowy identyfikator pracownika.');
-      return { employeeUid, code, name };
+    return { employeeUid, name, nameKey: normalizeWorkerName(name) };
   });
   if (!items.length) fail(400, key === 'articles' ? 'Dodaj przynajmniej jeden aktywny artykuł.' : 'Dodaj przynajmniej jednego aktywnego dziewiarza.');
   const keys = items.map(item => key === 'articles'
     ? item.symbol.toLocaleUpperCase('pl-PL')
-    : item.employeeUid.toLocaleLowerCase('en-US'));
+    : item.nameKey);
   if (new Set(keys).size !== keys.length) fail(400, 'Lista zawiera powtarzający się wpis.');
   return items;
 }
@@ -417,9 +435,9 @@ function saveCatalogs(body) {
       addArticle.run(item.symbol, item.centralId, item.centralId===null?0:1, now());
       saveArticleSettings.run(findArticle.get(item.symbol).id, item.lot, now());
     }
-    const addWorker = db.prepare(`INSERT INTO workers(employee_uid,code,name,active,created_at) VALUES(?,?,?,1,?)
-      ON CONFLICT(employee_uid) DO UPDATE SET code=excluded.code,name=excluded.name,active=1`);
-    for (const item of workers) addWorker.run(item.employeeUid, item.code, item.name, now());
+    const addWorker = db.prepare(`INSERT INTO workers(employee_uid,code,name,active,name_key,created_at) VALUES(?,'',?,1,?,?)
+      ON CONFLICT(employee_uid) DO UPDATE SET name=excluded.name,name_key=excluded.name_key,active=1`);
+    for (const item of workers) addWorker.run(item.employeeUid, item.name, item.nameKey, now());
     const readSequence = db.prepare('SELECT last_value FROM bale_sequences WHERE machine=? AND production_year=?');
     const writeSequence = db.prepare(`INSERT INTO bale_sequences(machine,production_year,last_value) VALUES(?,?,?)
       ON CONFLICT(machine,production_year) DO UPDATE SET last_value=max(last_value,excluded.last_value)`);
@@ -448,6 +466,7 @@ function productionConnection() {
 }
 let centralCatalogSyncAt = 0;
 let centralCatalogSyncPromise = null;
+let centralCatalogStartupSyncPromise = Promise.resolve();
 async function refreshCentralCatalog(force = false) {
   const { serverUrl, apiToken, configured } = productionCredentials();
   if (!configured) return { updated: false, reason: 'not_configured' };
@@ -468,12 +487,12 @@ async function refreshCentralCatalog(force = false) {
         else db.prepare('INSERT INTO articles(symbol,active,central_id,central_managed,central_active,central_description,created_at) VALUES(?,0,?,1,1,?,?)').run(symbol,centralId,description,now());
       }
       for(const item of payload.workers){
-        const employeeUid=cleanText(item.employee_uid,36,'Identyfikator pracownika'),name=cleanText(item.name,100,'Nazwa dziewiarza'),code=cleanText(item.code,20,'Oznaczenie dziewiarza');
+        const employeeUid=cleanText(item.employee_uid,36,'Identyfikator pracownika'),name=cleanText(item.name,100,'Nazwa dziewiarza'),nameKey=normalizeWorkerName(name);
         if(!/^[0-9a-f-]{32,36}$/i.test(employeeUid)||!name) continue;
         let local=db.prepare('SELECT id FROM workers WHERE employee_uid=?').get(employeeUid);
-        if(!local) local=db.prepare(`SELECT id FROM workers WHERE central_managed=0 AND name=? COLLATE NOCASE AND code=? COLLATE NOCASE ORDER BY id LIMIT 1`).get(name,code);
-        if(local) db.prepare('UPDATE workers SET employee_uid=?,code=?,name=?,central_managed=1,central_active=1 WHERE id=?').run(employeeUid,code,name,local.id);
-        else db.prepare(`INSERT INTO workers(employee_uid,code,name,active,central_managed,central_active,created_at) VALUES(?,?,?,1,1,1,?)`).run(employeeUid,code,name,now());
+        if(!local) local=db.prepare('SELECT id FROM workers WHERE name_key=? OR (central_managed=0 AND lower(trim(name))=lower(trim(?))) ORDER BY central_managed DESC,active DESC,id LIMIT 1').get(nameKey,name);
+        if(local) db.prepare('UPDATE workers SET employee_uid=?,name=?,name_key=?,central_managed=1,central_active=1 WHERE id=?').run(employeeUid,name,nameKey,local.id);
+        else db.prepare(`INSERT INTO workers(employee_uid,code,name,active,central_managed,central_active,name_key,created_at) VALUES(?,'',?,1,1,1,?,?)`).run(employeeUid,name,nameKey,now());
       }
       db.prepare(`INSERT INTO local_settings(key,value) VALUES('central_catalog_synced_at',?)
         ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(payload.syncedAt||now()));
@@ -539,7 +558,7 @@ async function uploadProduction() {
   const rows = db.prepare(`SELECT b.*,a.symbol FROM bales b JOIN articles a ON a.id=b.article_id
     WHERE b.sync_status='pending' AND upper(replace(replace(replace(a.symbol,' ',''),char(9),''),char(10),''))='WT56-21(5)'
     ORDER BY b.production_date,b.created_at,b.id`).all();
-  const workersForBale = db.prepare(`SELECT w.employee_uid employeeUid,w.code,w.name,bw.meters FROM bale_workers bw
+  const workersForBale = db.prepare(`SELECT w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
     JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`);
   const bales = rows.map(row => ({
     id: row.id, symbol: row.symbol, machine: row.machine, number: `${row.machine}/${row.serial_number}`,
@@ -582,7 +601,7 @@ function dailyReportDetails(reportDate) {
       ordinal: index + 1,
       number: `${row.machine}/${row.serial_number}`,
       needs_check: Boolean(row.needs_check),
-      workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.code,w.name,bw.meters FROM bale_workers bw
+      workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
         JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`).all(row.id),
     }));
   return { ...report, bales };
@@ -678,7 +697,7 @@ function toRemoteBale(row) {
     production_date: row.production_date, weight_kg: row.weight_kg, meters: row.meters,
     errors: row.errors, stops: row.stops, needs_check: row.needs_check, lot: row.lot, notes: row.notes,
     created_at: row.created_at,
-    workers: db.prepare(`SELECT w.employee_uid employeeUid,w.code,w.name,bw.meters FROM bale_workers bw
+    workers: db.prepare(`SELECT w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
       JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`).all(row.id),
   };
 }
@@ -810,7 +829,7 @@ function route(req, res) {
   if (req.method === 'GET' && url.pathname === '/app.css') return sendFile(res, 'app.css', 'text/css; charset=utf-8');
   if (req.method === 'GET' && url.pathname === '/marand-logo.jpg') return sendFile(res, 'marand-logo.jpg', 'image/jpeg');
   if (req.method === 'GET' && url.pathname === '/api/bootstrap') {
-    return refreshCentralCatalog().catch(error=>{console.warn(`Synchronizacja bibliotek: ${error.message}`);return null;}).then(()=>json(res, 200, bootstrap()));
+    return centralCatalogStartupSyncPromise.then(()=>json(res, 200, bootstrap()));
   }
   if (req.method === 'GET' && url.pathname === '/api/daily-production') {
     try {
@@ -830,12 +849,10 @@ function route(req, res) {
     catch (error) { return json(res, error.status || 500, { error: error.message }); }
   }
   if(req.method==='GET'&&url.pathname==='/api/catalog/search'){
-    return refreshCentralCatalog().catch(error=>{console.warn(`Synchronizacja bibliotek: ${error.message}`);return null;}).then(()=>{
-      const q=String(url.searchParams.get('q')||'').trim().replace(/[\\%_]/g,'\\$&');
-      const rows=q?db.prepare(`SELECT central_id id,symbol,central_description description FROM articles WHERE central_managed=1 AND central_active=1
-        AND (symbol LIKE ? ESCAPE '\\' COLLATE NOCASE OR central_description LIKE ? ESCAPE '\\' COLLATE NOCASE OR CAST(central_id AS TEXT) LIKE ?) ORDER BY symbol COLLATE NOCASE LIMIT 50`).all(`%${q}%`,`%${q}%`,`%${q}%`):[];
-      return json(res,200,{articles:rows,syncedAt:centralCatalogStatus()});
-    });
+    const q=String(url.searchParams.get('q')||'').trim().replace(/[\\%_]/g,'\\$&');
+    const rows=q?db.prepare(`SELECT central_id id,symbol,central_description description FROM articles WHERE central_managed=1 AND central_active=1
+      AND (symbol LIKE ? ESCAPE '\\' COLLATE NOCASE OR central_description LIKE ? ESCAPE '\\' COLLATE NOCASE OR CAST(central_id AS TEXT) LIKE ?) ORDER BY symbol COLLATE NOCASE LIMIT 50`).all(`%${q}%`,`%${q}%`,`%${q}%`):[];
+    return json(res,200,{articles:rows,syncedAt:centralCatalogStatus()});
   }
   if (req.method === 'DELETE') {
     checkOrigin(req);
@@ -938,6 +955,7 @@ async function safeBackup() {
   finally { backupRunning = false; }
 }
 server.listen(PORT, HOST, () => {
+  centralCatalogStartupSyncPromise = refreshCentralCatalog(true).catch(error=>{console.warn(`Synchronizacja bibliotek: ${error.message}`);return null;});
   console.log(`Panel dziewiarza działa lokalnie: http://${HOST}:${PORT} · baza: ${DB_PATH}`);
   if (process.platform === 'win32' && process.env.MARAND_KNITTER_NO_BROWSER !== '1') {
     const browser = spawn('cmd.exe', ['/d', '/s', '/c', `start "" "http://${HOST}:${PORT}"`], {
