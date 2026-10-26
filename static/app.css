@@ -229,10 +229,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-close-form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid #d9e7dc;border-radius:7px;background:#f3faf5}
 .shipment-close-form .check{margin:0;align-items:center;font-size:12px}
 .shipment-close-form button,.shipment-final-actions>form button{padding:8px 12px}
-.shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:14px;align-items:start}
+.shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
 .shipment-picker>section{min-width:0}.shipment-picker h2{font-size:17px;margin:12px 0}
 .shipment-select-article{display:block;position:relative;width:min(100%,540px);margin:12px 0}
-.shipment-select-article label{display:block;margin:0}.shipment-picker-controls{position:sticky;top:18px;z-index:2;align-self:start;display:flex;flex-direction:column;gap:10px;padding:12px 8px;margin-top:78px;border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 5px 18px #00000012}.shipment-picker-controls label{margin:0;font-size:12px}.shipment-picker-controls button{width:100%;white-space:normal}
+.shipment-select-article label{display:block;margin:0}.shipment-picker-controls{grid-column:1/-1;display:flex;align-items:end;flex-wrap:wrap;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}.shipment-picker-controls label{flex:1 1 230px;max-width:330px;margin:0;font-size:12px}.shipment-picker-controls .form-alert{flex:1 1 240px;margin:0}.shipment-picker-controls button{white-space:normal}
 .finishing-plant-add{display:flex;align-items:end;gap:10px;margin-bottom:16px}.finishing-plant-add label{flex:1;margin:0}
 .library-add{display:flex;align-items:end;gap:10px;margin-bottom:18px}.library-add label{flex:1;margin:0}.library-edit{display:flex;align-items:center;gap:6px;margin:0}.library-edit input{min-width:130px;padding:7px}.library-edit button,.library-add button{padding:7px 11px}
 .shipment-available-form>.panel{max-height:65vh}

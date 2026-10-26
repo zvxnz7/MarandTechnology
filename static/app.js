@@ -15,8 +15,22 @@ document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('in
 document.querySelectorAll('select[data-auto-submit]').forEach(select=>select.addEventListener('change',()=>select.form?.requestSubmit()));
 document.querySelectorAll('.nav-group').forEach(group=>{const active=[...group.querySelectorAll('.nav-link')].find(link=>location.pathname===link.pathname||link.pathname!=='/'&&location.pathname.startsWith(`${link.pathname}/`));if(active){active.classList.add('nav-current');group.open=true;}});
 document.querySelectorAll('[data-range-selection]').forEach(form=>{
- const boxes=[...form.querySelectorAll('[data-range-select]')],hidden=form.querySelector('[data-range-values]'),all=form.querySelector('[data-range-all]');let last=null;
- const save=()=>{hidden.value=boxes.filter(box=>box.checked).map(box=>box.value).join(',');if(all)all.checked=boxes.length>0&&boxes.every(box=>box.checked);};
+ const boxes=[...form.querySelectorAll('[data-range-select]')],hidden=form.querySelector('[data-range-values]'),all=form.querySelector('[data-range-all]'),pickedRows=form.querySelector('[data-range-picked-rows]'),selectedCount=form.querySelector('[data-range-selected-count]');let last=null;
+ const save=()=>{
+  const selected=boxes.filter(box=>box.checked);
+  hidden.value=selected.map(box=>box.value).join(',');
+  if(all)all.checked=boxes.length>0&&selected.length===boxes.length;
+  if(selectedCount)selectedCount.textContent=String(selected.length);
+  if(pickedRows){
+   pickedRows.replaceChildren();
+   if(!selected.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=6;cell.textContent='Zaznacz belki z tabeli po lewej.';row.append(cell);pickedRows.append(row);}
+   selected.forEach((box,index)=>{
+    const row=document.createElement('tr');
+    [String(index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.lot||'',box.dataset.date||''].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});
+    pickedRows.append(row);
+   });
+  }
+ };
  boxes.forEach(box=>box.addEventListener('click',event=>{if(event.shiftKey&&last){const from=boxes.indexOf(last),to=boxes.indexOf(box),checked=box.checked;for(let i=Math.min(from,to);i<=Math.max(from,to);i++)boxes[i].checked=checked;}last=box;save();}));
  if(all)all.addEventListener('change',()=>{boxes.forEach(box=>box.checked=all.checked);save();});
  form.addEventListener('submit',event=>{save();if(!hidden.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});
