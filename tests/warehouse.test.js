@@ -76,21 +76,19 @@ test('anulowanie wymaga osobnego potwierdzenia i czyści roboczy WZ',()=>{
   }finally{f.db.close();}
 });
 
-test('do istniejącej specyfikacji można dopisywać belki, a jedna belka nie trafia do dwóch specyfikacji',()=>{
+test('każde grupowe dodanie tworzy osobną specyfikację, a jedna belka nie trafia do dwóch specyfikacji',()=>{
   const f=fixture();
   try{
     const created=createShipment(f),id=Number(created.location.split('/').pop());
     addBales(f,id,['bale-1']);
-    let spec=f.db.prepare('SELECT id FROM shipment_articles WHERE shipment_id=?').get(id).id;
-    addBales(f,id,['bale-2'],spec);
-    assert.equal(f.db.prepare('SELECT count(*) n FROM shipment_bales WHERE shipment_article_id=? AND removed_at IS NULL').get(spec).n,2);
+    addBales(f,id,['bale-2']);
     assert.throws(()=>addBales(f,id,['bale-1']),{status:409});
     addBales(f,id,['bale-3'],'','2');
-    assert.equal(f.db.prepare('SELECT count(*) n FROM shipment_articles WHERE shipment_id=?').get(id).n,2);
+    assert.equal(f.db.prepare('SELECT count(*) n FROM shipment_articles WHERE shipment_id=?').get(id).n,3);
     const plants=f.db.prepare('SELECT finishing_plant_id FROM shipment_articles WHERE shipment_id=? ORDER BY sequence').all(id);
-    assert.deepEqual(plants.map(row=>row.finishing_plant_id),[1,2]);
+    assert.deepEqual(plants.map(row=>row.finishing_plant_id),[1,1,2]);
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}`));
-    assert.match(page.body,/Dodaj kolejne belki/);
+    assert.match(page.body,/Dodaj specyfikację do wysyłki/);
     assert.match(page.body,/TEST-KNIT/);
   }finally{f.db.close();}
 });
@@ -126,7 +124,7 @@ test('WZ drukuje belki i wykończalnię, bez parametrów technologii wykończeni
     const item=f.db.prepare('SELECT id FROM shipment_articles WHERE shipment_id=?').get(id);
     f.db.prepare('UPDATE shipments SET status=\'closed\' WHERE id=?').run(id);
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/wz/${item.id}`));
-    assert.match(page.body,/Wykończalnia \/ odbiorca:<\/b> Anfarb/);
+    assert.match(page.body,/Wykończalnia:<\/b> Anfarb/);
     assert.match(page.body,/TEST-KNIT/);
     assert.doesNotMatch(page.body,/Dane technologiczne artykułu|docelowa/);
   }finally{f.db.close();}
@@ -143,6 +141,6 @@ test('centralny katalog udostępnia tylko zatwierdzoną, bieżącą technologię
     assert.throws(()=>Production.catalogPayload(f.db,'Bearer '+'b'.repeat(64)),{status:401});
     const result=Production.catalogPayload(f.db,`Bearer ${token}`);
     assert.deepEqual(result.articles.map(row=>row.id),[f.articleId]);
-    assert.equal(result.workers[0].code,'TK');
+    assert.equal(result.workers[0].code,undefined);
   }finally{f.db.close();}
 });
