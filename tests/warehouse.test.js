@@ -101,7 +101,7 @@ test('wykończalnia i przycisk dodania są nad tabelami przy 200 belkach',()=>{
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
     assert.ok(page.body.indexOf('shipment-picker-controls')<page.body.indexOf('data-range-picked-rows'));
     assert.match(page.body,/Dodane belki/);
-    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:1\/-1;display:flex/);
+    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:2;grid-row:1;display:flex/);
     assert.doesNotMatch(page.body,/Wybór wykończalni jest wymagany/);
   }finally{f.db.close();}
 });
