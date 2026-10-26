@@ -63,13 +63,17 @@ jobs:
         run: |
           cd release
           zip -r ../marand-node-release.zip .
+      - name: Create local production panel archive
+        run: |
+          cd production-local
+          zip -r "../production-local-update-${RELEASE_VERSION}.zip" README.md START_DZIEWIARNIA.cmd server.js public
       - name: Publish release asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" marand-node-release.zip --clobber
+            gh release upload "$RELEASE_TAG" marand-node-release.zip "production-local-update-${RELEASE_VERSION}.zip" --clobber
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "Automatic update from main commit $GITHUB_SHA." --latest
           else
-            gh release create "$RELEASE_TAG" marand-node-release.zip --title "$RELEASE_TAG" --notes "Automatic update from main commit $GITHUB_SHA." --latest --target "$GITHUB_SHA"
+            gh release create "$RELEASE_TAG" marand-node-release.zip "production-local-update-${RELEASE_VERSION}.zip" --title "$RELEASE_TAG" --notes "Automatic update from main commit $GITHUB_SHA." --latest --target "$GITHUB_SHA"
           fi
