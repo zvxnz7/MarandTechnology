@@ -93,15 +93,16 @@ test('każde grupowe dodanie tworzy osobną specyfikację, a jedna belka nie tra
   }finally{f.db.close();}
 });
 
-test('przycisk dodawania znajduje się pod tabelą dodanych belek przy 200 belkach',()=>{
+test('wykończalnia i przycisk dodania są nad tabelami przy 200 belkach',()=>{
   const f=fixture(200);
   try{
     const created=createShipment(f),id=Number(created.location.split('/').pop());
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/select`,{},`?article_id=${f.articleId}`));
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
-    assert.ok(page.body.indexOf('data-range-picked-rows')<page.body.indexOf('shipment-picker-controls'));
+    assert.ok(page.body.indexOf('shipment-picker-controls')<page.body.indexOf('data-range-picked-rows'));
     assert.match(page.body,/Dodane belki/);
-    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{display:flex/);
+    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:1\/-1;display:flex/);
+    assert.doesNotMatch(page.body,/Wybór wykończalni jest wymagany/);
   }finally{f.db.close();}
 });
 
