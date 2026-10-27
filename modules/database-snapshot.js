@@ -24,14 +24,14 @@ function inspectSnapshot(snapshotPath, options = {}) {
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Kopia bazy nie jest zwykłym plikiem.');
 
   const db = new DatabaseSync(fullPath, { readOnly: true, enableForeignKeyConstraints: true });
-  let photoFiles;
+  let photoFiles, version;
   try {
     const integrity = db.prepare('PRAGMA integrity_check').all();
     if (integrity.length !== 1 || integrity[0].integrity_check !== 'ok') throw new Error('Kopia bazy nie przeszła kontroli integralności SQLite.');
     if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Kopia bazy zawiera nieprawidłowe powiązania.');
 
-    const version = Number(db.prepare('PRAGMA user_version').get().user_version);
-    if (version !== 9) throw new Error(`Kopia wymaga nieobsługiwanego schematu bazy (${version}).`);
+    version = Number(db.prepare('PRAGMA user_version').get().user_version);
+    if (![9, 10].includes(version)) throw new Error(`Kopia wymaga nieobsługiwanego schematu bazy (${version}).`);
     const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
     const missing = REQUIRED_TABLES.filter(name => !tables.has(name));
     if (missing.length) throw new Error(`W kopii brakuje wymaganych tabel: ${missing.join(', ')}.`);
@@ -64,7 +64,7 @@ function inspectSnapshot(snapshotPath, options = {}) {
       if (!fileStat.isFile() || fileStat.isSymbolicLink()) throw new Error(`Brakuje poprawnego pliku zdjęcia w kopii: ${name}.`);
     }
   }
-  return { path: fullPath, photosPath: photoDirectory, photoFiles, schema: 9 };
+  return { path: fullPath, photosPath: photoDirectory, photoFiles, schema: version };
 }
 
 async function copySnapshotPhotos(snapshotInfo, destination) {
