@@ -340,6 +340,13 @@ function shipmentBales(db, itemId) {
 }
 
 function shipmentsPage(ctx) {
+  const q = String(ctx.url.searchParams.get('q') || '').trim();
+  const dateFrom = String(ctx.url.searchParams.get('date_from') || '').trim();
+  const dateTo = String(ctx.url.searchParams.get('date_to') || '').trim();
+  const requestedYear = String(ctx.url.searchParams.get('year') || '').trim();
+  const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10) === value;
+  const from = validDate(dateFrom) ? dateFrom : '';
+  const to = validDate(dateTo) ? dateTo : '';
   const shipments = ctx.db.prepare(`SELECT s.*,
       count(DISTINCT sa.id) article_count,count(sb.id) bale_count,
       round(coalesce(sum(b.weight_kg),0),2) weight_kg
@@ -347,15 +354,27 @@ function shipmentsPage(ctx) {
     LEFT JOIN shipment_bales sb ON sb.shipment_article_id=sa.id AND sb.removed_at IS NULL
     LEFT JOIN production_bales b ON b.local_id=sb.bale_local_id
     WHERE s.status!='cancelled' GROUP BY s.id ORDER BY s.shipment_year DESC,s.sequence DESC`).all();
+  const years = [...new Set(shipments.map(shipment => String(shipment.shipment_year)))].sort((a,b) => Number(b)-Number(a));
+  const year = years.includes(requestedYear) ? requestedYear : '';
   const canPrepare = editableRoles.includes(ctx.req.user.role);
   const create = canPrepare ? `<form method="post" action="/shipments/create">${hidden('csrf',ctx.req.session.csrf)}<button class="primary">+ Przygotuj wysyłkę</button></form>` : '';
-  const rows = shipments.map(s => {
+  const searchReady = normalizeSearch(q).length >= 2;
+  const searchTerms = searchReady ? q.split(/\s+/).map(normalizeSearch).filter(Boolean) : [];
+  const rows = shipments.filter(s => {
+    const items = shipmentArticles(ctx.db,s.id);
+    if (year && String(s.shipment_year) !== year) return false;
+    if (from && s.shipment_date < from || to && s.shipment_date > to) return false;
+    const statusText = s.status==='closed' ? 'Zamknięta' : s.status==='draft' ? 'W przygotowaniu' : 'Anulowana';
+    const searchFields = [shipmentNo(s), s.shipment_date, date(s.shipment_date), String(s.shipment_year), statusText, ...items.flatMap(item => [articleNo(s,item), item.symbol, item.finishing_plant_name || ''])].map(normalizeSearch);
+    return !searchTerms.length || searchTerms.every(term => searchFields.some(field => field.includes(term)));
+  }).map(s => {
     const items = shipmentArticles(ctx.db,s.id);
     const itemRows = s.status==='cancelled'?'':items.map(item => `<li><a href="/shipments/${s.id}/wz/${item.id}" target="_blank" rel="noopener">${articleNo(s,item)} ${V.esc(item.symbol)}</a> · ${item.bale_count} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · <span class="plant-chip ${plantColor(item.finishing_plant_id)}">${V.esc(item.finishing_plant_name)}</span>`:''}</li>`).join('');
     const remove=managerRoles.includes(ctx.req.user.role)&&s.status!=='closed'?`<a class="shipment-delete-button shipment-delete-link" href="/shipments/${s.id}/delete" title="Usuń wysyłkę" aria-label="Usuń wysyłkę ${shipmentNo(s)}">×</a>`:'';
     return `<tr><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td><td class="shipment-delete-cell">${remove}</td></tr>`;
   }).join('');
-  const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłka</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div>${create}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8">Nie ma jeszcze wysyłek.</td></tr>'}</tbody></table></div>`;
+  const filters = `<form method="get" action="/shipments" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input type="search" name="q" value="${V.esc(q)}" placeholder="Nr wysyłki, artykuł lub wykończalnia" autocomplete="off"></label><label>Rok<select name="year"><option value="">Wszystkie lata</option>${years.map(value => `<option value="${V.esc(value)}"${year===value?' selected':''}>${V.esc(value)}</option>`).join('')}</select></label><label>Data od<input type="date" name="date_from" value="${V.esc(from)}"></label><label>Data do<input type="date" name="date_to" value="${V.esc(to)}"></label><button class="primary">Filtruj</button><a class="button" href="/shipments">Wyczyść</a><p class="muted small shipment-list-filter-hint">${q&&!searchReady?'Wpisz co najmniej 2 znaki. ':''}Szukamy po numerze wysyłki, statusie, symbolu artykułu i wykończalni. Wielkość liter i polskie znaki nie mają znaczenia; przy kilku słowach każde musi pasować.</p></form>`;
+  const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłki</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div>${create}</div>${filters}<div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="8">${shipments.length?'Brak wysyłek dla wybranych filtrów.':'Nie ma jeszcze wysyłek.'}</td></tr>`}</tbody></table></div>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Wysyłka · Marand',body});
 }
 

@@ -275,7 +275,7 @@ test('trial stages autosave, can be added regardless of status, and deletions us
 test('production card print removes finished parameters and places one-time instructions at the bottom',()=>{
  const html=V.cardPage({r:{symbol:'PRINT-TEST',version:1},v:{tech:{},gb:[],raw:{weight:'180'},targets:{weight:'999'},finished_comments:'FINISHED-COMMENT-MUST-NOT-PRINT',knitter_notes:'Stała uwaga'},machine:'M5',instructions:'Standardowe polecenia',productionNotes:'Paletować pionowo',cardno:'K-TEST',issuedAt:'2026-10-22T12:00:00Z',author:'Test',logo:'dGVzdA==',printcss:fs.readFileSync(path.join(ROOT,'static','card.css'),'utf8')});
  assert.doesNotMatch(html,/Parametry dzianiny wykończonej|FINISHED-COMMENT-MUST-NOT-PRINT|999/);
- assert.match(html,/Raport ogniw wzorujących, przędzy i nawleczenia/);
+ assert.match(html,/Przędza, raport ogniw wzorujących i nawleczenie/);
  const noteAt=html.indexOf('Jednorazowe instrukcje przy produkcji'),notesAt=html.indexOf('Notatki od dziewiarza');assert.ok(noteAt>notesAt);assert.match(html,/class="production-notes-heading"/);assert.match(html,/Paletować pionowo/);assert.match(html,/\.logo\{height:180px\}/);assert.match(html,/\.logo img\{object-fit:cover\}/);assert.match(html,/\.logo\{height:110px;overflow:hidden;position:relative\}/);
  const issue=V.issuePage({user:{name:'Test',role:'admin'},csrf:'csrf',flashes:[],r:{id:1,symbol:'PRINT-TEST',version:1},token:'token',productionNotes:'Paletować pionowo'});assert.match(issue,/class="notice production-note-pending"/);assert.match(issue,/POLECENIA SPECJALNE — najbliższa produkcja/);
 });
