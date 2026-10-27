@@ -14,6 +14,7 @@ const SourceImport = require('./modules/source-import');
 const DatabaseSnapshot = require('./modules/database-snapshot');
 const Production = require('./modules/production');
 const Warehouse = require('./modules/warehouse');
+const Finishing = require('./modules/finishing');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -650,6 +651,7 @@ async function handle(req, res) {
     }
     if (Photos.handle(context) || res.writableEnded) return;
     if (Warehouse.handle(context) || res.writableEnded) return;
+    if (Finishing.handle(context) || res.writableEnded) return;
     if (await Production.handle(context) || res.writableEnded) return;
     if (await Catalog.handle(context) || res.writableEnded) return;
 

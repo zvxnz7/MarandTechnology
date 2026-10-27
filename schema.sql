@@ -40,3 +40,120 @@ CREATE INDEX IF NOT EXISTS cards_record ON cards(record_id,id);
 CREATE TABLE IF NOT EXISTS photos(id INTEGER PRIMARY KEY,article_id INTEGER REFERENCES articles(id),record_id INTEGER REFERENCES records(id),project_id INTEGER REFERENCES projects(id),file TEXT NOT NULL UNIQUE,caption TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),CHECK((article_id IS NOT NULL)+(record_id IS NOT NULL)+(project_id IS NOT NULL)=1));
 CREATE INDEX IF NOT EXISTS photos_article ON photos(article_id);
 CREATE INDEX IF NOT EXISTS photos_record ON photos(record_id);
+
+CREATE TABLE IF NOT EXISTS finishing_recipes(
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  finishing_plant_id INTEGER REFERENCES finishing_plants(id),
+  raw_symbol TEXT NOT NULL DEFAULT '',
+  recipe_text TEXT NOT NULL DEFAULT '',
+  target_color TEXT NOT NULL DEFAULT '',
+  target_stiffening TEXT NOT NULL DEFAULT '',
+  target_width_cm REAL,
+  target_grammage REAL,
+  notes TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+  created_at TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_recipes_search ON finishing_recipes(active,finishing_plant_id,name);
+CREATE INDEX IF NOT EXISTS finishing_recipes_symbol ON finishing_recipes(raw_symbol);
+
+CREATE TABLE IF NOT EXISTS finishing_orders(
+  id INTEGER PRIMARY KEY,
+  shipment_article_id INTEGER REFERENCES shipment_articles(id),
+  finishing_plant_id INTEGER REFERENCES finishing_plants(id),
+  source_shipment_no TEXT NOT NULL DEFAULT '',
+  source_shipment_date TEXT NOT NULL DEFAULT '',
+  raw_symbol TEXT NOT NULL,
+  client_name TEXT NOT NULL DEFAULT '',
+  trade_symbol TEXT NOT NULL DEFAULT '',
+  recipe_id INTEGER REFERENCES finishing_recipes(id),
+  recipe_snapshot TEXT NOT NULL DEFAULT '{}',
+  target_color TEXT NOT NULL DEFAULT '',
+  target_stiffening TEXT NOT NULL DEFAULT '',
+  target_width_cm REAL,
+  target_grammage REAL,
+  notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','sent','partial','received','raw_sale','cancelled')),
+  created_at TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_orders_status ON finishing_orders(status,created_at DESC,id DESC);
+CREATE INDEX IF NOT EXISTS finishing_orders_source ON finishing_orders(shipment_article_id,id);
+CREATE INDEX IF NOT EXISTS finishing_orders_symbol ON finishing_orders(raw_symbol);
+
+CREATE TABLE IF NOT EXISTS finishing_batches(
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES finishing_orders(id) ON DELETE CASCADE,
+  finishing_lot TEXT NOT NULL DEFAULT '',
+  sent_at TEXT NOT NULL,
+  sent_pieces INTEGER NOT NULL CHECK(sent_pieces >= 0),
+  raw_weight_kg REAL NOT NULL CHECK(raw_weight_kg >= 0),
+  yarn_lot TEXT NOT NULL DEFAULT '',
+  closed_at TEXT,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_batches_order ON finishing_batches(order_id,id);
+CREATE INDEX IF NOT EXISTS finishing_batches_lot ON finishing_batches(finishing_lot);
+
+CREATE TABLE IF NOT EXISTS finishing_receipts(
+  id INTEGER PRIMARY KEY,
+  batch_id INTEGER NOT NULL REFERENCES finishing_batches(id) ON DELETE CASCADE,
+  received_at TEXT NOT NULL,
+  raw_pieces_received INTEGER NOT NULL DEFAULT 0 CHECK(raw_pieces_received >= 0),
+  finished_pieces INTEGER NOT NULL DEFAULT 0 CHECK(finished_pieces >= 0),
+  finished_weight_kg REAL NOT NULL DEFAULT 0 CHECK(finished_weight_kg >= 0),
+  actual_color TEXT NOT NULL DEFAULT '',
+  actual_stiffening TEXT NOT NULL DEFAULT '',
+  actual_width_cm REAL,
+  actual_grammage REAL,
+  rubbing_status TEXT NOT NULL DEFAULT '' CHECK(rubbing_status IN ('','ok','not_ok')),
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_receipts_batch ON finishing_receipts(batch_id,received_at,id);
+
+CREATE TABLE IF NOT EXISTS finishing_return_bales(
+  id INTEGER PRIMARY KEY,
+  receipt_id INTEGER NOT NULL REFERENCES finishing_receipts(id) ON DELETE CASCADE,
+  sequence INTEGER NOT NULL,
+  meters REAL NOT NULL CHECK(meters > 0),
+  weight_kg REAL NOT NULL CHECK(weight_kg > 0),
+  UNIQUE(receipt_id,sequence)
+);
+CREATE INDEX IF NOT EXISTS finishing_return_bales_receipt ON finishing_return_bales(receipt_id,sequence);
+
+CREATE TABLE IF NOT EXISTS finishing_incidents(
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES finishing_orders(id) ON DELETE CASCADE,
+  batch_id INTEGER REFERENCES finishing_batches(id),
+  incident_type TEXT NOT NULL CHECK(incident_type IN ('lost','wrong_order','correction','count_difference','other')),
+  description TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')),
+  resolution TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  resolved_at TEXT,
+  resolved_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_incidents_order ON finishing_incidents(order_id,status,id);
+
+CREATE TABLE IF NOT EXISTS finishing_import_runs(
+  id INTEGER PRIMARY KEY,
+  period TEXT NOT NULL,
+  digest TEXT NOT NULL UNIQUE,
+  source_name TEXT NOT NULL,
+  imported_count INTEGER NOT NULL DEFAULT 0,
+  imported_at TEXT NOT NULL,
+  imported_by INTEGER REFERENCES users(id)
+);

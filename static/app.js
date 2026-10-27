@@ -1,5 +1,17 @@
 'use strict';
 let dirty=false,submitting=false;
+document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
+ const sale=form.querySelector('[data-finishing-raw-sale]'),plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]');
+ const applyRecipe=()=>{const option=recipe.selectedOptions[0];for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage']]){const input=form.elements[field];if(input&&option?.dataset[key])input.value=option.dataset[key];}if(option?.dataset.plant)plant.value=option.dataset.plant;};
+ const sync=()=>{const raw=sale.checked;plant.required=!raw;recipe.required=!raw;};
+ recipe.addEventListener('change',applyRecipe);sale.addEventListener('change',sync);sync();
+});
+document.querySelectorAll('[data-finishing-batch-form]').forEach(form=>{
+ const meters=form.elements.meters_list,weights=form.elements.weights_list,preview=form.querySelector('[data-finishing-bale-preview]');
+ const parse=input=>input.value.split(/[+\n\r;]+/).map(part=>part.trim()).filter(Boolean);
+ const update=()=>{const m=parse(meters),w=parse(weights);if(!m.length&&!w.length){preview.textContent='Wprowadź metry i kg. Liczba wartości musi być taka sama.';preview.classList.remove('is-valid','is-invalid');return;}if(m.length!==w.length){preview.textContent=`Różna liczba wpisów: ${m.length} wartości metrów i ${w.length} wartości kg.`;preview.classList.add('is-invalid');preview.classList.remove('is-valid');return;}preview.textContent=`${m.length} belek · wpisano ręcznie ${m.length} wartości metrów i ${w.length} wartości kg.`;preview.classList.add('is-valid');preview.classList.remove('is-invalid');};
+ meters.addEventListener('input',update);weights.addEventListener('input',update);form.addEventListener('submit',event=>{update();if(preview.classList.contains('is-invalid')){event.preventDefault();alert(preview.textContent);}});update();
+});
 document.querySelectorAll('[data-update-refresh]').forEach(marker=>{
  const target=marker.dataset.updateVersion;
  const poll=async()=>{

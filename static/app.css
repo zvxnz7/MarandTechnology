@@ -302,3 +302,34 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-bale-detail dd{text-align:left;overflow-wrap:anywhere}
 .warehouse-bale-detail ul{margin:0;padding-left:18px}
 @media(max-width:650px){.warehouse-bale-detail dl{grid-template-columns:1fr;gap:0}.warehouse-bale-detail dd{padding-top:0;border-bottom:0}.warehouse-bale-detail dt{padding-bottom:2px}}
+.finishing-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 20px;padding:5px;border:1px solid var(--line);border-radius:9px;background:#f7f8fa}
+.finishing-tabs a{display:inline-flex;padding:8px 12px;border-radius:6px;color:#445260;text-decoration:none;font-size:12px;font-weight:650}
+.finishing-tabs a:hover{background:#eaf0f5}.finishing-tabs a.selected{background:#29445d;color:#fff}
+.finishing-form,.finishing-recipe-form{display:grid;gap:16px;max-width:1050px}
+.finishing-form>label,.finishing-recipe-form>label{margin:0}
+.finishing-form .form-grid,.finishing-recipe-form .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+.finishing-form-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.finishing-form-actions .check{margin:0}
+.finishing-source-summary{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid #d8e3ec;border-radius:7px;background:#f4f8fb;font-size:12px}
+.finishing-targets{padding:14px;border:1px solid var(--line);border-radius:7px;background:#fafbfc}
+.finishing-targets h2{margin:0 0 12px;font-size:15px}
+.finishing-targets .form-grid{margin:0}
+.finishing-subline{display:block;margin-top:3px;color:var(--muted);font-size:10px}
+.finishing-batch-add{margin:16px 0}.finishing-batch-add summary{cursor:pointer;margin-bottom:12px}
+.finishing-batch-card{margin:12px 0;scroll-margin-top:12px}
+.finishing-batch-card h3{display:flex;align-items:center;gap:8px}
+.finishing-receipt-form{display:grid;gap:12px;margin-top:14px;background:#fbfcfd}
+.finishing-receipt-form h3{margin:0}
+.finishing-bale-entry{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.finishing-bale-entry label{margin:0}.finishing-bale-entry small{display:block;margin-top:5px;color:var(--muted);font-size:11px}
+.finishing-bale-preview{margin:0;padding:8px 10px;border-radius:5px;background:#f1f3f5;color:#59636d;font-size:12px}
+.finishing-bale-preview.is-valid{background:#e9f6ed;color:#27623a}.finishing-bale-preview.is-invalid{background:#fff0e4;color:#8a4300}
+.finishing-incidents{margin-top:18px}.finishing-incidents ul{padding-left:20px}.finishing-incidents li{margin:10px 0;padding:8px;border-radius:5px}
+.finishing-incidents li.finishing-incident-open{background:#fff1e9;border-left:3px solid #cf6a20}
+.finishing-incidents li form{display:flex;gap:7px;margin-top:7px}.finishing-incidents li form input{max-width:480px}
+.finishing-incident-form{align-items:end}.finishing-incident-form label{margin:0}
+.finishing-inline-form{display:inline;margin-left:8px}.finishing-recipe{margin:9px 0;border:1px solid var(--line);border-radius:7px;background:#fff}
+.finishing-recipe summary{display:flex;justify-content:space-between;gap:12px;padding:12px;cursor:pointer}
+.finishing-recipe summary span{color:var(--muted);font-size:12px}.finishing-recipe-detail{padding:0 12px 12px}
+.finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
+@media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry{grid-template-columns:1fr}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
