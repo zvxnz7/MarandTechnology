@@ -11,6 +11,7 @@ const { DatabaseSync } = require('node:sqlite');
 const V = require('./views');
 const ArchiveCleanup = require('./modules/archive-cleanup');
 const SourceImport = require('./modules/source-import');
+const FinishingImport = require('./modules/finishing-import');
 const DatabaseSnapshot = require('./modules/database-snapshot');
 const Production = require('./modules/production');
 const Warehouse = require('./modules/warehouse');
@@ -561,8 +562,10 @@ async function handle(req, res) {
         if (fs.existsSync(path.join(DATA, 'maintenance.json'))) fail(503, 'Trwa aktualizacja programu. Spróbuj ponownie po jej zakończeniu.');
         if (!validCsrfToken(req.session.csrf, req.headers['x-csrf-token'])) fail(400, 'Sesja formularza wygasła. Odśwież stronę.');
         const bytes = await readImportBody(req);
-        const pkg = SourceImport.readPackageBuffer(bytes, 'plik przesłany przez administratora');
-        const report = SourceImport.preview(db, pkg);
+        let packageType='application',pkg,report;
+        let packageHeader;try{packageHeader=JSON.parse(bytes.toString('utf8'));}catch{throw new Error('Nie można odczytać pliku JSON paczki.');}
+        if(packageHeader?.format===FinishingImport.format){packageType='finishing';pkg=FinishingImport.readPackageBuffer(bytes,'plik przesłany przez administratora');report=FinishingImport.preview(db,pkg);}
+        else{pkg=SourceImport.readPackageBuffer(bytes,'plik przesłany przez administratora');report=SourceImport.preview(db,pkg);}
         cleanPendingSourceImports();
         for (const [oldToken, pending] of pendingSourceImports) if (pending.userId === req.user.id) {
           clearTimeout(pending.timer);
@@ -573,7 +576,7 @@ async function handle(req, res) {
         const expiresAt = Date.now() + 15 * 60 * 1000;
         const timer = setTimeout(() => pendingSourceImports.delete(token), 15 * 60 * 1000);
         timer.unref();
-        pendingSourceImports.set(token, { userId: req.user.id, bytes, digest: pkg.digest, expiresAt, timer });
+        pendingSourceImports.set(token, { userId: req.user.id, bytes, digest: pkg.digest, packageType, expiresAt, timer });
         return send(req, res, 200, JSON.stringify({ ok: true, token, preview: report }), 'application/json; charset=utf-8');
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 400;
@@ -1325,9 +1328,11 @@ async function handle(req, res) {
         discardPendingSourceImport(token);
         fail(410, 'Podgląd importu wygasł. Wybierz plik ponownie i odśwież podgląd.');
       }
-      const pkg = SourceImport.readPackageBuffer(pending.bytes, 'plik przesłany przez administratora');
+      const pkg = pending.packageType==='finishing'
+        ? FinishingImport.readPackageBuffer(pending.bytes,'plik przesłany przez administratora')
+        : SourceImport.readPackageBuffer(pending.bytes,'plik przesłany przez administratora');
       if (pkg.digest !== pending.digest) fail(409, 'Plik importu zmienił się po sprawdzeniu. Wybierz go ponownie.');
-      const report = SourceImport.preview(db, pkg);
+      const report = pending.packageType==='finishing'?FinishingImport.preview(db,pkg):SourceImport.preview(db,pkg);
       if (report.conflicts.length) fail(409, 'Baza zmieniła się od czasu podglądu lub paczka ma konflikty. Odśwież podgląd przed importem.');
 
       const maintenancePath = path.join(DATA, 'maintenance.json');
@@ -1348,14 +1353,19 @@ async function handle(req, res) {
         }
         let result;
         try {
-          result = SourceImport.importData(db, pkg, backupPath);
+          result = pending.packageType==='finishing'
+            ? FinishingImport.importData(db,pkg,backupPath,{userId:req.user.id,now,audit})
+            : SourceImport.importData(db,pkg,backupPath);
         } catch (error) {
           console.error('Import danych źródłowych nie został zapisany:', error);
           fail(409, 'Import został przerwany, a zmiany w bazie wycofano. ' + String(error.message || 'Sprawdź log serwera.'));
         }
         discardPendingSourceImport(token);
         fs.rmSync(path.join(DATA, 'import_restore_status.json'), { force: true });
-        return redirect(req, res, '/admin/import', `Import zakończony: ${result.imported.articles} artykułów, ${result.imported.specifications} roboczych specyfikacji i ${result.imported.projects} prób. Kopia bazy: ${backupPath}.`);
+        const summary=pending.packageType==='finishing'
+          ? `${result.imported.finishing_recipes} receptur, ${result.imported.finishing_orders} zleceń, ${result.imported.finishing_batches} partii, ${result.imported.finishing_receipts} przyjęć`
+          : `${result.imported.articles} artykułów, ${result.imported.specifications} roboczych specyfikacji i ${result.imported.projects} prób`;
+        return redirect(req, res, '/admin/import', `Import zakończony: ${summary}. Kopia bazy: ${backupPath}.`);
       } finally {
         if (maintenanceOwned) fs.rmSync(maintenancePath, { force: true });
       }

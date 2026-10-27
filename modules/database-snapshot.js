@@ -31,7 +31,7 @@ function inspectSnapshot(snapshotPath, options = {}) {
     if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Kopia bazy zawiera nieprawidłowe powiązania.');
 
     version = Number(db.prepare('PRAGMA user_version').get().user_version);
-    if (![9, 10].includes(version)) throw new Error(`Kopia wymaga nieobsługiwanego schematu bazy (${version}).`);
+    if (![9, 10, 11].includes(version)) throw new Error(`Kopia wymaga nieobsługiwanego schematu bazy (${version}).`);
     const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
     const missing = REQUIRED_TABLES.filter(name => !tables.has(name));
     if (missing.length) throw new Error(`W kopii brakuje wymaganych tabel: ${missing.join(', ')}.`);

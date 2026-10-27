@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS finishing_receipts(
   raw_pieces_received INTEGER NOT NULL DEFAULT 0 CHECK(raw_pieces_received >= 0),
   finished_pieces INTEGER NOT NULL DEFAULT 0 CHECK(finished_pieces >= 0),
   finished_weight_kg REAL NOT NULL DEFAULT 0 CHECK(finished_weight_kg >= 0),
+  finished_meters REAL NOT NULL DEFAULT 0 CHECK(finished_meters >= 0),
   actual_color TEXT NOT NULL DEFAULT '',
   actual_stiffening TEXT NOT NULL DEFAULT '',
   actual_width_cm REAL,
