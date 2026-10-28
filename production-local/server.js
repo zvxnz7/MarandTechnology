@@ -340,11 +340,13 @@ function allocateSerial(machine, year) {
   db.prepare('UPDATE bale_sequences SET last_value=last_value+1 WHERE machine=? AND production_year=?').run(machine, year);
   return current.last_value + 1;
 }
-function baleRows() {
+function baleRows(includeReported = false) {
+  const visibilityFilter = includeReported ? '1=1' : `NOT EXISTS (SELECT 1 FROM daily_production_report_bales rb WHERE rb.bale_id=b.id AND rb.state='included')`;
+  const limit = includeReported ? 'LIMIT 80' : '';
   return db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,a.symbol article_symbol
     FROM bales b JOIN articles a ON a.id=b.article_id
-    WHERE NOT EXISTS (SELECT 1 FROM daily_production_report_bales rb WHERE rb.bale_id=b.id AND rb.state='included')
-    ORDER BY b.created_at DESC,b.id DESC`).all().map(row => ({
+    WHERE ${visibilityFilter}
+    ORDER BY b.created_at DESC,b.id DESC ${limit}`).all().map(row => ({
       ...row,
       workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
         JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`).all(row.id),
@@ -375,6 +377,11 @@ function bootstrap() {
     number: `${row.machine}/${row.serial_number}`,
     needs_check: Boolean(row.needs_check),
   }));
+  const recentRows = baleRows(true).map(row => ({
+    ...row,
+    number: `${row.machine}/${row.serial_number}`,
+    needs_check: Boolean(row.needs_check),
+  }));
   return {
     today,
     productionDay: currentProductionDate(),
@@ -385,6 +392,7 @@ function bootstrap() {
     workerCatalog: workerCatalog(),
     sequences,
     bales: rows,
+    recentBales: recentRows,
     lastBale: lastBaleRow(),
     pending,
     databasePath: DB_PATH,
@@ -771,6 +779,17 @@ async function postBalesToMain(bales) {
   if (bales.some(row => !acceptedIds.includes(row.id))) fail(502, 'Serwer nie potwierdził odbioru wszystkich belek. Możesz bezpiecznie ponowić wysyłkę.');
   return result;
 }
+async function updateBaleReviewFlag(id, needsCheck) {
+  const row = db.prepare(`SELECT b.*,a.symbol article_symbol FROM bales b JOIN articles a ON a.id=b.article_id WHERE b.id=?`).get(id);
+  if (!row) fail(404, 'Nie znaleziono belki do oznaczenia.');
+  const value = needsCheck ? 1 : 0;
+  if (row.sync_status === 'synced') {
+    const remoteRow = { ...row, needs_check: value };
+    await postBalesToMain([toRemoteBale(remoteRow)]);
+  }
+  db.prepare('UPDATE bales SET needs_check=?,updated_at=? WHERE id=?').run(value, now(), id);
+  return bootstrap();
+}
 async function sendDailyReport(reportDate) {
   let report = dailyReportDetails(reportDate);
   if (!report) fail(404, 'Nie znaleziono raportu dziennego. Najpierw wygeneruj produkcję.');
@@ -982,9 +1001,7 @@ function route(req, res) {
       }
       const review = url.pathname.match(/^\/api\/bales\/([0-9a-f-]+)\/review$/i);
       if (review) {
-        const result = db.prepare("UPDATE bales SET needs_check=?,updated_at=? WHERE id=? AND sync_status='pending'").run(body.needsCheck ? 1 : 0, now(), review[1]);
-        if (!result.changes) fail(409, 'Nie można oznaczyć tej belki; mogła zostać już wysłana.');
-        return json(res, 200, bootstrap());
+        return updateBaleReviewFlag(review[1], body.needsCheck).then(result => json(res, 200, result));
       }
       return json(res, 404, { error: 'Nie znaleziono adresu API.' });
     } catch (error) { return json(res, error.status || 500, { error: error.status ? error.message : 'Nie udało się zapisać danych.' }); }

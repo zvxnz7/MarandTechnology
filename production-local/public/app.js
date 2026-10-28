@@ -133,7 +133,7 @@ function renderBales() {
     <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
     <td>${row.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
     <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Do sprawdzenia' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
-    <td class="actions-cell">${row.sync_status === 'pending' ? `<button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? 'Cofnij flagę' : 'Sprawdź'}</button><button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : '—'}</td>
+    <td class="actions-cell"><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? 'Cofnij flagę' : 'Sprawdź'}</button>${row.sync_status === 'pending' ? `<button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : ''}</td>
   </tr>`).join('');
   tbody.querySelectorAll('.edit-bale').forEach(button => button.addEventListener('click', () => startEdit(button.dataset.id)));
   tbody.querySelectorAll('.review-bale').forEach(button => button.addEventListener('click', () => setReviewFlag(button.dataset.id, button.dataset.check === '1')));
@@ -176,7 +176,7 @@ function touchReset() {
   paintTouch();
 }
 function renderTouchHome() {
-  const bales = state.data?.bales || [];
+  const bales = state.data?.recentBales || state.data?.bales || [];
   const latest = state.data?.lastBale || null;
   const allRows = [...new Map([...bales, ...(latest ? [latest] : [])].map(row => [row.id, row])).values()]
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(b.id).localeCompare(String(a.id)));
@@ -192,9 +192,7 @@ function touchTimeFmt(value) {
   return Number.isNaN(date.getTime()) ? 'godzina niedostępna' : date.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function touchBaleCard(row, latest = false) {
-  const review = row.sync_status === 'pending'
-    ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? '✓ Do sprawdzenia przez kierownika' : 'Oznacz do sprawdzenia'}</button>`
-    : `<span class="touch-review-locked">${row.needs_check ? 'Oznaczona do sprawdzenia' : 'Belka wysłana'}</span>`;
+  const review = `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Do sprawdzenia przez kierownika' : 'Oznacz do sprawdzenia'}</button>`;
   return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
 function touchRenderTiles() {
@@ -319,7 +317,13 @@ function touchTextAction(action) {
   if (action === 'shift') { state.touch.textShift = !state.touch.textShift; $('#touch-text-keyboard [data-touch-text-action="shift"]').classList.toggle('active', state.touch.textShift); return; }
   if (action === 'clear') { input.value = ''; start = end = 0; }
   else if (action === 'backspace') { if (start === end && start > 0) start--; input.value = value.slice(0, start) + value.slice(end); end = start; }
-  else if (action === 'done') { state.touch.activeInput = null; paintTouch(); return; }
+  else if (action === 'done') {
+    state.touch.activeInput = null;
+    paintTouch();
+    $('#touch-save').focus({ preventScroll: true });
+    $('#touch-save').scrollIntoView({ block: 'nearest' });
+    return;
+  }
   input.setSelectionRange(start, end); input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 async function saveTouchBale() {
@@ -830,7 +834,12 @@ function startCopy(id) {
   $('#errors').focus();
 }
 async function setReviewFlag(id, needsCheck) {
-  try { render(await api(`/api/bales/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ needsCheck }) })); toast(needsCheck ? 'Oznaczono wpis do sprawdzenia.' : 'Usunięto oznaczenie.'); }
+  const wasSynced = [...(state.data?.recentBales || []), ...(state.data?.bales || [])].find(row => row.id === id)?.sync_status === 'synced' || state.data?.lastBale?.id === id && state.data.lastBale.sync_status === 'synced';
+  try {
+    render(await api(`/api/bales/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ needsCheck }) }));
+    const action = needsCheck ? 'Oznaczono belkę do sprawdzenia przez kierownika.' : 'Cofnięto oznaczenie do sprawdzenia.';
+    toast(wasSynced ? `${action} Zmiana została wysłana do programu głównego.` : action);
+  }
   catch (error) { toast(error.message, true); }
 }
 async function deleteBale(id) {
@@ -1003,7 +1012,7 @@ $('#touch-wizard').addEventListener('click', event => {
       const fields = [...$('#touch-data-fields').querySelectorAll('[data-touch-numeric]')];
       const index = fields.indexOf(state.touch.activeInput);
       const next = fields[index + 1];
-      if (next) touchFocusInput(next); else { state.touch.activeInput = null; paintTouch(); }
+      if (next) touchFocusInput(next); else touchFocusInput($('#touch-notes'));
     } else touchWriteNumeric(numKey.dataset.touchNum);
     return;
   }
