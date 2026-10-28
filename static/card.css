@@ -13,4 +13,3 @@
 @page{size:A4 portrait;margin:4mm 10mm 10mm}
 @media print{.sheet{padding:0}}
 @media print{th,td{padding:3px 3px;font-size:9px}}
-.print-watermark{display:none}@media print{.print-sheet{position:relative;isolation:isolate}.print-watermark{display:block;position:fixed;z-index:0;top:50%;left:50%;width:min(190mm,92vw);transform:translate(-50%,-50%) rotate(-26deg);opacity:.055;filter:grayscale(1);mix-blend-mode:multiply;pointer-events:none;print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-watermark img{display:block;width:100%;height:auto}.print-sheet>:not(.print-watermark){position:relative;z-index:1}}
