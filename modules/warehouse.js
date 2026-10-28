@@ -661,7 +661,7 @@ function saveShipmentCorrection(ctx) {
 // Keep the historical single-bale endpoint working for existing integrations
 // and references. New corrections are created through /shipments/correct.
 function saveLegacyShipmentCorrection(ctx, shipmentId, itemId) {
-  const {req,db,transaction}=ctx;
+  const {req,res,db,transaction}=ctx;
   const shipment=shipmentRecord(db,shipmentId),item=db.prepare('SELECT * FROM shipment_articles WHERE id=? AND shipment_id=?').get(itemId,shipmentId);
   if(!shipment||!item) throw Object.assign(new Error('Nie znaleziono wysyłki lub specyfikacji.'),{status:404});
   if(shipment.status!=='closed') throw Object.assign(new Error('Korygować można tylko zamkniętą wysyłkę.'),{status:409});
