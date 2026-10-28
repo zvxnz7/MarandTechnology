@@ -326,6 +326,13 @@ function shipmentArticles(db, shipmentId) {
     WHERE sa.shipment_id=? GROUP BY sa.id ORDER BY sa.id DESC`).all(shipmentId);
 }
 
+function nextShipmentSequence(db, year) {
+  const used = new Set(db.prepare('SELECT sequence FROM shipments WHERE shipment_year=?').all(year).map(row=>Number(row.sequence)));
+  let sequence = 1;
+  while (used.has(sequence)) sequence++;
+  return sequence;
+}
+
 function nextShipmentArticleSequence(db, shipmentId) {
   const used=new Set(db.prepare('SELECT sequence FROM shipment_articles WHERE shipment_id=?').all(shipmentId).map(row=>Number(row.sequence)));
   let sequence=1;
@@ -662,7 +669,8 @@ function handle(ctx) {
     const today=ctx.todayWarsaw(),year=Number(today.slice(0,4));
     const id=transaction(()=>{
       db.prepare('INSERT OR IGNORE INTO shipment_sequence_counters(shipment_year,last_value) VALUES(?,0)').run(year);
-      const sequence=Number(db.prepare('UPDATE shipment_sequence_counters SET last_value=last_value+1 WHERE shipment_year=? RETURNING last_value').get(year).last_value);
+      const sequence=nextShipmentSequence(db,year);
+      db.prepare('UPDATE shipment_sequence_counters SET last_value=max(last_value,?) WHERE shipment_year=?').run(sequence,year);
       return Number(db.prepare("INSERT INTO shipments(shipment_year,sequence,status,shipment_date,created_at,created_by) VALUES(?,?,'draft',?,?,?)").run(year,sequence,today,ctx.now(),req.user.id).lastInsertRowid);
     });
     ctx.audit(req.user,'Utworzono roboczą wysyłkę',null,JSON.stringify({shipmentId:id,year}),null);
