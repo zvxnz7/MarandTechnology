@@ -114,20 +114,22 @@ test('historia specyfikacji zachowuje dostęp do belek usuniętych korektą',()=
   }finally{f.db.close();}
 });
 
-test('przycisk utworzenia specyfikacji jest obok wyszukiwarki przy 200 belkach',()=>{
+test('przycisk utworzenia specyfikacji jest w sekcji Dodane belki przy 200 belkach',()=>{
   const f=fixture(200);
   try{
     const created=createShipment(f),id=Number(created.location.split('/').pop());
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/select`,{},`?article_id=${f.articleId}`));
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
     assert.ok(page.body.indexOf('shipment-selection-toolbar')<page.body.indexOf('data-range-picked-rows'));
-    assert.match(page.body,/<button type="submit" form="shipment-picker-form" class="primary shipment-create-spec-button">Utwórz specyfikację<\/button>/);
+    assert.ok(page.body.indexOf('Utwórz specyfikację')>page.body.indexOf('Dodane belki'));
+    assert.ok(page.body.indexOf('Utwórz specyfikację')<page.body.indexOf('data-range-picked-rows'));
+    assert.match(page.body,/<button type="submit" class="primary shipment-create-spec-button">Utwórz specyfikację<\/button>/);
     assert.doesNotMatch(page.body,/shipment-picker-controls|<label>Wykończalnia/);
     assert.match(page.body,/Dodane belki/);
     assert.match(page.body,/\bBłędy\b/);
     assert.match(page.body,/\bStopy\b/);
     assert.match(page.body,/href="\/warehouse\/bales\/bale-1" target="_blank"/);
-    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-selection-toolbar\{display:flex;align-items:flex-end/);
+    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picked-heading\{display:flex;align-items:center;justify-content:space-between/);
     assert.doesNotMatch(page.body,/Wybór wykończalni jest wymagany/);
   }finally{f.db.close();}
 });

@@ -242,7 +242,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-picker{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
 .shipment-picker>section{min-width:0}.shipment-picker h2{font-size:17px;margin:12px 0}
 .shipment-select-article{display:block;position:relative;flex:1 1 360px;width:auto;max-width:540px;margin:0}
-.shipment-select-article label{display:block;margin:0}.shipment-selection-toolbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:12px 0 0}.shipment-create-spec-button{flex:0 0 auto;align-self:flex-end;white-space:nowrap}.shipment-select-hint{margin:4px 0 12px}.shipment-available-form>section{grid-row:1}.shipment-picker-hint{min-height:18px;margin:0 0 6px}
+.shipment-select-article label{display:block;margin:0}.shipment-selection-toolbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:12px 0 0}.shipment-create-spec-button{flex:0 0 auto;white-space:nowrap}.shipment-picked-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.shipment-picked-heading h2{margin:12px 0}.shipment-select-hint{margin:4px 0 12px}.shipment-available-form>section{grid-row:1}.shipment-picker-hint{min-height:18px;margin:0 0 6px}
 .finishing-plant-add{display:flex;align-items:end;gap:10px;margin-bottom:16px}.finishing-plant-add label{flex:1;margin:0}
 .library-add{display:flex;align-items:end;gap:10px;margin-bottom:18px}.library-add label{flex:1;margin:0}.library-edit{display:flex;align-items:center;gap:6px;margin:0}.library-edit input{min-width:130px;padding:7px}.library-edit button,.library-add button{padding:7px 11px}
 .shipment-available-form .panel{max-height:65vh}
