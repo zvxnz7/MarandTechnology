@@ -145,10 +145,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .stock-table tbody td.stock-day-end{border-right:2px solid #cbd1d6}
 .stock-table .stock-state{height:24px;padding:1px 7px;font-size:10px;line-height:1.1}
 .stock-table .item-title{font-size:13px;line-height:1.1}
-.stock-table{width:100%;min-width:0;table-layout:fixed;text-align:left}
-.stock-state-column{width:170px}.stock-symbol-column{width:auto}.stock-pieces-column{width:170px}.stock-weight-column{width:190px}
-.stock-table th,.stock-table td{white-space:normal}
-.stock-table thead th{height:auto!important;top:0!important;text-align:left;font-size:11px}
+.stock-table{width:100%;min-width:1410px;table-layout:fixed;text-align:center}
+.stock-state-column{width:150px}.stock-symbol-column{width:190px}
+.stock-table th,.stock-table td{white-space:nowrap}
+.stock-table thead th.stock-fixed-header{text-align:left}
 .stock-table tbody td:first-child{text-align:center}.stock-table tbody td:nth-child(2){text-align:left}
 .article-symbol-line{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
 .article-symbol-line h1{margin:8px 0 12px}

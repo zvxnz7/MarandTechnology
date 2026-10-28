@@ -63,20 +63,41 @@ test('production upload snapshots use production days and move when a bale date 
   }finally{f.db.close();}
 });
 
-test('stan bieżący pokazuje masę z kartoteki także bez podsumowania dnia',async()=>{
+test('stan bieżący pokazuje pięć dni roboczych ze stanem narastającym po przyjęciach i wysyłkach',async()=>{
   const f=fixture();
   try{
-    require('../modules/warehouse').initialize(f.db);
-    Production.receiveUpload(f.db,`Bearer ${f.token}`,{bales:[f.bale(crypto.randomUUID(),'2026-10-27','M1/1')]},f.helpers);
+    const Warehouse=require('../modules/warehouse');
+    Warehouse.initialize(f.db);
+    const shippedId=crypto.randomUUID(), receivedId=crypto.randomUUID();
+    Production.receiveUpload(f.db,`Bearer ${f.token}`,{bales:[
+      f.bale(shippedId,'2026-10-22','M1/1'),
+      f.bale(receivedId,'2026-10-28','M1/2'),
+    ]},f.helpers);
+    const articleId=f.db.prepare('SELECT id FROM articles WHERE symbol=?').get('WT 56-21 (5)').id;
+    const shipmentId=Number(f.db.prepare(`INSERT INTO shipments(shipment_year,sequence,status,shipment_date,created_at)
+      VALUES(2026,1,'closed','2026-10-27','2026-10-27T10:00:00.000Z')`).run().lastInsertRowid);
+    const shipmentArticleId=Number(f.db.prepare(`INSERT INTO shipment_articles(shipment_id,article_id,sequence,closed_snapshot)
+      VALUES(?,?,1,'')`).run(shipmentId,articleId).lastInsertRowid);
+    f.db.prepare('INSERT INTO shipment_bales(shipment_article_id,bale_local_id,added_at) VALUES(?,?,?)')
+      .run(shipmentArticleId,shippedId,'2026-10-27T09:00:00.000Z');
     f.db.prepare('DELETE FROM production_stock_snapshots').run();
     const response=await Production.handle({
       req:{method:'GET',user:{id:1,name:'Admin',role:'admin'},session:{csrf:'csrf'}},
       p:'/production',db:f.db,url:new URL('http://localhost/production'),getFlashes:()=>[],
+      now:f.helpers.now,
       send(_req,_res,status,body){return {status,body};}
     });
     assert.equal(response.status,200);
-    assert.match(response.body,/10,00 kg/);
-    assert.match(response.body,/Aktualna waga/);
+    for(const date of ['2026-10-22','2026-10-23','2026-10-26','2026-10-27','2026-10-28']) assert.match(response.body,new RegExp(`data-stock-date="${date}"`));
+    assert.match(response.body,/data-stock-date="2026-10-22" data-pieces="1"/);
+    assert.match(response.body,/data-stock-date="2026-10-23" data-pieces="1"/);
+    assert.match(response.body,/data-stock-date="2026-10-26" data-pieces="1"/);
+    assert.match(response.body,/data-stock-date="2026-10-27" data-pieces="0"/);
+    assert.match(response.body,/data-stock-date="2026-10-28" data-pieces="1"/);
+    assert.match(response.body,/data-stock-date="2026-10-27" data-weight-kg="0"/);
+    assert.match(response.body,/data-stock-date="2026-10-28" data-weight-kg="10/);
+    assert.match(response.body,/Łączna waga: 10,00 kg/);
+    assert.doesNotMatch(response.body,/Aktualne sztuki|Aktualna waga/);
     assert.doesNotMatch(response.body,/Brak artykułów z niezerowym stanem/);
   }finally{f.db.close();}
 });
