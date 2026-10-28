@@ -35,7 +35,7 @@ async function api(url, options = {}) {
 function options(items, valueKey, labelFn, selected) {
   return items.map(item => `<option value="${escapeHtml(item[valueKey])}" ${String(item[valueKey]) === String(selected) ? 'selected' : ''}>${escapeHtml(labelFn(item))}</option>`).join('');
 }
-function articleLabel(item) { return item.trialSymbol ? `${item.symbol} · Próba ${item.trialSymbol}` : item.symbol; }
+function articleLabel(item) { return item.isTrial ? `${item.symbol} · Próba` : item.symbol; }
 function workerLabel(worker) { return worker.name; }
 function fillCommonControls() {
   const oldArticle = $('#article').value;
@@ -179,7 +179,7 @@ async function loadSettings() {
   } catch (error) {
     toast(error.message, true);
   }
-  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.trialSymbol), trialSymbol: item.trialSymbol || '' }));
+  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
   state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
@@ -192,7 +192,7 @@ async function loadSettings() {
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><label class="article-trial-symbol-label">Symbol próby<input class="article-trial-symbol-input" data-index="${index}" maxlength="150" value="${escapeHtml(item.trialSymbol || '')}" placeholder="Np. PR-123" ${item.isTrial ? '' : 'disabled'}></label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
     const item = state.catalogArticles[Number(input.dataset.index)];
     if (item) item.lot = input.value;
@@ -200,13 +200,6 @@ function renderCatalogs() {
   articleList.querySelectorAll('.article-trial-input').forEach(input => input.addEventListener('change', () => {
     const item = state.catalogArticles[Number(input.dataset.index)];
     if (item) item.isTrial = input.checked;
-    const symbolInput = articleList.querySelector(`.article-trial-symbol-input[data-index="${input.dataset.index}"]`);
-    if (symbolInput) symbolInput.disabled = !input.checked;
-    if (input.checked) symbolInput?.focus();
-  }));
-  articleList.querySelectorAll('.article-trial-symbol-input').forEach(input => input.addEventListener('input', () => {
-    const item = state.catalogArticles[Number(input.dataset.index)];
-    if (item) item.trialSymbol = input.value;
   }));
   articleList.querySelectorAll('.remove-article').forEach(button => button.addEventListener('click', () => {
     state.catalogArticles.splice(Number(button.dataset.index), 1);
@@ -230,7 +223,7 @@ function addArticle(event) {
   if (state.catalogArticles.some(item => item.symbol.toLocaleUpperCase('pl-PL') === symbol.toLocaleUpperCase('pl-PL'))) {
     toast('Ten artykuł jest już na liście.', true); return;
   }
-  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null, isTrial: false, trialSymbol: '' });
+  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null, isTrial: false });
   $('#article-new').value = '';
   $('#article-new-lot').value = '';
   renderCatalogs();
@@ -251,7 +244,7 @@ function addCentralArticleFromSearch(event) {
   if(!button)return;
   const symbol=button.dataset.symbol,centralId=Number(button.dataset.centralId);
   if(state.catalogArticles.some(item=>item.symbol.toLocaleUpperCase('pl-PL')===symbol.toLocaleUpperCase('pl-PL'))){toast('Ten artykuł jest już na lokalnej liście.',true);return;}
-  state.catalogArticles.push({symbol,lot:'',centralId,isTrial:false,trialSymbol:''});
+  state.catalogArticles.push({symbol,lot:'',centralId,isTrial:false});
   renderCatalogs();
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
@@ -261,7 +254,7 @@ function setSettingsActionsDisabled(disabled) {
 async function saveSettings() {
   setSettingsActionsDisabled(true);
   try {
-    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), trialSymbol: item.trialSymbol || '' }));
+    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
@@ -269,7 +262,7 @@ async function saveSettings() {
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
     const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
     render(data);
-    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.trialSymbol), trialSymbol: item.trialSymbol || '' }));
+    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
     state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     renderCatalogs();
     showView('settings');
@@ -536,13 +529,14 @@ function collectBale() {
   }
   const remainder = Math.round((meters - extras.reduce((sum, item) => sum + item.meters, 0)) * 100) / 100;
   if (remainder <= 0) throw new Error('Dodatkowe metry muszą zostawić część dla wybranego dziewiarza.');
+  const selectedArticle = state.data.articles.find(article => Number(article.id) === Number($('#article').value));
   return {
     weightKg: number($('#weight-kg').value),
     meters,
     errors: number(errorsText),
     stops: number(stopsText),
     notes: $('#notes').value,
-    trialSymbol: state.data.articles.find(article => Number(article.id) === Number($('#article').value))?.trialSymbol || '',
+    trialSymbol: selectedArticle?.isTrial ? selectedArticle.symbol : '',
     primaryWorkerId: String(primaryId),
     workers: [{ workerId: primaryId, meters: remainder }, ...extras],
     extraWorkers: extras,

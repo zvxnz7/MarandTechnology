@@ -23,7 +23,7 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
 const startingSchemaVersion = db.prepare('PRAGMA user_version').get().user_version;
-if (startingSchemaVersion > 9) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
+if (startingSchemaVersion > 10) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY,
@@ -39,6 +39,7 @@ db.exec(`
     article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
     lot TEXT NOT NULL DEFAULT '',
     trial_symbol TEXT NOT NULL DEFAULT '',
+    is_trial INTEGER NOT NULL DEFAULT 0 CHECK(is_trial IN (0,1)),
     updated_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS manager_auth (
@@ -178,6 +179,14 @@ if (startingSchemaVersion < 9) {
   if (!settingColumns.includes('trial_symbol')) db.exec("ALTER TABLE article_settings ADD COLUMN trial_symbol TEXT NOT NULL DEFAULT '';");
   db.exec('PRAGMA user_version=9;');
 }
+if (startingSchemaVersion < 10) {
+  const settingColumns = db.prepare('PRAGMA table_info(article_settings)').all().map(column => column.name);
+  if (!settingColumns.includes('is_trial')) {
+    db.exec("ALTER TABLE article_settings ADD COLUMN is_trial INTEGER NOT NULL DEFAULT 0 CHECK(is_trial IN (0,1));");
+    db.exec("UPDATE article_settings SET is_trial=1 WHERE trim(trial_symbol)<>'';");
+  }
+  db.exec('PRAGMA user_version=10;');
+}
 db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_server_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
   .run(DEFAULT_PRODUCTION_SERVER_URL);
 
@@ -310,7 +319,8 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false, existingT
   const allocated = normalizedWorkers.reduce((sum, row) => sum + row.meters, 0);
   if (Math.abs(allocated - meters) > 0.01) fail(400, `Suma metrów dziewiarzy (${allocated.toFixed(2)}) musi odpowiadać metrom belki (${meters.toFixed(2)}).`);
   const configuredTrialSymbol = existingTrialSymbol === undefined
-    ? db.prepare('SELECT trial_symbol FROM article_settings WHERE article_id=?').get(articleId)?.trial_symbol || ''
+    ? db.prepare(`SELECT CASE WHEN s.is_trial=1 THEN a.symbol ELSE '' END trial_symbol
+      FROM articles a LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.id=?`).get(articleId)?.trial_symbol || ''
     : existingTrialSymbol;
   return {
     weightKg: positiveNumber(input.weightKg, 'Kilogramy', 1000),
@@ -369,7 +379,7 @@ function bootstrap() {
     today,
     productionDay: currentProductionDate(),
     machines: MACHINES,
-    articles: db.prepare(`SELECT a.id,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.trial_symbol,'') trialSymbol FROM articles a
+    articles: db.prepare(`SELECT a.id,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.is_trial,0) isTrial FROM articles a
       LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE`).all(),
     workers: db.prepare("SELECT id,employee_uid,name FROM workers WHERE active=1 AND work_status='active' AND central_managed=1 AND central_active=1 ORDER BY name COLLATE NOCASE").all(),
     workerCatalog: workerCatalog(),
@@ -413,9 +423,7 @@ function validateCatalog(body, key) {
       const centralId=item.centralId===undefined||item.centralId===null||item.centralId===''?null:Number(item.centralId);
       if(centralId!==null&&(!Number.isSafeInteger(centralId)||centralId<1)) fail(400,'Identyfikator artykułu z centrali jest nieprawidłowy.');
       const isTrial = item.isTrial === true;
-      const trialSymbol = isTrial ? cleanText(item.trialSymbol, 150, 'Symbol próby') : '';
-      if (isTrial && !trialSymbol) fail(400, `Uzupełnij symbol próby dla artykułu ${symbol}.`);
-      return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, trialSymbol };
+      return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, isTrial };
     }
     const name = cleanText(item.name, 100, 'Nazwa dziewiarza');
     const employeeUid = cleanText(item.employeeUid, 36, 'Identyfikator pracownika');
@@ -462,11 +470,11 @@ function saveCatalogs(body) {
     const addArticle = db.prepare(`INSERT INTO articles(symbol,active,central_id,central_managed,central_active,created_at) VALUES(?,1,?,?,1,?)
       ON CONFLICT(symbol) DO UPDATE SET active=1,central_id=coalesce(excluded.central_id,articles.central_id),central_managed=CASE WHEN excluded.central_id IS NULL THEN articles.central_managed ELSE 1 END,central_active=1`);
     const findArticle = db.prepare('SELECT id FROM articles WHERE symbol=?');
-    const saveArticleSettings = db.prepare(`INSERT INTO article_settings(article_id,lot,trial_symbol,updated_at) VALUES(?,?,?,?)
-      ON CONFLICT(article_id) DO UPDATE SET lot=excluded.lot,trial_symbol=excluded.trial_symbol,updated_at=excluded.updated_at`);
+    const saveArticleSettings = db.prepare(`INSERT INTO article_settings(article_id,lot,trial_symbol,is_trial,updated_at) VALUES(?,?,'',?,?)
+      ON CONFLICT(article_id) DO UPDATE SET lot=excluded.lot,trial_symbol='',is_trial=excluded.is_trial,updated_at=excluded.updated_at`);
     for (const item of articles) {
       addArticle.run(item.symbol, item.centralId, item.centralId===null?0:1, now());
-      saveArticleSettings.run(findArticle.get(item.symbol).id, item.lot, item.trialSymbol, now());
+      saveArticleSettings.run(findArticle.get(item.symbol).id, item.lot, item.isTrial ? 1 : 0, now());
     }
     const saveWorkerStatus = db.prepare(`UPDATE workers SET active=1,work_status=? WHERE employee_uid=?`);
     for (const item of workers) {
