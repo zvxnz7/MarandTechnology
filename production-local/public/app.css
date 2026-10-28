@@ -560,7 +560,7 @@ body.keypad-open .top-nav { display: none; }
   .touch-key-actions button { min-height: 43px; }
   .touch-digit-row button { min-height: 43px; font-size: 14px; }
 }
-@media (max-height: 980px) and (min-width: 601px) {
+@media (max-height: 980px) and (min-width: 901px) {
   .touch-view { padding: clamp(12px, 2.45vw, 30px); }
   .touch-header { margin-bottom: clamp(10px, 1.6vh, 21px); }
   .touch-header button, .touch-back { min-height: 52px; }
@@ -570,14 +570,14 @@ body.keypad-open .top-nav { display: none; }
   .touch-tile { min-height: clamp(76px, 11.5vh, 112px); padding: 12px; font-size: clamp(19px, 2vw, 26px); }
   .touch-machine-tiles .touch-tile { min-height: clamp(88px, 14.2vh, 132px); font-size: clamp(25px, 2.75vw, 36px); }
   #touch-article-tiles .touch-tile { min-height: clamp(108px, 14.3vh, 160px); font-size: clamp(22px, 2.5vw, 32px); }
-  .touch-data-step { height: calc(100dvh - 154px); }
-  .touch-data-layout { gap: clamp(9px, 1.6vw, 18px); }
-  .touch-data-fields { gap: 8px; }
-  .touch-data-fields input, .touch-data-fields textarea { min-height: 52px; }
-  .touch-data-fields textarea { min-height: 84px; }
-  .touch-keyboard-panel { padding: clamp(8px, 1.35vw, 14px); }
-  .touch-keyboard-prompt { font-size: clamp(22px, 2.35vw, 30px); }
-  .touch-numeric-keyboard { gap: clamp(6px, .85vw, 10px); }
-  .touch-numeric-keyboard button { min-height: clamp(58px, 8.8vh, 84px); font-size: clamp(24px, 2.7vw, 34px); }
-  .touch-next { min-height: 60px; margin-top: 9px; font-size: 21px; }
+  .touch-data-step { height: calc(100dvh - 145px); }
+  .touch-data-layout { grid-template-columns: minmax(0, 1.1fr) minmax(340px, .85fr); gap: clamp(9px, 1.5vw, 16px); }
+  .touch-data-fields { gap: 7px; }
+  .touch-data-fields input, .touch-data-fields textarea { min-height: 48px; font-size: 21px; }
+  .touch-data-fields textarea { min-height: 76px; }
+  .touch-keyboard-panel { max-width: 700px; justify-self: end; width: 100%; padding: clamp(8px, 1.25vw, 13px); }
+  .touch-keyboard-prompt { font-size: clamp(21px, 2.2vw, 28px); }
+  .touch-numeric-keyboard { gap: clamp(5px, .75vw, 9px); }
+  .touch-numeric-keyboard button { min-height: clamp(54px, 7.5vh, 72px); font-size: clamp(22px, 2.4vw, 30px); }
+  .touch-next { min-height: 56px; margin-top: 8px; font-size: 20px; }
 }
