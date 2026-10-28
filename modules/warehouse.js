@@ -658,10 +658,37 @@ function saveShipmentCorrection(ctx) {
   return ctx.redirect(req,res,`/shipments/${shipmentId}/correction/${correctionId}?batch=1`,'Korektę wysyłki zapisano. Podgląd WZ pokazuje aktualne belki.');
 }
 
+// Keep the historical single-bale endpoint working for existing integrations
+// and references. New corrections are created through /shipments/correct.
+function saveLegacyShipmentCorrection(ctx, shipmentId, itemId) {
+  const {req,db,transaction}=ctx;
+  const shipment=shipmentRecord(db,shipmentId),item=db.prepare('SELECT * FROM shipment_articles WHERE id=? AND shipment_id=?').get(itemId,shipmentId);
+  if(!shipment||!item) throw Object.assign(new Error('Nie znaleziono wysyłki lub specyfikacji.'),{status:404});
+  if(shipment.status!=='closed') throw Object.assign(new Error('Korygować można tylko zamkniętą wysyłkę.'),{status:409});
+  const oldId=String(ctx.form.old_bale_id||''),newId=String(ctx.form.new_bale_id||''),disposition=String(ctx.form.disposition||''),reason=String(ctx.form.reason||'').trim().slice(0,500);
+  if(!oldId||!reason||!['returned','lost','shipped_out'].includes(disposition)) throw Object.assign(new Error('Uzupełnij błędną belkę, sposób rozliczenia i powód korekty.'),{status:400});
+  const correctionId=transaction(()=>{
+    const old=db.prepare('SELECT id FROM shipment_bales WHERE shipment_article_id=? AND bale_local_id=? AND removed_at IS NULL').get(itemId,oldId);
+    if(!old) throw Object.assign(new Error('Wybrana belka nie należy do tej specyfikacji.'),{status:409});
+    let replacement=null;
+    if(newId){replacement=baleAvailableForNewShipment(db,newId);if(!replacement||Number(replacement.article_id)!==Number(item.article_id))throw Object.assign(new Error('Belka zastępcza musi być dostępna i należeć do tego samego artykułu.'),{status:409});}
+    db.prepare('UPDATE shipment_bales SET removed_at=?,removed_by=?,removal_reason=? WHERE id=?').run(ctx.now(),req.user.id,`Korekta: ${reason}`,old.id);
+    const result=db.prepare('INSERT INTO shipment_corrections(shipment_id,shipment_article_id,removed_bale_local_id,replacement_bale_local_id,disposition,reason,created_at,created_by) VALUES(?,?,?,?,?,?,?,?)').run(shipmentId,itemId,oldId,newId||null,disposition,reason,ctx.now(),req.user.id);
+    if(disposition==='lost'||disposition==='shipped_out') db.prepare('INSERT INTO warehouse_bale_flags(bale_local_id,status,reason,updated_at,updated_by) VALUES(?,?,?,?,?) ON CONFLICT(bale_local_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at,updated_by=excluded.updated_by').run(oldId,disposition,reason,ctx.now(),req.user.id);
+    else db.prepare('DELETE FROM warehouse_bale_flags WHERE bale_local_id=?').run(oldId);
+    if(replacement) db.prepare('INSERT INTO shipment_bales(shipment_article_id,bale_local_id,added_at) VALUES(?,?,?)').run(itemId,newId,ctx.now());
+    return Number(result.lastInsertRowid);
+  });
+  ctx.audit(req.user,'Skorygowano specyfikację zamkniętej wysyłki',null,JSON.stringify({shipmentId,itemId,correctionId,oldId,newId,disposition,reason}),null);
+  return ctx.redirect(req,res,`/shipments/${shipmentId}/correction/${correctionId}`,'Korektę specyfikacji zapisano.');
+}
+
 function handle(ctx) {
   const {req,res,p,db,send,redirect,role,transaction}=ctx;
   if(p==='/shipments/correct'&&req.method==='GET'){role(req.user,...managerRoles);return send(req,res,200,shipmentCorrectionPage(ctx));}
   if(p==='/shipments/correct'&&req.method==='POST'){role(req.user,...managerRoles);return saveShipmentCorrection(ctx);}
+  const legacyCorrection=p.match(/^\/shipments\/(\d+)\/specifications\/(\d+)\/correct$/);
+  if(legacyCorrection&&req.method==='POST'){role(req.user,...managerRoles);return saveLegacyShipmentCorrection(ctx,Number(legacyCorrection[1]),Number(legacyCorrection[2]));}
   if(p==='/settings'&&req.method==='GET') return redirect(req,res,'/settings/libraries');
   if(p==='/settings/libraries'&&req.method==='GET') return send(req,res,200,finishingPlantsPage(ctx));
   if(p==='/settings/finishing-plants'&&req.method==='POST'){

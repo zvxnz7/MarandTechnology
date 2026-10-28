@@ -949,7 +949,7 @@ async function handle(req, res) {
       role(req.user,'technologist','approver','admin');
       const pid=Number(projectArchiveMatch[1]);
       transaction(()=>{const pr=project(pid);if(pr.archived_at)fail(409,'Ten projekt/próba jest już w archiwum.');db.prepare('UPDATE projects SET archived_at=? WHERE id=?').run(now(),pid);audit(req.user,'Przeniesiono projekt/próbę do archiwum',null,`Projekt #${pid}: ${pr.name}`);});
-      return redirect(req,res,'/archive','Projekt/próba została przeniesiona do archiwum na 30 dni.');
+      return redirect(req,res,'/projects','Projekt/próba została przeniesiona do archiwum na 30 dni.');
     }
     if (projectArchiveMatch && req.method === 'POST' && projectArchiveMatch[2] === 'restore') {
       role(req.user,'technologist','approver','admin');
