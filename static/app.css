@@ -344,4 +344,4 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe summary span{color:var(--muted);font-size:12px}.finishing-recipe-detail{padding:0 12px 12px}
 .finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
 @media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry{grid-template-columns:1fr}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
-.print-header-band{background:#454a50;color:#fff;padding:12px 14px;border-radius:4px;print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-header-band .eyebrow,.print-header-band h1,.print-header-band p{color:#fff}
+.shipment-print-report thead th{background:#e1e3e5;color:#222;print-color-adjust:exact;-webkit-print-color-adjust:exact}
