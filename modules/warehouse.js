@@ -236,8 +236,8 @@ function warehouseExcelStatus(row) {
   return statuses.join('; ');
 }
 
-function warehouseExcel(ctx, articleId) {
-  const article=articleBalances(ctx.db).find(row=>row.id===articleId);
+function warehouseExcel(ctx, article) {
+  const articleId=article.id;
   if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
   const rows=registeredBales(ctx.db,articleId).map((row,index)=>[
     index+1,row.symbol,row.bale_number,Number(row.weight_kg),Number(row.meters),Number(row.errors),Number(row.stops),row.lot||'',row.notes||'',date(row.production_date),warehouseExcelStatus(row),
@@ -666,7 +666,11 @@ function handle(ctx) {
   if(p==='/warehouse/export.xlsx'&&req.method==='GET') {
     const articleId=Number(ctx.url.searchParams.get('article_id')||0);
     if(!Number.isSafeInteger(articleId)||articleId<1) throw Object.assign(new Error('Wybierz artykuł przed eksportem.'),{status:400});
-    return send(req,res,200,warehouseExcel(ctx,articleId),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':'attachment; filename="wykaz-sztuk.xlsx"' });
+    const article=articleBalances(db).find(row=>row.id===articleId);
+    if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
+    const symbolPart=article.symbol.replace(/ł/gi,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._()-]+/g,'-').replace(/-+/g,'-').replace(/^[.-]+|[.-]+$/g,'')||`artykul-${article.id}`;
+    const filename=`wykaz-${symbolPart}-${ctx.todayWarsaw()}.xlsx`;
+    return send(req,res,200,warehouseExcel(ctx,article),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':`attachment; filename="${filename}"` });
   }
   if(p==='/warehouse'&&req.method==='GET') return send(req,res,200,catalogPage(ctx));
   if(p==='/warehouse/bales/status'&&req.method==='POST') {
