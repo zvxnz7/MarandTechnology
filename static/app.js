@@ -72,17 +72,31 @@ document.querySelectorAll('[data-warehouse-live-search]').forEach(form=>{
  document.addEventListener('click',event=>{if(!form.contains(event.target))input.setAttribute('aria-expanded','false');});
 });
 document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
- const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-shipment-search-results]');let timer=null,controller=null;
+ const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-shipment-search-results]');let timer=null,controller=null,activeIndex=-1;
+ const options=()=>[...results.querySelectorAll('[role="option"]')];
+ const setActive=index=>{
+  const items=options();if(!items.length){activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');return;}
+  activeIndex=(index+items.length)%items.length;
+  items.forEach((item,i)=>{const active=i===activeIndex;item.setAttribute('aria-selected',String(active));item.classList.toggle('selected',active);});
+  input.setAttribute('aria-activedescendant',items[activeIndex].id);input.setAttribute('aria-expanded','true');items[activeIndex].scrollIntoView({block:'nearest'});
+ };
  const search=async()=>{
   const q=input.value.trim();controller?.abort();controller=null;
-  if(!q){results.replaceChildren();return;}
+  if(!q){results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');return;}
   controller=new AbortController();
-  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();}
-  catch(error){if(error.name!=='AbortError')results.textContent='Nie udało się wyszukać artykułów.';}
+  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'',article=form.querySelector('input[name="article_id"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}${article?`&article_id=${encodeURIComponent(article)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded',String(Boolean(options().length)));}
+  catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać artykułów.';input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}}
  };
- input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180);});
+ input.addEventListener('input',()=>{activeIndex=-1;controller?.abort();results.replaceChildren();input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');clearTimeout(timer);timer=setTimeout(search,180);});
+ input.addEventListener('keydown',event=>{
+  const items=options();
+  if(event.key==='ArrowDown'&&items.length){event.preventDefault();setActive(activeIndex<0?0:activeIndex+1);}
+  else if(event.key==='ArrowUp'&&items.length){event.preventDefault();setActive(activeIndex<0?items.length-1:activeIndex-1);}
+  else if(event.key==='Enter'&&activeIndex>=0&&items[activeIndex]){event.preventDefault();items[activeIndex].click();}
+  else if(event.key==='Escape'){event.preventDefault();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}
+ });
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
- document.addEventListener('click',event=>{if(!form.contains(event.target))results.replaceChildren();});
+ document.addEventListener('click',event=>{if(!form.contains(event.target)){clearTimeout(timer);controller?.abort();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}});
 });
 document.querySelectorAll('[data-warehouse-note-form]').forEach(form=>{
  const input=form.querySelector('[data-warehouse-note]'),status=form.querySelector('.warehouse-note-status');let saved=input.value,timer=null,busy=false,pending=false;
