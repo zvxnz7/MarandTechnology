@@ -252,6 +252,10 @@ function articleSearchResults(ctx, q) {
   return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article => `<a id="warehouse-article-option-${article.id}" role="option" aria-selected="false" href="/warehouse?article_id=${article.id}" class="warehouse-article-option"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
 }
 
+function articleFilenamePart(article) {
+  return article.symbol.replace(/ł/gi,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._()-]+/g,'-').replace(/-+/g,'-').replace(/^[.-]+|[.-]+$/g,'')||`artykul-${article.id}`;
+}
+
 function catalogPage(ctx) {
   const q = String(ctx.url.searchParams.get('q') || '').trim();
   const rawArticleId = Number(ctx.url.searchParams.get('article_id') || 0);
@@ -277,7 +281,8 @@ function catalogPage(ctx) {
     selectedView=`<section class="warehouse-selected"><div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses?'<th>LP</th><th>✓</th>':'<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="${cols}">Wybierz artykuł, aby wyświetlić jego belki.</td></tr></tbody></table></div></section>`;
   }
     const body = `<div class="pagehead warehouse-pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wykaz sztuk</h1><p class="muted">Wyszukaj artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${selectedView}`;
-  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Wykaz sztuk · Marand',body});
+  const pageTitle=current?`wykaz-${articleFilenamePart(current)}-${ctx.todayWarsaw()}`:'Wykaz sztuk · Marand';
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:pageTitle,body});
 }
 
 function baleDetailPage(ctx, localId) {
@@ -668,7 +673,7 @@ function handle(ctx) {
     if(!Number.isSafeInteger(articleId)||articleId<1) throw Object.assign(new Error('Wybierz artykuł przed eksportem.'),{status:400});
     const article=articleBalances(db).find(row=>row.id===articleId);
     if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
-    const symbolPart=article.symbol.replace(/ł/gi,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._()-]+/g,'-').replace(/-+/g,'-').replace(/^[.-]+|[.-]+$/g,'')||`artykul-${article.id}`;
+    const symbolPart=articleFilenamePart(article);
     const filename=`wykaz-${symbolPart}-${ctx.todayWarsaw()}.xlsx`;
     return send(req,res,200,warehouseExcel(ctx,article),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':`attachment; filename="${filename}"` });
   }
