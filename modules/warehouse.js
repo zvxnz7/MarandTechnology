@@ -422,8 +422,21 @@ function shipmentPage(ctx, shipment) {
   const close = canClose && items.some(item=>item.bale_count>0) ? `<form method="post" action="/shipments/${shipment.id}/close" class="shipment-close-form">${hidden('csrf',ctx.req.session.csrf)}<label class="check"><input type="checkbox" name="confirm_close" value="1" required> Potwierdzam zamknięcie wysyłki. Belki znikną z bieżącego rejestru.</label><button class="primary">Zamknij wysyłkę</button></form>` : '';
   const cancel = canClose ? `<a class="button danger" href="/shipments/${shipment.id}/cancel">Anuluj wysyłkę i zwolnij belki</a>` : '';
   const correction = shipment.status==='closed' && managerRoles.includes(ctx.req.user.role) ? correctionForm(ctx,shipment,items) : '';
-  const body = `<a class="breadcrumb" href="/shipments">← Wysyłki</a><div class="pagehead"><div><span class="eyebrow">${status}</span><h1>Wysyłka ${shipmentNo(shipment)}</h1>${details}</div><div class="shipment-totals"><strong>${items.reduce((s,x)=>s+x.bale_count,0)} szt</strong><strong>${money(items.reduce((s,x)=>s+x.weight_kg,0))} kg</strong></div></div><div class="shipment-final-actions">${close}</div>${actions}${itemViews||'<p class="muted">Dodaj specyfikację i wybierz belki do wysyłki.</p>'}<div class="shipment-final-actions">${cancel}</div>${correction}`;
+  const reportLink = shipment.status==='closed' ? `<a class="button" href="/shipments/${shipment.id}/report" target="_blank" rel="noopener">Drukuj raport wysyłki</a>` : '';
+  const body = `<a class="breadcrumb" href="/shipments">← Wysyłki</a><div class="pagehead"><div><span class="eyebrow">${status}</span><h1>Wysyłka ${shipmentNo(shipment)}</h1>${details}</div><div class="shipment-totals"><strong>${items.reduce((s,x)=>s+x.bale_count,0)} szt</strong><strong>${money(items.reduce((s,x)=>s+x.weight_kg,0))} kg</strong></div></div>${reportLink}<div class="shipment-final-actions">${close}</div>${actions}${itemViews||'<p class="muted">Dodaj specyfikację i wybierz belki do wysyłki.</p>'}<div class="shipment-final-actions">${cancel}</div>${correction}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Wysyłka ${shipmentNo(shipment)} · Marand`,body});
+}
+
+function shipmentReportPage(ctx, shipment) {
+  const rows = ctx.db.prepare(`SELECT a.symbol,count(sb.id) bale_count,round(coalesce(sum(b.weight_kg),0),2) weight_kg
+    FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
+    JOIN articles a ON a.id=sa.article_id JOIN production_bales b ON b.local_id=sb.bale_local_id
+    WHERE sa.shipment_id=? AND sb.removed_at IS NULL GROUP BY a.id,a.symbol ORDER BY a.symbol COLLATE NOCASE`).all(shipment.id);
+  const totalBales = rows.reduce((sum,row)=>sum+Number(row.bale_count),0);
+  const totalWeight = rows.reduce((sum,row)=>sum+Number(row.weight_kg),0);
+  const tableRows = rows.map(row=>`<tr><td>${V.esc(row.symbol)}</td><td>${row.bale_count}</td><td>${money(row.weight_kg)} kg</td></tr>`).join('');
+  const body = `<article class="shipment-print-report"><div class="shipment-print-heading"><div><span class="eyebrow">MARAND · WYSYŁKA</span><h1>Raport wysyłki ${shipmentNo(shipment)}</h1><p>Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p><p>Zamknięto: <strong>${V.datepl(shipment.closed_at)}</strong></p></div><button class="no-print" type="button" data-print-page>Drukuj raport</button></div><table class="listing compact"><thead><tr><th>Artykuł</th><th>Liczba sztuk</th><th>Masa</th></tr></thead><tbody>${tableRows||'<tr><td colspan="3">Brak sztuk w wysyłce.</td></tr>'}<tr class="shipment-print-total"><th>Razem</th><th>${totalBales}</th><th>${money(totalWeight)} kg</th></tr></tbody></table></article>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Raport wysyłki ${shipmentNo(shipment)} · Marand`,body});
 }
 
 function finishingPlantsPage(ctx) {
@@ -676,10 +689,14 @@ function handle(ctx) {
     ctx.audit(req.user,'Utworzono roboczą wysyłkę',null,JSON.stringify({shipmentId:id,year}),null);
     return redirect(req,res,`/shipments/${id}`,'Utworzono nową wysyłkę.');
   }
-  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/(delete|correct)))?$/);
+  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|report|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/(delete|correct)))?$/);
   if(pathMatch){
     const id=Number(pathMatch[1]),action=pathMatch[2]||'',itemId=Number(pathMatch[3]||0),correctionId=Number(pathMatch[4]||0),specificationId=Number(pathMatch[5]||0),specificationAction=pathMatch[6]||'',shipment=shipmentRecord(db,id);
     if(!shipment) throw Object.assign(new Error('Nie znaleziono wysyłki.'),{status:404});
+    if(action==='report'&&req.method==='GET') {
+      if(shipment.status!=='closed') throw Object.assign(new Error('Raport można wydrukować po zamknięciu wysyłki.'),{status:409});
+      return send(req,res,200,shipmentReportPage(ctx,shipment),'text/html; charset=utf-8');
+    }
     if(action.startsWith('wz/')){
       const item=shipmentArticles(db,id).find(x=>x.id===itemId);
       if(!item) throw Object.assign(new Error('Nie znaleziono dokumentu artykułu w tej wysyłce.'),{status:404});

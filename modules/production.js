@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const V = require('../views');
 const Warehouse = require('./warehouse');
+const Xlsx = require('./xlsx');
 
 const TEST_ARTICLE_KEY = 'WT56-21(5)';
 const STOCK_STATES = {
@@ -267,7 +268,7 @@ function connectionPage(ctx, oneTimeToken = '') {
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Połączenie z panelem lokalnym · Marand', body });
 }
 
-function balesPage(ctx) {
+function balesData(ctx) {
   const query = String(ctx.url.searchParams.get('q') || '').trim();
   const terms = query.split(/\s+/).map(ctx.normalize).filter(Boolean);
   const where = ['a.symbol_key=?'];
@@ -282,6 +283,11 @@ function balesPage(ctx) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { where.push('b.production_date<=?'); params.push(to); }
   const items = ctx.db.prepare(`SELECT b.*,a.symbol FROM production_bales b JOIN articles a ON a.id=b.article_id
     WHERE ${where.join(' AND ')} ORDER BY b.production_date DESC,b.uploaded_at DESC,b.bale_number LIMIT 1000`).all(...params);
+  return { query, from, to, items };
+}
+
+function balesPage(ctx) {
+  const { query, from, to, items } = balesData(ctx);
   const rows = items.map(row => {
     let workers = [];
     try { workers = JSON.parse(row.workers_json || '[]'); } catch {}
@@ -289,12 +295,24 @@ function balesPage(ctx) {
     return `<tr><td>${V.esc(row.bale_number)}</td><td>${V.esc(row.symbol)}</td><td>${V.esc(row.machine)}</td><td>${V.esc(row.production_date.split('-').reverse().join('.'))}</td><td>${Number(row.weight_kg).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td>${workerText}</td><td>${V.esc(row.lot)}</td><td>${V.esc(row.notes)}</td><td>${row.needs_check ? 'Do sprawdzenia' : '—'}</td><td>${V.datepl(row.uploaded_at)}</td></tr>`;
   }).join('');
   const form = `<form class="searchbar production-bale-filters"><input name="q" value="${V.esc(query)}" placeholder="Szukaj belki, dziewiarza lub LOT"><label class="date-filter">Od<input type="date" name="date_from" value="${V.esc(from)}"></label><label class="date-filter">Do<input type="date" name="date_to" value="${V.esc(to)}"></label><button class="primary">Szukaj</button></form>`;
-  const body = `<a class="breadcrumb" href="/production">← Stan bieżący</a><div class="pagehead"><div><span class="eyebrow">KARTOTEKA PRODUKCJI</span><h1>Belki · WT 56-21 (5)</h1><p class="muted">${items.length} wpisów${items.length === 1000 ? ' · pokazano maksymalnie 1000 najnowszych' : ''}</p></div></div>${form}<div class="panel scroll"><table class="listing"><thead><tr><th>Belka</th><th>Artykuł</th><th>Maszyna</th><th>Data</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział</th><th>LOT</th><th>Uwagi</th><th>Do sprawdzenia</th><th>Wysłano</th></tr></thead><tbody>${rows || '<tr><td colspan="13">Nie wysłano jeszcze belek dla tego artykułu.</td></tr>'}</tbody></table></div>`;
+  const exportQuery = new URLSearchParams({ q: query, date_from: from, date_to: to }).toString();
+  const actions = `<div class="actions production-bale-actions"><button type="button" data-print-page>Drukuj</button><a class="button" href="/production/bales/export.xlsx?${exportQuery}">Eksportuj do Excela</a></div>`;
+  const body = `<a class="breadcrumb" href="/production">← Stan bieżący</a><div class="pagehead"><div><span class="eyebrow">KARTOTEKA PRODUKCJI</span><h1>Belki · WT 56-21 (5)</h1><p class="muted">${items.length} wpisów${items.length === 1000 ? ' · pokazano maksymalnie 1000 najnowszych' : ''}</p></div>${actions}</div>${form}<div class="panel scroll production-bales-table"><table class="listing"><thead><tr><th>Belka</th><th>Artykuł</th><th>Maszyna</th><th>Data</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział</th><th>LOT</th><th>Uwagi</th><th>Do sprawdzenia</th><th>Wysłano</th></tr></thead><tbody>${rows || '<tr><td colspan="13">Nie wysłano jeszcze belek dla tego artykułu.</td></tr>'}</tbody></table></div>`;
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Kartoteka sztuk · Marand', body });
 }
 
 async function handle(ctx) {
   const { req, res, p, send, redirect, role, db } = ctx;
+  if (p === '/production/bales/export.xlsx' && req.method === 'GET') {
+    const { items } = balesData(ctx);
+    const rows = items.map(row => {
+      let workers = [];
+      try { workers = JSON.parse(row.workers_json || '[]'); } catch {}
+      return [row.bale_number, row.symbol, row.machine, row.production_date.split('-').reverse().join('.'), Number(row.weight_kg), Number(row.meters), Number(row.errors), Number(row.stops), workers.map(worker => `${worker.name} · ${Number(worker.meters).toLocaleString('pl-PL')} m`).join('; ') || '—', row.lot || '', row.notes || '', row.needs_check ? 'Do sprawdzenia' : '—', V.datepl(row.uploaded_at)];
+    });
+    const workbook = Xlsx.workbook(['Belka','Artykuł','Maszyna','Data','kg','Metry','Błędy','Stopy','Dziewiarze / udział','LOT','Uwagi','Do sprawdzenia','Wysłano'], rows);
+    return send(req, res, 200, workbook, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', { 'Content-Disposition': 'attachment; filename="kartoteka-sztuk.xlsx"' });
+  }
   if (p === '/production/token' && req.method === 'POST') {
     role(req.user, 'admin');
     const token = crypto.randomBytes(32).toString('hex');
