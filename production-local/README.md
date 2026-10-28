@@ -35,7 +35,8 @@ Jednorazowo można dodać do sześciu belek dla wspólnego artykułu, maszyny i 
 Każda belka dostaje techniczny UUID i widoczny numer w sekwencji maszyny oraz
 roku produkcji. Dla każdej belki zapisują się kilogramy, metry, błędy, stopy,
 LOT, uwagi oraz udział metrów przypisany dziewiarzom. Udziały muszą sumować się
-do długości belki. Wpisy można poprawiać i oznaczyć do sprawdzenia, dopóki nie
+do długości belki. Dziewiarz musi wpisać liczbę błędów i stopów; jeśli ich nie
+ma, wpisuje `0`. Wpisy można poprawiać i oznaczyć do sprawdzenia, dopóki nie
 zostaną wysłane.
 
 ## Produkcja dzienna i wysyłanie do programu głównego
@@ -67,21 +68,21 @@ zabezpieczona hasłem kierownika.
 6. Po wysłaniu raportu jego dane są tylko do odczytu w panelu lokalnym. Korekty
    wysłanych danych wykonuje się w programie głównym.
 
-Program główny zapisuje każdą belkę w kartotece sztuk i tworzy dzienny zapis
-wartości Szt/Kg w chwili wysłania. Ponowienie wysyłki tego samego dnia aktualizuje
-zapis dnia i nie dodaje drugi raz belek, które już przesłano.
-Suma uwzględnia wszystkie belki zapisane w kartotece; wydania z magazynu nie są
-jeszcze odejmowane, bo obecny panel nie zapisuje operacji wydania belki.
+Program główny zapisuje każdą belkę w kartotece sztuk i zachowuje jej datę
+produkcji z panelu. Dzień produkcyjny trwa od 06:00 do 05:59 następnego dnia.
+Ponowienie wysyłki aktualizuje istniejące belki bez tworzenia duplikatów. Zakładka
+**Stan bieżący** pokazuje liczbę dostępnych belek i ich aktualną łączną wagę,
+liczoną bezpośrednio z kartoteki — także wtedy, gdy tego dnia nie przyjęto nowych
+belek. Wydania z magazynu odejmuje się zgodnie z przypisaniem do zamkniętej WZ.
 
 Przy belkach oczekujących przycisk **Edytuj belkę** jest widoczny bezpośrednio
 przy numerze.
 Przycisk **Skopiuj ostatnią belkę** w formularzu przenosi dane z najnowszego
 wpisu, także gdy belka znajduje się już w raporcie dziennym.
 
-W kolejnym etapie główny system ma zapisywać tygodniową historię bieżących
-stanów dzianin według dni kalendarzowych. Stan dnia jest ustalany w chwili
-porannego wgrania danych na serwer przez kierownika, na początku porannej
-zmiany. Nie należy wyliczać go wstecz z wysyłek ani z dat produkcji.
+Lokalny panel nadal zapisuje raporty zmian według rzeczywistego czasu przyjęcia
+belki. Data produkcji pozostaje osobnym polem i steruje grupowaniem sztuk w
+podsumowaniach programu głównego.
 
 Przed pracą produkcyjną należy ustalić zatwierdzone liczniki początkowe maszyn
 i lat, aby numery nowych belek kontynuowały właściwą numerację.

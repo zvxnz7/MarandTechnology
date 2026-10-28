@@ -94,7 +94,7 @@ function resetBaleFields(prefill = null) {
   $('#weight-kg').value = prefill?.weightKg ?? '';
   $('#meters').value = prefill?.meters ?? '';
   $('#errors').value = '';
-  $('#stops').value = prefill?.stops ?? '';
+  $('#stops').value = '';
   $('#notes').value = prefill?.notes ?? '';
   $('#extra-workers').replaceChildren();
   if (prefill) {
@@ -481,6 +481,9 @@ async function sendDailyReport(reportDate,container) {
 }
 function collectBale() {
   const meters = number($('#meters').value);
+  const errorsText = $('#errors').value.trim();
+  const stopsText = $('#stops').value.trim();
+  if (!errorsText || !stopsText) throw new Error('Wpisz liczbę błędów i stopów. Wpisz 0, jeśli ich nie ma.');
   const primaryId = Number($('#worker-primary').value);
   if (!primaryId) throw new Error('Wybierz dziewiarza.');
   const extraRows = [...$('#extra-workers').querySelectorAll('.extra-worker-row')];
@@ -497,8 +500,8 @@ function collectBale() {
   return {
     weightKg: number($('#weight-kg').value),
     meters,
-    errors: number($('#errors').value || 0),
-    stops: number($('#stops').value || 0),
+    errors: number(errorsText),
+    stops: number(stopsText),
     notes: $('#notes').value,
     primaryWorkerId: String(primaryId),
     workers: [{ workerId: primaryId, meters: remainder }, ...extras],

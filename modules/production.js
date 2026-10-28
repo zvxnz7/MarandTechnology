@@ -54,6 +54,13 @@ function initialize(db) {
       updated_at TEXT NOT NULL
     );
   `);
+  // Older versions keyed these rows by upload date. Rebuild them on startup
+  // from the per-bale production date so the one-time correction also covers
+  // historical pieces that are not part of the next upload batch.
+  db.exec(`DELETE FROM production_stock_snapshots;
+    INSERT INTO production_stock_snapshots(snapshot_date,article_id,pieces,weight_kg,uploaded_at)
+    SELECT production_date,article_id,count(*),round(coalesce(sum(weight_kg),0),2),max(uploaded_at)
+    FROM production_bales GROUP BY production_date,article_id;`);
 }
 
 function responseError(status, message) {
@@ -140,64 +147,50 @@ function receiveUpload(db, authorization, payload, helpers) {
       if (db.prepare('SELECT 1 FROM production_bales WHERE local_id=?').get(row.localId)) accepted.push(row.localId);
     }
     const snapshots = [];
+    const snapshotDates = new Set();
     for (const articleId of new Set([...articles.values()].map(article => article.id))) {
-      const totals = db.prepare('SELECT count(*) pieces,round(coalesce(sum(weight_kg),0),2) weight_kg FROM production_bales WHERE article_id=?').get(articleId);
-      db.prepare(`INSERT INTO production_stock_snapshots(snapshot_date,article_id,pieces,weight_kg,uploaded_at)
-        VALUES(?,?,?,?,?) ON CONFLICT(snapshot_date,article_id) DO UPDATE SET pieces=excluded.pieces,weight_kg=excluded.weight_kg,uploaded_at=excluded.uploaded_at`)
-        .run(today, articleId, totals.pieces, totals.weight_kg, uploadedAt);
-      snapshots.push({ articleId, pieces: totals.pieces, weightKg: totals.weight_kg });
+      // Rebuild each touched article from the source bales. A resend can correct
+      // a bale's production date, so both its old and new day must be reflected.
+      db.prepare('DELETE FROM production_stock_snapshots WHERE article_id=?').run(articleId);
+      const daily = db.prepare(`SELECT production_date snapshot_date,count(*) pieces,
+          round(coalesce(sum(weight_kg),0),2) weight_kg
+        FROM production_bales WHERE article_id=? GROUP BY production_date ORDER BY production_date`).all(articleId);
+      for (const day of daily) {
+        db.prepare(`INSERT INTO production_stock_snapshots(snapshot_date,article_id,pieces,weight_kg,uploaded_at)
+          VALUES(?,?,?,?,?)`).run(day.snapshot_date, articleId, day.pieces, day.weight_kg, uploadedAt);
+        snapshots.push({ articleId, date: day.snapshot_date, pieces: day.pieces, weightKg: day.weight_kg });
+        snapshotDates.add(day.snapshot_date);
+      }
     }
-    const primarySnapshot = snapshots.find(snapshot => articles.values().some(article => article.id === snapshot.articleId && normalizeSymbol(article.symbol) === 'WT56-21(5)')) || snapshots[0] || { pieces: 0, weightKg: 0 };
-    helpers.audit(null, 'Wysłano produkcję z lokalnego panelu dziewiarza', null, JSON.stringify({ date: today, uploaded: valid.length, accepted: accepted.length, snapshots }), snapshots[0]?.articleId);
-    return { acceptedIds: accepted, snapshots, snapshot: { date: today, pieces: primarySnapshot.pieces, weightKg: primarySnapshot.weightKg, uploadedAt } };
+    const primaryArticle = [...articles.values()].find(article => normalizeSymbol(article.symbol) === 'WT56-21(5)') || [...articles.values()][0];
+    const primarySnapshot = snapshots.filter(snapshot => snapshot.articleId === primaryArticle?.id).sort((a,b) => b.date.localeCompare(a.date))[0] || { date: '', pieces: 0, weightKg: 0 };
+    helpers.audit(null, 'Wysłano produkcję z lokalnego panelu dziewiarza', null, JSON.stringify({ dates: [...snapshotDates].sort(), uploaded: valid.length, accepted: accepted.length, snapshots }), primaryArticle?.id);
+    return { acceptedIds: accepted, snapshots, snapshot: { date: primarySnapshot.date, pieces: primarySnapshot.pieces, weightKg: primarySnapshot.weightKg, uploadedAt } };
   });
   return results;
 }
 
 function overviewPage(ctx) {
-  const productionDates = ctx.db.prepare(`SELECT snapshot_date,max(uploaded_at) uploaded_at
-    FROM production_stock_snapshots GROUP BY snapshot_date ORDER BY snapshot_date DESC LIMIT 5`).all().reverse();
-  const dates = [
-    ...Array.from({ length: Math.max(0, 5 - productionDates.length) }, () => null),
-    ...productionDates,
-  ];
-  const dateHeaders = dates.map(day => day
-    ? `<th class="stock-day-header" colspan="2"><span class="stock-date">${V.esc(new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'long' }).format(new Date(`${day.snapshot_date}T12:00:00Z`)))}</span><small>${V.esc(day.snapshot_date.split('-').reverse().join('.'))}</small></th>`
-    : '<th class="stock-day-header" colspan="2"><span class="stock-date">—</span><small>&nbsp;</small></th>'
-  ).join('');
   const latest = ctx.db.prepare(`SELECT a.id,a.symbol,coalesce(st.status,'standard') status,
-      count(b.local_id) pieces,round(sum(b.weight_kg),2) weight_kg,max(b.uploaded_at) uploaded_at
+      count(b.local_id) pieces,round(coalesce(sum(b.weight_kg),0),2) weight_kg,max(b.uploaded_at) uploaded_at
     FROM articles a JOIN production_bales b ON b.article_id=a.id
     LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
     LEFT JOIN production_article_status st ON st.article_id=a.id
-    WHERE ${Warehouse.activeStockSql()}
+    WHERE a.archived_at IS NULL AND a.purged_at IS NULL AND ${Warehouse.activeStockSql()}
     GROUP BY a.id
     ORDER BY CASE coalesce(st.status,'standard') WHEN 'in_production' THEN 0 WHEN 'standard' THEN 1 WHEN 'three_d' THEN 2 WHEN 'aging' THEN 3 WHEN 'baltex' THEN 4 WHEN 'second_grade' THEN 5 ELSE 6 END,
       a.symbol_key,a.id`).all();
-  const snapshotDates = dates.filter(Boolean).map(day => day.snapshot_date);
-  const snapshots = snapshotDates.length
-    ? ctx.db.prepare(`SELECT article_id,snapshot_date,pieces,weight_kg
-      FROM production_stock_snapshots WHERE snapshot_date IN (${snapshotDates.map(() => '?').join(',')})`).all(...snapshotDates)
-    : [];
-  const byArticleDay = new Map(snapshots.map(row => [`${row.article_id}:${row.snapshot_date}`, row]));
   const pieces = latest.reduce((sum, row) => sum + row.pieces, 0);
   const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);
   const updatedAt = latest.map(row => row.uploaded_at).sort().at(-1);
   const statusOptions = Object.entries(STOCK_STATES);
   const rows = latest.map(article => {
     const state = `<form method="post" action="/production/article-status" class="stock-state-form"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><input type="hidden" name="article_id" value="${article.id}"><select name="status" aria-label="Stan artykułu ${V.esc(article.symbol)}" class="stock-state stock-state-${V.esc(article.status)}"${ctx.req.user.role === 'viewer' ? ' disabled' : ' data-auto-submit'}>${statusOptions.map(([key,label]) => `<option value="${key}" ${article.status === key ? 'selected' : ''}>${V.esc(label)}</option>`).join('')}</select></form>`;
-    const values = dates.map(day => {
-      const separator = ' class="stock-day-start"';
-      const endSeparator = ' class="stock-day-end"';
-      if (!day) return `<td${separator}>—</td><td${endSeparator}>—</td>`;
-      const value = byArticleDay.get(`${article.id}:${day.snapshot_date}`);
-      return value ? `<td${separator}>${value.pieces}</td><td${endSeparator}>${Number(value.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>` : `<td${separator}>—</td><td${endSeparator}>—</td>`;
-    }).join('');
-    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/warehouse?article_id=${article.id}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
+    const weight = Number(article.weight_kg).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/warehouse?article_id=${article.id}">${V.esc(article.symbol)}</a></td><td>${article.pieces}</td><td>${weight} kg</td></tr>`;
   }).join('');
   const summary = `<p class="stock-summary"><strong>Liczba sztuk: ${pieces}</strong><strong>Łączna waga: ${Number(weight).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</strong></p><p class="muted">Stan zaktualizowano: ${updatedAt ? V.datepl(updatedAt) : 'brak danych'}</p>`;
-  const dayColumns = dates.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('');
-  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column">${dayColumns}</colgroup><thead><tr><th class="stock-fixed-header" rowspan="2">Stan</th><th class="stock-fixed-header" rowspan="2">Symbol</th>${dateHeaders}</tr><tr>${dates.map(() => '<th class="stock-day-subheader stock-day-start">Szt</th><th class="stock-day-subheader stock-day-end">Kg</th>').join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + dates.length * 2}">Brak wysłanej produkcji.</td></tr>`}</tbody></table></div><p class="muted small">Tabela pokazuje pięć ostatnich dni z wysłaną produkcją. Szt/Kg to stan zapisany w kartotece w dniu wysyłki.</p>`;
+  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column"><col class="stock-pieces-column"><col class="stock-weight-column"></colgroup><thead><tr><th>Stan</th><th>Artykuł</th><th>Aktualne sztuki</th><th>Aktualna waga</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Brak artykułów z niezerowym stanem.</td></tr>'}</tbody></table></div><p class="muted small">Liczba sztuk i masa są liczone bezpośrednio z aktualnej kartoteki dostępnych belek. Wartości nie zależą od tego, czy dzianinę przyjęto danego dnia.</p>`;
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Stan bieżący · Marand', body });
 }
 

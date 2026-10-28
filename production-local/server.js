@@ -259,6 +259,7 @@ function positiveNumber(value, label, maximum) {
   return Math.round(result * 100) / 100;
 }
 function nonnegativeInteger(value, label) {
+  if (value === undefined || value === null || String(value).trim() === '') fail(400, `${label}: wpisz wartość (0, jeśli brak).`);
   const result = Number(value);
   if (!Number.isSafeInteger(result) || result < 0 || result > 999999) fail(400, `${label}: wpisz nieujemną liczbę całkowitą.`);
   return result;
@@ -293,8 +294,8 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false) {
   return {
     weightKg: positiveNumber(input.weightKg, 'Kilogramy', 1000),
     meters,
-    errors: nonnegativeInteger(input.errors ?? 0, 'Błędy'),
-    stops: nonnegativeInteger(input.stops ?? 0, 'Stopy'),
+    errors: nonnegativeInteger(input.errors, 'Błędy'),
+    stops: nonnegativeInteger(input.stops, 'Stopy'),
     lot: db.prepare('SELECT lot FROM article_settings WHERE article_id=?').get(articleId)?.lot || '',
     notes: cleanText(input.notes, 1000, 'Uwagi'),
     workers: normalizedWorkers,

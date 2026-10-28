@@ -93,6 +93,27 @@ test('każde grupowe dodanie tworzy osobną specyfikację, a jedna belka nie tra
   }finally{f.db.close();}
 });
 
+test('historia specyfikacji zachowuje dostęp do belek usuniętych korektą',()=>{
+  const f=fixture();
+  try{
+    const created=createShipment(f),id=Number(created.location.split('/').pop());
+    addBales(f,id,['bale-1','bale-2']);
+    const itemId=Number(f.db.prepare('SELECT id FROM shipment_articles WHERE shipment_id=?').get(id).id);
+    Warehouse.handle(f.ctx('POST',`/shipments/${id}/close`,{confirm_close:'1'}));
+    const result=Warehouse.handle(f.ctx('POST',`/shipments/${id}/specifications/${itemId}/correct`,{
+      old_bale_id:'bale-1',disposition:'returned',reason:'Błędnie przypisana belka',new_bale_id:''
+    }));
+    assert.match(result.location,new RegExp(`^/shipments/${id}/correction/\\d+$`));
+    const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}`));
+    assert.match(page.body,/href="\/warehouse\/bales\/bale-1"/);
+    assert.match(page.body,/Usunięta korektą · returned/);
+    assert.match(page.body,/Błędnie przypisana belka/);
+    const bale=Warehouse.handle(f.ctx('GET','/warehouse/bales/bale-1'));
+    assert.match(bale.body,new RegExp(`/shipments/${id}#specification-${itemId}`));
+    assert.match(bale.body,/Usunięta korektą \(returned\)/);
+  }finally{f.db.close();}
+});
+
 test('wykończalnia i przycisk dodania są nad tabelami przy 200 belkach',()=>{
   const f=fixture(200);
   try{
@@ -101,6 +122,9 @@ test('wykończalnia i przycisk dodania są nad tabelami przy 200 belkach',()=>{
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
     assert.ok(page.body.indexOf('shipment-picker-controls')<page.body.indexOf('data-range-picked-rows'));
     assert.match(page.body,/Dodane belki/);
+    assert.match(page.body,/\bBłędy\b/);
+    assert.match(page.body,/\bStopy\b/);
+    assert.match(page.body,/href="\/warehouse\/bales\/bale-1" target="_blank"/);
     assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:2;grid-row:1;display:flex/);
     assert.doesNotMatch(page.body,/Wybór wykończalni jest wymagany/);
   }finally{f.db.close();}

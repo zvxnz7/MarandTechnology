@@ -35,10 +35,15 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
   if(selectedCount)selectedCount.textContent=String(selected.length);
   if(pickedRows){
    pickedRows.replaceChildren();
-   if(!selected.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=6;cell.textContent='Zaznacz belki z tabeli po lewej.';row.append(cell);pickedRows.append(row);}
+   if(!selected.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=8;cell.textContent='Zaznacz belki z tabeli po lewej.';row.append(cell);pickedRows.append(row);}
    selected.forEach((box,index)=>{
     const row=document.createElement('tr');
-    [String(index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.lot||'',box.dataset.date||''].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});
+    [String(index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.errors||'0',box.dataset.stops||'0',box.dataset.lot||'',box.dataset.date||''].forEach((value,column)=>{
+     const cell=document.createElement('td');
+     if(column===1){const link=document.createElement('a');link.href=box.dataset.detailUrl||'#';link.target='_blank';link.rel='noopener';link.textContent=value;cell.append(link);}
+     else cell.textContent=value;
+     row.append(cell);
+    });
     pickedRows.append(row);
    });
   }

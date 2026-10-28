@@ -155,7 +155,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const gbRows = Array.from({ length: gbCount }, (_, i) => {
     const row = v.gb[i] || {};
     const number = row.number || String(Math.max(0,...v.gb.map(g=>Number(g.number))) + i - v.gb.length + 1);
-    const values = GB.filter(([k]) => k !== 'number').map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',{className:['yarn','threads','run_in','threading'].includes(k)?'compact-gb-field':''})).join('');
+    const values = GB.filter(([k]) => k !== 'number').map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'')).join('');
     return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div></div></section>`;
   }).join('');
   const targetGrid = `<strong>Parametr</strong><strong>Wartość</strong>${TARGET_METRICS.map(([k, label]) => `<label for="target_${k}">${esc(label)}</label><input id="target_${k}" name="targets_${k}" value="${esc((v.targets || {})[k] || '')}"${k === 'sample_batch' ? ' maxlength="150"' : ' maxlength="10"'}>`).join('')}`;
