@@ -255,7 +255,9 @@ function addWorker(event) {
   renderCatalogs();
   $('#worker-new-name').focus();
 }
-async function saveSettings() {
+async function saveSettings(event) {
+  const buttons = [...document.querySelectorAll('[data-save-settings]')];
+  for (const button of buttons) button.disabled = true;
   try {
     const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name }));
@@ -265,9 +267,13 @@ async function saveSettings() {
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
     const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
     render(data);
-    toast('Zapisano listy i liczniki.');
-    showView('production');
+    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
+    state.catalogWorkers = data.workers.map(item => ({ employee_uid: item.employee_uid || '', name: item.name }));
+    renderCatalogs();
+    showView('settings');
+    toast('Zapisano artykuły, pracowników i numerację.');
   } catch (error) { toast(error.message, true); }
+  finally { for (const button of buttons) button.disabled = false; }
 }
 
 async function verifyProductionToken() {
@@ -680,7 +686,7 @@ $('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogS
 $('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
 $('#worker-add-form').addEventListener('submit', addWorker);
 $('#add-extra-worker').addEventListener('click', () => { addExtraWorkerRow(); updateShareSummary(); });
-$('#save-settings').addEventListener('click', saveSettings);
+document.querySelectorAll('[data-save-settings]').forEach(button => button.addEventListener('click', saveSettings));
 $('#verify-production-token').addEventListener('click', verifyProductionToken);
 $('#generate-current-report').addEventListener('click', event => {
   if (event.currentTarget.dataset.date) generateDailyReport(event.currentTarget.dataset.date,event.currentTarget);
