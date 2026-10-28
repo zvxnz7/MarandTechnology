@@ -361,6 +361,37 @@ document.querySelectorAll('form[data-live-search]').forEach(liveSearch=>{
  });
 });
 
+document.querySelectorAll('[data-article-description]').forEach(container=>{
+ const view=container.querySelector('[data-article-description-view]'),form=container.querySelector('[data-article-description-form]'),input=container.querySelector('[data-article-description-input]'),status=container.querySelector('[data-article-description-status]');
+ if(!view||!form||!input||!status)return;
+ let saved=input.value,timer=null,busy=false,pending=false;
+ const setStatus=(message,error=false)=>{status.textContent=message;status.classList.toggle('save-error',error);};
+ const showSaved=()=>{view.textContent=saved;if(!saved){view.innerHTML='<span class="muted">Kliknij, aby dodać opis artykułu</span>';}view.hidden=false;form.hidden=true;};
+ const open=()=>{if(!form.hidden)return;input.value=saved;view.hidden=true;form.hidden=false;setStatus('');input.focus();input.setSelectionRange(input.value.length,input.value.length);};
+ const persist=async()=>{
+  if(busy){pending=true;return;}
+  if(input.value===saved){showSaved();return;}
+  busy=true;
+  do{
+   pending=false;const snapshot=input.value;setStatus('Zapisywanie…');
+   try{
+    const response=await fetch(form.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-Requested-With':'fetch'},body:new URLSearchParams(new FormData(form))});
+    const raw=await response.text();let result={};try{result=JSON.parse(raw);}catch{}
+    if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się zapisać opisu. Odśwież stronę i spróbuj ponownie.');
+    saved=result.description;input.value=input.value===snapshot?saved:input.value;form.elements.updated_at.value=result.updated_at;
+    if(input.value!==saved||pending)pending=true;
+    else {setStatus('Zapisano automatycznie.');showSaved();}
+   }catch(error){setStatus(error.message||'Błąd zapisu. Spróbuj ponownie.',true);break;}
+  }while(pending);
+  busy=false;
+ };
+ view.addEventListener('click',open);
+ view.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
+ input.addEventListener('input',()=>{clearTimeout(timer);setStatus('Niezapisane zmiany…');timer=setTimeout(persist,700);});
+ input.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();clearTimeout(timer);input.value=saved;setStatus('');showSaved();}});
+ form.addEventListener('focusout',()=>setTimeout(()=>{if(form.hidden||form.contains(document.activeElement))return;clearTimeout(timer);persist();},0));
+});
+
 document.querySelectorAll('[data-autosave]').forEach(form=>{
  const control=form.querySelector('[data-autosave-value]'),status=form.querySelector('[data-autosave-status]');
  if(!control||!status)return;
