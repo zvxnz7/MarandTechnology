@@ -492,7 +492,7 @@ async function refreshCentralCatalog(force = false) {
         if(!/^[0-9a-f-]{32,36}$/i.test(employeeUid)||!name) continue;
         let local=db.prepare('SELECT id FROM workers WHERE employee_uid=?').get(employeeUid);
         if(!local) local=db.prepare('SELECT id FROM workers WHERE name_key=? OR (central_managed=0 AND lower(trim(name))=lower(trim(?))) ORDER BY central_managed DESC,active DESC,id LIMIT 1').get(nameKey,name);
-        if(local) db.prepare('UPDATE workers SET employee_uid=?,name=?,name_key=?,central_managed=1,central_active=1 WHERE id=?').run(employeeUid,name,nameKey,local.id);
+        if(local) db.prepare('UPDATE workers SET employee_uid=?,name=?,name_key=?,active=1,central_managed=1,central_active=1 WHERE id=?').run(employeeUid,name,nameKey,local.id);
         else db.prepare(`INSERT INTO workers(employee_uid,code,name,active,central_managed,central_active,name_key,created_at) VALUES(?,'',?,1,1,1,?,?)`).run(employeeUid,name,nameKey,now());
       }
       db.prepare(`INSERT INTO local_settings(key,value) VALUES('central_catalog_synced_at',?)
