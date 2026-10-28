@@ -182,7 +182,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
 }
 function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNotice = '' }) {
   const canEdit = !r.archived_at && !r.article_archived_at && !r.project_archived_at && ['technologist', 'approver', 'admin'].includes(user.role);
-  const canApprove = ['approver', 'admin'].includes(user.role);
+  const canApprove = ['approver', 'admin'].includes(user.role) && !r.archived_at && !r.article_archived_at && !r.project_archived_at;
   aiNotice = aiNotice || r.ai_generated_notice || v.ai_generated_notice || '';
   if (aiNotice) flashes = [...flashes, { category: 'warning', message: aiNotice }];
   const tech = TECH.map(([k, label]) => `<div><span>${esc(label)}</span><strong>${esc((v.tech || {})[k] || '—')}</strong></div>`).join('');
@@ -193,12 +193,12 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   const mayArchive = canEdit && r.state === 'draft' && ['trial','spec'].includes(r.kind);
   const actionButtons = `${canEdit && r.state === 'draft' ? link(`/records/${r.id}/edit`, 'Edytuj / uzupełnij', 'button primary') : ''}${`<a class="button" href="/records/${r.id}/preview" target="_blank" rel="noopener">Podgląd wydruku ↗</a>`}${canEdit && r.active_spec === r.id ? link(`/records/${r.id}/issue`, 'Wydaj kartę na maszynę', 'button primary') : ''}${mayArchive ? link(`/records/${r.id}/delete`, 'Przenieś do archiwum…', 'button danger') : ''}`;
   const copyActions = canEdit ? `<div class="actions space">${csrfForm(csrf, `/records/${r.id}/copy`, `${hidden('kind', 'spec')}${button(r.kind === 'spec' ? 'Nowa wersja specyfikacji' : 'Przygotuj specyfikację z próby')}`)}</div>` : '';
-  const submit = canEdit && r.kind === 'spec' && r.state === 'draft' ? `<section class="panel padded"><h2>Przekaż do zatwierdzenia</h2><p>Uzupełnij ustawienia maszyny i używane GB. Parametry dzianiny wykończonej są opcjonalne. Po przekazaniu edycja zostaje zablokowana.</p>${csrfForm(csrf, `/records/${r.id}/submit`, `${hidden('revision', r.revision)}${button('Przekaż do zatwierdzenia', 'primary')}`)}</section>` : '';
   let review = '';
-  if (r.state === 'submitted') {
-    const approve = canApprove ? csrfForm(csrf, `/records/${r.id}/approve`, `${hidden('revision', r.revision)}${field('Uzasadnienie / rozstrzygnięcie rozbieżności (opcjonalnie)', 'review_note', '', { multiline: true, maxlength: 3000, placeholder: 'Możesz opisać sprawdzenie lub rozstrzygnięcie.' })}<label class="check"><input type="checkbox" name="checked" required>Sprawdzono dane i rozbieżności ze źródłami. Zatwierdzam do stosowania od teraz.</label>${button('Zatwierdź jako obowiązującą', 'primary')}`) : '';
-    const withdraw = canEdit ? csrfForm(csrf, `/records/${r.id}/withdraw`, `${hidden('revision', r.revision)}${button('Wycofaj do poprawy')}`, 'space') : '';
-    review = `<section class="panel padded"><h2>Zatwierdzenie specyfikacji</h2>${r.conflict ? `<p class="notice warning">${esc(r.conflict)}</p>` : ''}${approve}${withdraw}</section>`;
+  if (r.kind === 'spec' && ['draft', 'submitted'].includes(r.state)) {
+    const reviewNote= r.state === 'submitted' ? field('Uzasadnienie / rozstrzygnięcie rozbieżności (opcjonalnie)', 'review_note', '', { multiline: true, maxlength: 3000, placeholder: 'Opcjonalny komentarz do tej wersji.' }) : '';
+    const approve = canApprove ? csrfForm(csrf, `/records/${r.id}/approve`, `${hidden('revision', r.revision)}${reviewNote}<label class="check"><input type="checkbox" name="checked" required>Sprawdzono dane. Zatwierdzam do produkcji.</label>${button('Zatwierdź do produkcji', 'primary')}`) : '';
+    const withdraw = r.state === 'submitted' && canEdit ? csrfForm(csrf, `/records/${r.id}/withdraw`, `${hidden('revision', r.revision)}${button('Wycofaj do poprawy')}`, 'space') : '';
+    review = `<section class="panel padded"><h2>Zatwierdź specyfikację do produkcji</h2><p class="muted">Zatwierdzenie od razu ustawi tę wersję jako obowiązującą dla artykułu.</p>${r.conflict ? `<p class="notice warning">${esc(r.conflict)}</p>` : ''}${approve}${withdraw}</section>`;
   }
   const sources = v.sources.length ? v.sources.map(s => `<p><a href="/sources/${encodeURIComponent(s.file)}">${esc(s.name)}</a></p>`).join('') : '<p>Wpis utworzony w programie.</p>';
   const audit = history.map(a => `<div class="history"><strong>${esc(a.action)}</strong> · ${esc(a.author || 'Import')} · ${datepl(a.at)}<details><summary>Szczegóły</summary><pre>${esc(a.detail)}</pre></details></div>`).join('');
@@ -209,7 +209,7 @@ ${r.state === 'approved' ? `<div class="notice success"><strong>${r.active_spec 
 <div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><div class="metric-grid">${tech}</div></div>
 <div class="sectionhead"><h2>Ustawienia GB</h2></div><div class="panel scroll"><table class="listing compact"><thead><tr>${GB.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${gbTable}</tbody></table></div>
 <div class="two-col"><section class="panel padded"><h2>Parametry dzianiny surowej</h2><dl>${raw}</dl><p class="preline">${esc(v.raw_comments || '')}</p></section><section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted small">Dane opcjonalne.</p><dl>${targets}</dl>${v.finished_comments ? `<h3>Komentarz do dzianiny wykończonej</h3><p class="preline">${esc(v.finished_comments)}</p>` : ''}</section></div>${finishes}
-<section class="panel padded"><h2>Etapy prób i komentarze</h2><p class="preline">${esc(v.stages || '—')}</p><p class="preline">${esc(v.comments || '')}</p><h3>Stałe uwagi dla dziewiarza</h3><p class="preline">${esc(v.knitter_notes || '—')}</p></section>${photoPanel}${copyActions}${submit}${review}
+<section class="panel padded"><h2>Etapy prób i komentarze</h2><p class="preline">${esc(v.stages || '—')}</p><p class="preline">${esc(v.comments || '')}</p><h3>Stałe uwagi dla dziewiarza</h3><p class="preline">${esc(v.knitter_notes || '—')}</p></section>${photoPanel}${copyActions}${review}
 <details class="panel padded"><summary>Pliki źródłowe (${v.sources.length})</summary>${sources}</details><details class="panel padded"><summary>Historia zmian</summary>${audit}</details>` });
 }
 function issuePage({ user, csrf, flashes, r, token, machine = '', instructions = '', productionNotes = '', projectId = '', stageId = '' }) {

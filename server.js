@@ -230,7 +230,7 @@ function parseForm(form, old) {
 function validateReady(row) {
   const v = parsePayload(row);
   if (!row.symbol || !v.gb.length) fail(400, 'Uzupełnij symbol i przynajmniej jedną GB.');
-  if (['machine_type', 'gauge', 'density', 'working_width', 'panels'].some(k => !v.tech[k])) fail(400, 'Uzupełnij typ i podział maszyny, ścisłość, szerokość roboczą i liczbę szali.');
+  if (['machine_type', 'gauge', 'density', 'working_width'].some(k => !v.tech[k])) fail(400, 'Uzupełnij typ i podział maszyny, ścisłość oraz szerokość roboczą.');
   if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]))) fail(400, 'Uzupełnij przędzę, liczbę nici, wrobienie, nawleczenie i raport dla każdej używanej GB.');
 }
 function signedCookie(session) {
@@ -1132,7 +1132,7 @@ async function handle(req, res) {
           audit(req.user, 'Wycofano do poprawy', id);
         } else {
           const note = formText(form, 'review_note');
-          if (r.kind !== 'spec' || r.state !== 'submitted') fail(409, 'Nie można zatwierdzić tego wpisu.');
+          if (r.kind !== 'spec' || !['draft','submitted'].includes(r.state)) fail(409, 'Nie można zatwierdzić tego wpisu.');
           validateReady(r);
           if (!form.checked) fail(400, 'Potwierdź, że sprawdzono dane i rozbieżności.');
           if (r.active_spec !== r.expected_active) fail(409, 'W międzyczasie zatwierdzono inną specyfikację. Utwórz nową wersję na podstawie aktualnej i porównaj zmiany.');
