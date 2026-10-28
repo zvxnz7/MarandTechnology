@@ -67,7 +67,7 @@ document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
   if(preview){
    added.forEach((box,index)=>{
     const row=document.createElement('tr');row.className='shipment-correction-preview-added';
-    const values=['Dodana',String(Math.max(0,preview.querySelectorAll('[data-correction-current-row]').length-removed.length)+index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.lot||'—','Wybrana do dodania'];
+    const values=['Dodana',String(Math.max(0,preview.querySelectorAll('[data-correction-current-row]').length-removed.length)+index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.lot||'—','Wybrana do dodania do specyfikacji wysyłkowej'];
     values.forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});preview.append(row);
    });
   }
