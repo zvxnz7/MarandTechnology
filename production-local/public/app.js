@@ -173,16 +173,18 @@ function showView(name) {
 }
 
 async function loadSettings() {
-  let settingsData={centralCatalogSyncedAt:''};
+  let settingsData={centralCatalogSyncedAt:'',centralWorkersSyncedAt:''};
   try {
     settingsData = await api('/api/settings');
   } catch (error) {
     toast(error.message, true);
   }
   state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
-  state.catalogWorkers = state.data.workers.map(item => ({ employee_uid: item.employee_uid, name: item.name }));
+  state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
+  const workersSync=settingsData.centralWorkersSyncedAt?new Date(settingsData.centralWorkersSyncedAt).toLocaleString('pl-PL'):'lista nie była jeszcze aktualizowana';
+  $('#worker-catalog-sync').textContent=`Ostatnia aktualizacja listy pracowników: ${workersSync}.`;
   $('#sequence-year').value = state.data.today.slice(0, 4);
   const yearSequences = state.data.sequences?.[$('#sequence-year').value] || {};
   $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
@@ -200,10 +202,10 @@ function renderCatalogs() {
     renderCatalogs();
   }));
   const workerList = $('#worker-list');
-  workerList.innerHTML = state.catalogWorkers.length ? state.catalogWorkers.map((item, index) => `<div class="catalog-row"><div><strong>${escapeHtml(item.name)}</strong></div><button type="button" class="catalog-remove remove-worker-catalog" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych pracowników.</div>';
-  workerList.querySelectorAll('.remove-worker-catalog').forEach(button => button.addEventListener('click', () => {
-    state.catalogWorkers.splice(Number(button.dataset.index), 1);
-    renderCatalogs();
+  workerList.innerHTML = state.catalogWorkers.length ? state.catalogWorkers.map((item, index) => `<div class="catalog-row worker-catalog-row"><strong>${escapeHtml(item.name)}</strong><label class="worker-status-label">Status<select class="worker-status-input" data-index="${index}" aria-label="Status: ${escapeHtml(item.name)}"><option value="active" ${item.status === 'active' ? 'selected' : ''}>Aktywny</option><option value="vacation" ${item.status === 'vacation' ? 'selected' : ''}>Urlop</option><option value="sick" ${item.status === 'sick' ? 'selected' : ''}>Choroba</option></select></label></div>`).join('') : '<div class="catalog-empty">Brak pracowników z programu głównego. Kliknij „Zaktualizuj listę”.</div>';
+  workerList.querySelectorAll('.worker-status-input').forEach(select => select.addEventListener('change', () => {
+    const item = state.catalogWorkers[Number(select.dataset.index)];
+    if (item) item.status = select.value;
   }));
 }
 function renderSequenceList(year) {
@@ -242,12 +244,14 @@ function addCentralArticleFromSearch(event) {
   renderCatalogs();
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
-async function saveSettings(event) {
-  const buttons = [...document.querySelectorAll('[data-save-settings]')];
-  for (const button of buttons) button.disabled = true;
+function setSettingsActionsDisabled(disabled) {
+  document.querySelectorAll('[data-save-settings], #refresh-workers').forEach(button => { button.disabled = disabled; });
+}
+async function saveSettings() {
+  setSettingsActionsDisabled(true);
   try {
     const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
-    const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name }));
+    const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
@@ -255,12 +259,29 @@ async function saveSettings(event) {
     const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
     render(data);
     state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
-    state.catalogWorkers = data.workers.map(item => ({ employee_uid: item.employee_uid || '', name: item.name }));
+    state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     renderCatalogs();
     showView('settings');
     toast('Zapisano artykuły, pracowników i numerację.');
   } catch (error) { toast(error.message, true); }
-  finally { for (const button of buttons) button.disabled = false; }
+  finally { setSettingsActionsDisabled(false); }
+}
+
+async function refreshWorkers() {
+  setSettingsActionsDisabled(true);
+  $('#worker-catalog-sync').textContent = 'Pobieram aktualną listę z programu głównego…';
+  try {
+    const pendingStatuses = new Map(state.catalogWorkers.map(item => [item.employee_uid, item.status]));
+    const result = await api('/api/settings/workers/refresh', { method: 'POST', body: JSON.stringify({}) });
+    render(result.bootstrap);
+    state.catalogWorkers = result.workers.map(item => ({ employee_uid: item.employee_uid, name: item.name, status: pendingStatuses.get(item.employee_uid) || item.status || 'active' }));
+    renderCatalogs();
+    $('#worker-catalog-sync').textContent = `Lista zaktualizowana: ${new Date(result.syncedAt).toLocaleString('pl-PL')}.`;
+    toast(`Zaktualizowano listę pracowników (${state.catalogWorkers.length}).`);
+  } catch (error) {
+    $('#worker-catalog-sync').textContent = error.message;
+    toast(error.message, true);
+  } finally { setSettingsActionsDisabled(false); }
 }
 
 async function verifyProductionToken() {
@@ -673,6 +694,7 @@ $('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogS
 $('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
 $('#add-extra-worker').addEventListener('click', () => { addExtraWorkerRow(); updateShareSummary(); });
 document.querySelectorAll('[data-save-settings]').forEach(button => button.addEventListener('click', saveSettings));
+$('#refresh-workers').addEventListener('click', refreshWorkers);
 $('#verify-production-token').addEventListener('click', verifyProductionToken);
 $('#generate-current-report').addEventListener('click', event => {
   if (event.currentTarget.dataset.date) generateDailyReport(event.currentTarget.dataset.date,event.currentTarget);
