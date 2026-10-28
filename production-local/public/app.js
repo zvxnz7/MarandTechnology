@@ -35,13 +35,8 @@ async function api(url, options = {}) {
 function options(items, valueKey, labelFn, selected) {
   return items.map(item => `<option value="${escapeHtml(item[valueKey])}" ${String(item[valueKey]) === String(selected) ? 'selected' : ''}>${escapeHtml(labelFn(item))}</option>`).join('');
 }
-function articleLabel(item) { return item.symbol; }
+function articleLabel(item) { return item.trialSymbol ? `${item.symbol} · Próba ${item.trialSymbol}` : item.symbol; }
 function workerLabel(worker) { return worker.name; }
-function syncTrialFields() {
-  const enabled = $('#trial-flag').checked;
-  $('#trial-symbol-wrap').hidden = !enabled;
-  $('#trial-symbol').required = enabled;
-}
 function fillCommonControls() {
   const oldArticle = $('#article').value;
   const oldMachine = $('#machine').value;
@@ -110,16 +105,11 @@ function resetBaleFields(prefill = null) {
 function setFreshForm(keepCommon = true, prefill = null) {
   const common = keepCommon ? {
     article: $('#article').value,
-    isTrial: $('#trial-flag').checked,
-    trialSymbol: $('#trial-symbol').value,
     machine: $('#machine').value,
     date: $('#production-date').value,
     worker: $('#worker-primary').value,
   } : {};
   $('#article').value = common.article || '';
-  $('#trial-flag').checked = Boolean(common.isTrial);
-  $('#trial-symbol').value = common.trialSymbol || '';
-  syncTrialFields();
   $('#machine').value = common.machine || '';
   $('#production-date').value = common.date || state.data.today;
   fillWorkerControls(prefill?.primaryWorkerId || common.worker || '');
@@ -189,7 +179,7 @@ async function loadSettings() {
   } catch (error) {
     toast(error.message, true);
   }
-  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
+  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.trialSymbol), trialSymbol: item.trialSymbol || '' }));
   state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
@@ -202,10 +192,21 @@ async function loadSettings() {
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><label class="article-trial-symbol-label">Symbol próby<input class="article-trial-symbol-input" data-index="${index}" maxlength="150" value="${escapeHtml(item.trialSymbol || '')}" placeholder="Np. PR-123" ${item.isTrial ? '' : 'disabled'}></label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
     const item = state.catalogArticles[Number(input.dataset.index)];
     if (item) item.lot = input.value;
+  }));
+  articleList.querySelectorAll('.article-trial-input').forEach(input => input.addEventListener('change', () => {
+    const item = state.catalogArticles[Number(input.dataset.index)];
+    if (item) item.isTrial = input.checked;
+    const symbolInput = articleList.querySelector(`.article-trial-symbol-input[data-index="${input.dataset.index}"]`);
+    if (symbolInput) symbolInput.disabled = !input.checked;
+    if (input.checked) symbolInput?.focus();
+  }));
+  articleList.querySelectorAll('.article-trial-symbol-input').forEach(input => input.addEventListener('input', () => {
+    const item = state.catalogArticles[Number(input.dataset.index)];
+    if (item) item.trialSymbol = input.value;
   }));
   articleList.querySelectorAll('.remove-article').forEach(button => button.addEventListener('click', () => {
     state.catalogArticles.splice(Number(button.dataset.index), 1);
@@ -229,7 +230,7 @@ function addArticle(event) {
   if (state.catalogArticles.some(item => item.symbol.toLocaleUpperCase('pl-PL') === symbol.toLocaleUpperCase('pl-PL'))) {
     toast('Ten artykuł jest już na liście.', true); return;
   }
-  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null });
+  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null, isTrial: false, trialSymbol: '' });
   $('#article-new').value = '';
   $('#article-new-lot').value = '';
   renderCatalogs();
@@ -250,17 +251,17 @@ function addCentralArticleFromSearch(event) {
   if(!button)return;
   const symbol=button.dataset.symbol,centralId=Number(button.dataset.centralId);
   if(state.catalogArticles.some(item=>item.symbol.toLocaleUpperCase('pl-PL')===symbol.toLocaleUpperCase('pl-PL'))){toast('Ten artykuł jest już na lokalnej liście.',true);return;}
-  state.catalogArticles.push({symbol,lot:'',centralId});
+  state.catalogArticles.push({symbol,lot:'',centralId,isTrial:false,trialSymbol:''});
   renderCatalogs();
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
 function setSettingsActionsDisabled(disabled) {
-  document.querySelectorAll('[data-save-settings], #refresh-workers').forEach(button => { button.disabled = disabled; });
+  document.querySelectorAll('[data-save-settings], #refresh-workers, #refresh-articles').forEach(button => { button.disabled = disabled; });
 }
 async function saveSettings() {
   setSettingsActionsDisabled(true);
   try {
-    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
+    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), trialSymbol: item.trialSymbol || '' }));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
@@ -268,7 +269,7 @@ async function saveSettings() {
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
     const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
     render(data);
-    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null }));
+    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.trialSymbol), trialSymbol: item.trialSymbol || '' }));
     state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     renderCatalogs();
     showView('settings');
@@ -290,6 +291,20 @@ async function refreshWorkers() {
     toast(`Zaktualizowano listę pracowników (${state.catalogWorkers.length}).`);
   } catch (error) {
     $('#worker-catalog-sync').textContent = error.message;
+    toast(error.message, true);
+  } finally { setSettingsActionsDisabled(false); }
+}
+
+async function refreshArticles() {
+  setSettingsActionsDisabled(true);
+  $('#central-catalog-sync').textContent = 'Pobieram aktualną listę zatwierdzonych artykułów z programu głównego…';
+  try {
+    const result = await api('/api/settings/articles/refresh', { method: 'POST', body: JSON.stringify({}) });
+    $('#central-catalog-sync').textContent = `Ostatnia udana synchronizacja biblioteki: ${new Date(result.syncedAt).toLocaleString('pl-PL')}.`;
+    if ($('#central-article-search').value.trim()) await searchCentralArticles();
+    toast(`Zaktualizowano bibliotekę artykułów (${result.articles}).`);
+  } catch (error) {
+    $('#central-catalog-sync').textContent = `Nie udało się zaktualizować biblioteki: ${error.message}`;
     toast(error.message, true);
   } finally { setSettingsActionsDisabled(false); }
 }
@@ -527,8 +542,7 @@ function collectBale() {
     errors: number(errorsText),
     stops: number(stopsText),
     notes: $('#notes').value,
-    isTrial: $('#trial-flag').checked,
-    trialSymbol: $('#trial-flag').checked ? $('#trial-symbol').value.trim() : '',
+    trialSymbol: state.data.articles.find(article => Number(article.id) === Number($('#article').value))?.trialSymbol || '',
     primaryWorkerId: String(primaryId),
     workers: [{ workerId: primaryId, meters: remainder }, ...extras],
     extraWorkers: extras,
@@ -583,9 +597,6 @@ function startEdit(id) {
     }
   }
   $('#article').value = String(row.article_id);
-  $('#trial-flag').checked = Boolean(row.trial_symbol);
-  $('#trial-symbol').value = row.trial_symbol || '';
-  syncTrialFields();
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -615,9 +626,6 @@ function startCopy(id) {
   }
   showView('production');
   $('#article').value = String(row.article_id);
-  $('#trial-flag').checked = Boolean(row.trial_symbol);
-  $('#trial-symbol').value = row.trial_symbol || '';
-  syncTrialFields();
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -713,6 +721,7 @@ $('#central-article-results').addEventListener('click',addCentralArticleFromSear
 $('#add-extra-worker').addEventListener('click', () => { addExtraWorkerRow(); updateShareSummary(); });
 document.querySelectorAll('[data-save-settings]').forEach(button => button.addEventListener('click', saveSettings));
 $('#refresh-workers').addEventListener('click', refreshWorkers);
+$('#refresh-articles').addEventListener('click', refreshArticles);
 $('#verify-production-token').addEventListener('click', verifyProductionToken);
 $('#generate-current-report').addEventListener('click', event => {
   if (event.currentTarget.dataset.date) generateDailyReport(event.currentTarget.dataset.date,event.currentTarget);
@@ -730,7 +739,6 @@ $('#cancel-report-add').addEventListener('click', async () => {
 $('#refresh').addEventListener('click', refresh);
 $('#retry-startup').addEventListener('click', refresh);
 $('#back-to-production').addEventListener('click', () => showView('production'));
-$('#trial-flag').addEventListener('change', syncTrialFields);
 $('#worker-primary').addEventListener('change', updateShareSummary);
 $('#meters').addEventListener('input', updateShareSummary);
 $('#sequence-year').addEventListener('change', () => renderSequenceList($('#sequence-year').value));

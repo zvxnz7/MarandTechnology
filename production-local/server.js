@@ -23,7 +23,7 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
 const startingSchemaVersion = db.prepare('PRAGMA user_version').get().user_version;
-if (startingSchemaVersion > 8) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
+if (startingSchemaVersion > 9) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY,
@@ -38,6 +38,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS article_settings (
     article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
     lot TEXT NOT NULL DEFAULT '',
+    trial_symbol TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS manager_auth (
@@ -172,6 +173,11 @@ if (startingSchemaVersion < 8) {
   if (!baleColumns.includes('trial_symbol')) db.exec("ALTER TABLE bales ADD COLUMN trial_symbol TEXT NOT NULL DEFAULT '';");
   db.exec('PRAGMA user_version=8;');
 }
+if (startingSchemaVersion < 9) {
+  const settingColumns = db.prepare('PRAGMA table_info(article_settings)').all().map(column => column.name);
+  if (!settingColumns.includes('trial_symbol')) db.exec("ALTER TABLE article_settings ADD COLUMN trial_symbol TEXT NOT NULL DEFAULT '';");
+  db.exec('PRAGMA user_version=9;');
+}
 db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_server_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
   .run(DEFAULT_PRODUCTION_SERVER_URL);
 
@@ -288,7 +294,7 @@ function validateArticleAndMachine(articleId, machine, allowInactive = false) {
   if (!MACHINES.includes(machine)) fail(400, 'Wybierz prawidłową maszynę.');
   return id;
 }
-function normalizeBale(input, articleId, allowInactiveWorkers = false) {
+function normalizeBale(input, articleId, allowInactiveWorkers = false, existingTrialSymbol) {
   const meters = positiveNumber(input.meters, 'Metry', 100000);
   const workers = Array.isArray(input.workers) ? input.workers : [];
   if (!workers.length) fail(400, 'Przypisz metry przynajmniej jednemu dziewiarzowi.');
@@ -303,8 +309,9 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false) {
   }
   const allocated = normalizedWorkers.reduce((sum, row) => sum + row.meters, 0);
   if (Math.abs(allocated - meters) > 0.01) fail(400, `Suma metrów dziewiarzy (${allocated.toFixed(2)}) musi odpowiadać metrom belki (${meters.toFixed(2)}).`);
-  const trialSymbol = input.isTrial ? cleanText(input.trialSymbol, 150, 'Symbol próby') : '';
-  if (input.isTrial && !trialSymbol) fail(400, 'Podaj symbol próby.');
+  const configuredTrialSymbol = existingTrialSymbol === undefined
+    ? db.prepare('SELECT trial_symbol FROM article_settings WHERE article_id=?').get(articleId)?.trial_symbol || ''
+    : existingTrialSymbol;
   return {
     weightKg: positiveNumber(input.weightKg, 'Kilogramy', 1000),
     meters,
@@ -312,7 +319,7 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false) {
     stops: nonnegativeInteger(input.stops, 'Stopy'),
     lot: db.prepare('SELECT lot FROM article_settings WHERE article_id=?').get(articleId)?.lot || '',
     notes: cleanText(input.notes, 1000, 'Uwagi'),
-    trialSymbol,
+    trialSymbol: configuredTrialSymbol,
     workers: normalizedWorkers,
     articleId,
   };
@@ -362,7 +369,7 @@ function bootstrap() {
     today,
     productionDay: currentProductionDate(),
     machines: MACHINES,
-    articles: db.prepare(`SELECT a.id,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot FROM articles a
+    articles: db.prepare(`SELECT a.id,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.trial_symbol,'') trialSymbol FROM articles a
       LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE`).all(),
     workers: db.prepare("SELECT id,employee_uid,name FROM workers WHERE active=1 AND work_status='active' AND central_managed=1 AND central_active=1 ORDER BY name COLLATE NOCASE").all(),
     workerCatalog: workerCatalog(),
@@ -405,7 +412,10 @@ function validateCatalog(body, key) {
       if (!symbol) fail(400, 'Symbol artykułu nie może być pusty.');
       const centralId=item.centralId===undefined||item.centralId===null||item.centralId===''?null:Number(item.centralId);
       if(centralId!==null&&(!Number.isSafeInteger(centralId)||centralId<1)) fail(400,'Identyfikator artykułu z centrali jest nieprawidłowy.');
-      return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId };
+      const isTrial = item.isTrial === true;
+      const trialSymbol = isTrial ? cleanText(item.trialSymbol, 150, 'Symbol próby') : '';
+      if (isTrial && !trialSymbol) fail(400, `Uzupełnij symbol próby dla artykułu ${symbol}.`);
+      return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, trialSymbol };
     }
     const name = cleanText(item.name, 100, 'Nazwa dziewiarza');
     const employeeUid = cleanText(item.employeeUid, 36, 'Identyfikator pracownika');
@@ -452,11 +462,11 @@ function saveCatalogs(body) {
     const addArticle = db.prepare(`INSERT INTO articles(symbol,active,central_id,central_managed,central_active,created_at) VALUES(?,1,?,?,1,?)
       ON CONFLICT(symbol) DO UPDATE SET active=1,central_id=coalesce(excluded.central_id,articles.central_id),central_managed=CASE WHEN excluded.central_id IS NULL THEN articles.central_managed ELSE 1 END,central_active=1`);
     const findArticle = db.prepare('SELECT id FROM articles WHERE symbol=?');
-    const saveArticleSettings = db.prepare(`INSERT INTO article_settings(article_id,lot,updated_at) VALUES(?,?,?)
-      ON CONFLICT(article_id) DO UPDATE SET lot=excluded.lot,updated_at=excluded.updated_at`);
+    const saveArticleSettings = db.prepare(`INSERT INTO article_settings(article_id,lot,trial_symbol,updated_at) VALUES(?,?,?,?)
+      ON CONFLICT(article_id) DO UPDATE SET lot=excluded.lot,trial_symbol=excluded.trial_symbol,updated_at=excluded.updated_at`);
     for (const item of articles) {
       addArticle.run(item.symbol, item.centralId, item.centralId===null?0:1, now());
-      saveArticleSettings.run(findArticle.get(item.symbol).id, item.lot, now());
+      saveArticleSettings.run(findArticle.get(item.symbol).id, item.lot, item.trialSymbol, now());
     }
     const saveWorkerStatus = db.prepare(`UPDATE workers SET active=1,work_status=? WHERE employee_uid=?`);
     for (const item of workers) {
@@ -491,13 +501,20 @@ function productionConnection() {
 }
 let centralCatalogSyncAt = 0;
 let centralCatalogSyncPromise = null;
+let centralCatalogSyncOptions = null;
 let centralCatalogStartupSyncPromise = Promise.resolve();
 async function refreshCentralCatalog(force = false, { syncArticles = true, syncWorkers = true } = {}) {
   const { serverUrl, apiToken, configured } = productionCredentials();
   if (!configured) return { updated: false, reason: 'not_configured' };
   if (!force && Date.now() - centralCatalogSyncAt < 30000) return { updated: false, reason: 'recent' };
-  if (centralCatalogSyncPromise) return centralCatalogSyncPromise;
+  if (centralCatalogSyncPromise) {
+    const covered = (!syncArticles || centralCatalogSyncOptions?.syncArticles) && (!syncWorkers || centralCatalogSyncOptions?.syncWorkers);
+    if (covered) return centralCatalogSyncPromise;
+    await centralCatalogSyncPromise.catch(() => {});
+    return refreshCentralCatalog(force, { syncArticles, syncWorkers });
+  }
   centralCatalogSyncAt=Date.now();
+  centralCatalogSyncOptions = { syncArticles, syncWorkers };
   centralCatalogSyncPromise=(async()=>{
     const response=await fetch(`${serverUrl}/api/production/catalog`,{headers:{Authorization:`Bearer ${apiToken}`,Accept:'application/json'},signal:AbortSignal.timeout(4000)});
     const payload=await response.json().catch(()=>({}));
@@ -526,7 +543,7 @@ async function refreshCentralCatalog(force = false, { syncArticles = true, syncW
         ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(payload.syncedAt||now()));
     });
     return {updated:true,syncedAt:payload.syncedAt||now(),articles:syncArticles?payload.articles.length:0,workers:syncWorkers?payload.workers.length:0};
-  })().finally(()=>{centralCatalogSyncPromise=null;});
+  })().finally(()=>{centralCatalogSyncPromise=null;centralCatalogSyncOptions=null;});
   return centralCatalogSyncPromise;
 }
 function centralCatalogStatus(key = 'central_catalog_synced_at') {
@@ -824,7 +841,7 @@ function updateBale(id, body) {
     const articleId = validateArticleAndMachine(body.articleId ?? current.article_id, String(body.machine ?? current.machine), true);
     const productionDate = validateProductionDate(body.productionDate ?? current.production_date);
     const machine = String(body.machine ?? current.machine);
-    const item = normalizeBale(body, articleId, true);
+    const item = normalizeBale(body, articleId, true, articleId === current.article_id ? current.trial_symbol : undefined);
     const year = Number(productionDate.slice(0,4));
     const serial = machine === current.machine && year === current.production_year ? current.serial_number : allocateSerial(machine, year);
     const stamp = now();
@@ -898,6 +915,12 @@ function route(req, res) {
           if (!result.updated) return json(res, 409, { error: 'Najpierw skonfiguruj połączenie z programem głównym.' });
           return json(res, 200, { workers: workerCatalog(), bootstrap: bootstrap(), syncedAt: centralCatalogStatus('central_workers_synced_at') });
         }).catch(error => json(res, error.status || 502, { error: `Nie udało się zaktualizować listy pracowników: ${error.message}` }));
+      }
+      if (url.pathname === '/api/settings/articles/refresh') {
+        return refreshCentralCatalog(true, { syncArticles: true, syncWorkers: false }).then(result => {
+          if (!result.updated) return json(res, 409, { error: 'Najpierw skonfiguruj połączenie z programem głównym.' });
+          return json(res, 200, { articles: result.articles, syncedAt: centralCatalogStatus() });
+        }).catch(error => json(res, error.status || 502, { error: `Nie udało się zaktualizować listy artykułów: ${error.message}` }));
       }
       if (url.pathname === '/api/settings') { return json(res, 200, saveCatalogs(body)); }
       if (url.pathname === '/api/settings/production-connection') {
