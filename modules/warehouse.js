@@ -393,6 +393,7 @@ function shipmentsPage(ctx) {
 
 function shipmentPage(ctx, shipment) {
   const items = shipmentArticles(ctx.db,shipment.id);
+  const openSpecificationId=Number(ctx.url.searchParams.get('open_specification')||0);
   const canEdit = editableRoles.includes(ctx.req.user.role) && shipment.status==='draft';
   const canClose = managerRoles.includes(ctx.req.user.role) && shipment.status==='draft';
   const itemViews = items.map(item => {
@@ -401,12 +402,12 @@ function shipmentPage(ctx, shipment) {
       const removed=Boolean(b.removed_at);
       const reason=b.correction_reason||b.removal_reason;
       const assignmentStatus=removed?(b.correction_disposition?`Usunięta korektą · ${b.correction_disposition}`:'Usunięta z wysyłki'):'W specyfikacji';
-      return `<tr class="${removed?'shipment-bale-removed':''}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td>${canEdit&&!removed?`<td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td>`:canEdit?'<td></td>':''}</tr>`;
+      return `<tr class="${removed?'shipment-bale-removed':''}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td>${canEdit&&!removed?`<td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="specification_id" value="${item.id}"><input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td>`:canEdit?'<td></td>':''}</tr>`;
     }).join('');
     const correctionLink=shipment.status==='closed'&&managerRoles.includes(ctx.req.user.role)?`<a class="button" href="#correction-${item.id}">Koryguj tę specyfikację</a>`:'';
     const deleteSpecification=canClose?`<a class="button danger" href="/shipments/${shipment.id}/specifications/${item.id}/delete">Usuń specyfikację</a>`:'';
     const plant=item.finishing_plant_name?`<span class="plant-chip ${plantColor(item.finishing_plant_id)}">${V.esc(item.finishing_plant_name)}</span>`:'';
-    return `<details class="shipment-article" id="specification-${item.id}"><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${item.bale_count} szt w wysyłce · ${money(item.weight_kg)} kg ${plant}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${correctionLink}${deleteSpecification}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data produkcji</th><th>Historia przypisania</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="9">Brak belek.</td></tr>'}</tbody></table></div></details>`;
+    return `<details class="shipment-article" id="specification-${item.id}"${openSpecificationId===item.id?' open':''}><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${item.bale_count} szt w wysyłce · ${money(item.weight_kg)} kg ${plant}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${correctionLink}${deleteSpecification}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data produkcji</th><th>Historia przypisania</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="9">Brak belek.</td></tr>'}</tbody></table></div></details>`;
   }).join('');
   const status = shipment.status==='closed'?`<span class="badge approved">Zamknięta · ${V.datepl(shipment.closed_at)}</span>`:shipment.status==='cancelled'?'<span class="badge archived">Anulowana</span>':'<span class="badge submitted">W przygotowaniu</span>';
   const details = canEdit ? `<form method="post" action="/shipments/${shipment.id}/date" class="shipment-date-form" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="shipment_date" value="${V.esc(shipment.shipment_date)}" data-autosave-value required></label><span data-autosave-status class="autosave-status" aria-live="polite"></span></form>` : `<p>Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p>`;
@@ -736,10 +737,11 @@ function handle(ctx) {
     if(action==='remove'&&req.method==='POST'){
       role(req.user,...editableRoles);
       if(shipment.status!=='draft') throw Object.assign(new Error('Zamkniętej wysyłki nie można zmieniać.'),{status:409});
-      const baleId=String(ctx.form.bale_id||'');
-      const result=db.prepare(`UPDATE shipment_bales SET removed_at=?,removed_by=?,removal_reason='Usunięto z roboczej wysyłki' WHERE id=(SELECT sb.id FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id WHERE sa.shipment_id=? AND sb.bale_local_id=? AND sb.removed_at IS NULL)`).run(ctx.now(),req.user.id,id,baleId);
+      const baleId=String(ctx.form.bale_id||''),specificationId=Number(ctx.form.specification_id||0);
+      if(!Number.isSafeInteger(specificationId)||specificationId<1||!db.prepare('SELECT id FROM shipment_articles WHERE id=? AND shipment_id=?').get(specificationId,id)) throw Object.assign(new Error('Nie znaleziono tej specyfikacji w wysyłce.'),{status:404});
+      const result=db.prepare(`UPDATE shipment_bales SET removed_at=?,removed_by=?,removal_reason='Usunięto z roboczej wysyłki' WHERE id=(SELECT sb.id FROM shipment_bales sb WHERE sb.shipment_article_id=? AND sb.bale_local_id=? AND sb.removed_at IS NULL)`).run(ctx.now(),req.user.id,specificationId,baleId);
       if(!result.changes) throw Object.assign(new Error('Belka nie jest przypisana do tej wysyłki.'),{status:404});
-      return redirect(req,res,`/shipments/${id}/select`,'Belkę usunięto z roboczej wysyłki.');
+      return redirect(req,res,`/shipments/${id}?open_specification=${specificationId}#specification-${specificationId}`,'Belkę usunięto z roboczej wysyłki.');
     }
     if(action==='date'&&req.method==='POST'){
       role(req.user,...editableRoles);
