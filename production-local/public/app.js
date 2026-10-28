@@ -242,19 +242,6 @@ function addCentralArticleFromSearch(event) {
   renderCatalogs();
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
-function addWorker(event) {
-  event.preventDefault();
-  const name = $('#worker-new-name').value.trim();
-  if (!name) return;
-  const key = value => value.toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');
-  if (state.catalogWorkers.some(item => key(item.name) === key(name))) {
-    toast('Osoba o tym imieniu i nazwisku jest już na liście.', true); return;
-  }
-  state.catalogWorkers.push({ employee_uid: '', name });
-  $('#worker-new-name').value = '';
-  renderCatalogs();
-  $('#worker-new-name').focus();
-}
 async function saveSettings(event) {
   const buttons = [...document.querySelectorAll('[data-save-settings]')];
   for (const button of buttons) button.disabled = true;
@@ -684,7 +671,6 @@ $('#production-form').addEventListener('submit', saveProduction);
 $('#article-add-form').addEventListener('submit', addArticle);
 $('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(searchCentralArticles,180);});
 $('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
-$('#worker-add-form').addEventListener('submit', addWorker);
 $('#add-extra-worker').addEventListener('click', () => { addExtraWorkerRow(); updateShareSummary(); });
 document.querySelectorAll('[data-save-settings]').forEach(button => button.addEventListener('click', saveSettings));
 $('#verify-production-token').addEventListener('click', verifyProductionToken);
