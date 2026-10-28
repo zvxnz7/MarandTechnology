@@ -200,7 +200,7 @@ function articleBalances(db, q = '') {
 }
 
 function registeredBales(db, articleId) {
-  return db.prepare(`SELECT b.*,a.symbol,coalesce(f.status,'available') inventory_status,
+  return db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,coalesce(f.status,'available') inventory_status,
       coalesce((SELECT group_concat(tag,',') FROM warehouse_bale_tags bt WHERE bt.bale_local_id=b.local_id),'') quality_tags,
       (SELECT status FROM warehouse_bale_custom_statuses cs WHERE cs.bale_local_id=b.local_id) custom_status,
       (SELECT sh.status FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
@@ -248,7 +248,7 @@ function baleRows(rows, options = {}) {
         ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz zagubioną belkę ${V.esc(row.bale_number)}"></label>`
         : '';
     const lot = String(row.lot || '').trim();
-     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
+     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}${row.trial_symbol?'<small class="badge submitted">Próba</small>':''}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
   }).join('');
 }
 
@@ -341,6 +341,7 @@ function baleDetailPage(ctx, localId) {
   const canEditNote=editableRoles.includes(ctx.req.user.role)&&bale.shipment_status!=='closed'&&bale.inventory_status!=='shipped_out';
   const noteForm=canEditNote?`<form method="post" action="/warehouse/bales/${encodeURIComponent(bale.local_id)}/notes" class="warehouse-detail-note" data-warehouse-note-form>${hidden('csrf',ctx.req.session.csrf)}<input name="notes" value="${V.esc(bale.notes)}" aria-label="Uwagi do belki" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>`:V.esc(bale.notes||'—');
   const entries=[['Symbol artykułu',`<a href="/warehouse?article_id=${bale.article_id}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',noteForm],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
+  if(bale.trial_symbol)entries.splice(1,0,['Symbol próby',V.esc(bale.trial_symbol)]);
   const body=`<a class="breadcrumb" href="/warehouse?article_id=${bale.article_id}">← Wykaz sztuk · ${V.esc(bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Belka ${bale.bale_number} · Wykaz sztuk · Marand`,body});
 }
@@ -464,7 +465,7 @@ function shipmentsPage(ctx) {
   const year = years.includes(requestedYear) ? requestedYear : '';
   const canPrepare = editableRoles.includes(ctx.req.user.role);
   const create = canPrepare ? `<form method="post" action="/shipments/create">${hidden('csrf',ctx.req.session.csrf)}<button class="primary">+ Przygotuj wysyłkę</button></form>` : '';
-  const correct = managerRoles.includes(ctx.req.user.role) ? `<a class="button shipment-correction-launch" href="/shipments/correct">Koryguj wysyłkę</a>` : '';
+  const correct = managerRoles.includes(ctx.req.user.role) ? `<a class="button shipment-correction-launch" href="/shipments/correct" target="_blank" rel="noopener">Koryguj wysyłkę</a>` : '';
   const searchReady = normalizeSearch(q).length >= 1;
   const searchTerms = searchReady ? q.split(/\s+/).map(normalizeSearch).filter(Boolean) : [];
   const rows = shipments.filter(s => {

@@ -183,11 +183,15 @@ h1 { margin: 3px 0; font-size: clamp(25px, 2.6vw, 32px); }
 .panel-heading h2 { font-size: 17px; }
 .panel-heading .muted { font-size: 11px; }
 .common-grid { grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 12px; }
-.common-grid label:nth-child(1) { grid-column: span 7; }
-.common-grid label:nth-child(2) { grid-column: span 3; }
-.common-grid label:nth-child(3) { grid-column: span 4; }
+.common-grid > .article-field { grid-column: span 7; }
+.common-grid > label:nth-child(2) { grid-column: span 3; }
+.common-grid > label:nth-child(3) { grid-column: span 4; }
 .common-grid label, .primary-fields label { font-size: 13px; }
 .common-grid select, .common-grid input { min-height: 52px; margin-top: 4px; font-size: 15px; }
+.article-field .trial-toggle { display: flex; align-items: center; gap: 9px; margin: 8px 0 4px; font-weight: 650; }
+.article-field .trial-toggle input { display: inline-block; flex: 0 0 auto; width: 20px; min-height: 20px; height: 20px; margin: 0; }
+.article-field #trial-symbol { width: 100%; }
+.trial-bale-badge { display: inline-block; margin-left: 7px; padding: 2px 7px; border-radius: 10px; background: #fff0d9; color: #875313; font-size: 10px; font-weight: 700; }
 .primary-fields { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 12px; align-items: end; }
 .primary-fields .worker-main { grid-column: span 4; }
 .primary-fields .kg-main { grid-column: span 3; }
@@ -265,7 +269,7 @@ body.keypad-open .top-nav { display: none; }
 }
 @media (max-width: 760px) {
   .common-grid { grid-template-columns: minmax(0, 1fr) minmax(100px, .55fr); }
-  .common-grid label:first-child { grid-column: 1 / -1; }
+  .common-grid > .article-field { grid-column: 1 / -1; }
   .primary-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .worker-main { grid-column: 1 / -1; }
   .primary-fields select, .primary-fields input { min-height: 58px; }
@@ -323,7 +327,7 @@ body.keypad-open .top-nav { display: none; }
 }
 @media (max-width: 760px) {
   .common-grid { grid-template-columns: 1fr; gap: 10px; }
-  .common-grid label:nth-child(n) { grid-column: auto; }
+  .common-grid > .article-field, .common-grid > label:nth-child(n) { grid-column: auto; }
   .primary-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
   .primary-fields .worker-main { grid-column: 1 / -1; }
   .primary-fields .kg-main, .primary-fields .meters-main,

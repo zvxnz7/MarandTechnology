@@ -23,7 +23,7 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
 const startingSchemaVersion = db.prepare('PRAGMA user_version').get().user_version;
-if (startingSchemaVersion > 7) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
+if (startingSchemaVersion > 8) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY,
@@ -80,6 +80,7 @@ db.exec(`
     stops INTEGER NOT NULL DEFAULT 0 CHECK(stops >= 0),
     lot TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
+    trial_symbol TEXT NOT NULL DEFAULT '',
     needs_check INTEGER NOT NULL DEFAULT 0 CHECK(needs_check IN (0,1)),
     sync_status TEXT NOT NULL DEFAULT 'pending' CHECK(sync_status IN ('pending','synced')),
     created_at TEXT NOT NULL,
@@ -165,6 +166,11 @@ if (startingSchemaVersion < 7) {
   const workerColumns = db.prepare('PRAGMA table_info(workers)').all().map(column => column.name);
   if (!workerColumns.includes('work_status')) db.exec("ALTER TABLE workers ADD COLUMN work_status TEXT NOT NULL DEFAULT 'active' CHECK(work_status IN ('active','vacation','sick'));");
   db.exec('PRAGMA user_version=7;');
+}
+if (startingSchemaVersion < 8) {
+  const baleColumns = db.prepare('PRAGMA table_info(bales)').all().map(column => column.name);
+  if (!baleColumns.includes('trial_symbol')) db.exec("ALTER TABLE bales ADD COLUMN trial_symbol TEXT NOT NULL DEFAULT '';");
+  db.exec('PRAGMA user_version=8;');
 }
 db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_server_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
   .run(DEFAULT_PRODUCTION_SERVER_URL);
@@ -297,6 +303,8 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false) {
   }
   const allocated = normalizedWorkers.reduce((sum, row) => sum + row.meters, 0);
   if (Math.abs(allocated - meters) > 0.01) fail(400, `Suma metrów dziewiarzy (${allocated.toFixed(2)}) musi odpowiadać metrom belki (${meters.toFixed(2)}).`);
+  const trialSymbol = input.isTrial ? cleanText(input.trialSymbol, 150, 'Symbol próby') : '';
+  if (input.isTrial && !trialSymbol) fail(400, 'Podaj symbol próby.');
   return {
     weightKg: positiveNumber(input.weightKg, 'Kilogramy', 1000),
     meters,
@@ -304,6 +312,7 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false) {
     stops: nonnegativeInteger(input.stops, 'Stopy'),
     lot: db.prepare('SELECT lot FROM article_settings WHERE article_id=?').get(articleId)?.lot || '',
     notes: cleanText(input.notes, 1000, 'Uwagi'),
+    trialSymbol,
     workers: normalizedWorkers,
     articleId,
   };
@@ -315,7 +324,7 @@ function allocateSerial(machine, year) {
   return current.last_value + 1;
 }
 function baleRows() {
-  return db.prepare(`SELECT b.*,a.symbol
+  return db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,a.symbol article_symbol
     FROM bales b JOIN articles a ON a.id=b.article_id
     WHERE NOT EXISTS (SELECT 1 FROM daily_production_report_bales rb WHERE rb.bale_id=b.id AND rb.state='included')
     ORDER BY b.created_at DESC,b.id DESC`).all().map(row => ({
@@ -325,7 +334,7 @@ function baleRows() {
     }));
 }
 function lastBaleRow() {
-  const row = db.prepare(`SELECT b.*,a.symbol FROM bales b
+  const row = db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,a.symbol article_symbol FROM bales b
     JOIN articles a ON a.id=b.article_id ORDER BY b.created_at DESC,b.id DESC LIMIT 1`).get();
   if (!row) return null;
   return {
@@ -613,7 +622,7 @@ async function uploadProduction() {
 function dailyReportDetails(reportDate) {
   const report = db.prepare('SELECT * FROM daily_production_reports WHERE report_date=?').get(reportDate);
   if (!report) return null;
-  const bales = db.prepare(`SELECT b.*,a.symbol FROM daily_production_report_bales rb
+  const bales = db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,a.symbol article_symbol FROM daily_production_report_bales rb
     JOIN bales b ON b.id=rb.bale_id JOIN articles a ON a.id=b.article_id
     WHERE rb.report_date=? AND rb.state='included' ORDER BY b.created_at,b.machine,b.serial_number,b.id`).all(reportDate).map((row,index) => ({
       ...row,
@@ -712,7 +721,7 @@ function generateDailyReport(requestedReportDate = '') {
 }
 function toRemoteBale(row) {
   return {
-    id: row.id, symbol: row.symbol, machine: row.machine, number: `${row.machine}/${row.serial_number}`,
+    id: row.id, symbol: row.article_symbol || row.symbol, trial_symbol: row.trial_symbol || '', machine: row.machine, number: `${row.machine}/${row.serial_number}`,
     production_date: row.production_date, weight_kg: row.weight_kg, meters: row.meters,
     errors: row.errors, stops: row.stops, needs_check: row.needs_check, lot: row.lot, notes: row.notes,
     created_at: row.created_at,
@@ -787,14 +796,14 @@ function createBales(body, reportDate = '') {
     }
     const created = [];
     const insert = db.prepare(`INSERT INTO bales
-      (id,machine,production_year,serial_number,article_id,production_date,weight_kg,meters,errors,stops,lot,notes,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      (id,machine,production_year,serial_number,article_id,production_date,weight_kg,meters,errors,stops,lot,notes,trial_symbol,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     const addWorker = db.prepare('INSERT INTO bale_workers(bale_id,worker_id,meters) VALUES(?,?,?)');
     for (const item of entries) {
       const id = crypto.randomUUID();
       const serial = allocateSerial(machine, year);
       const stamp = now();
-      insert.run(id,machine,year,serial,articleId,productionDate,item.weightKg,item.meters,item.errors,item.stops,item.lot,item.notes,stamp,stamp);
+      insert.run(id,machine,year,serial,articleId,productionDate,item.weightKg,item.meters,item.errors,item.stops,item.lot,item.notes,item.trialSymbol,stamp,stamp);
       for (const worker of item.workers) addWorker.run(id,worker.workerId,worker.meters);
       if (reportDate) db.prepare(`INSERT INTO daily_production_report_bales(report_date,bale_id,state) VALUES(?,?,'included')`).run(reportDate,id);
       created.push({ id, number: `${machine}/${serial}` });
@@ -819,8 +828,8 @@ function updateBale(id, body) {
     const year = Number(productionDate.slice(0,4));
     const serial = machine === current.machine && year === current.production_year ? current.serial_number : allocateSerial(machine, year);
     const stamp = now();
-    db.prepare(`UPDATE bales SET machine=?,production_year=?,serial_number=?,article_id=?,production_date=?,weight_kg=?,meters=?,errors=?,stops=?,lot=?,notes=?,sync_status='pending',synced_at=NULL,updated_at=? WHERE id=?`)
-      .run(machine,year,serial,articleId,productionDate,item.weightKg,item.meters,item.errors,item.stops,item.lot,item.notes,stamp,id);
+    db.prepare(`UPDATE bales SET machine=?,production_year=?,serial_number=?,article_id=?,production_date=?,weight_kg=?,meters=?,errors=?,stops=?,lot=?,notes=?,trial_symbol=?,sync_status='pending',synced_at=NULL,updated_at=? WHERE id=?`)
+      .run(machine,year,serial,articleId,productionDate,item.weightKg,item.meters,item.errors,item.stops,item.lot,item.notes,item.trialSymbol,stamp,id);
     db.prepare(`UPDATE daily_production_reports SET status='draft',approved_at=NULL,sent_at=NULL,last_error=NULL,approved_payload='{}',updated_at=?
       WHERE report_date IN (SELECT report_date FROM daily_production_report_bales WHERE bale_id=? AND state='included') AND status<>'sent'`)
       .run(stamp,id);

@@ -37,6 +37,11 @@ function options(items, valueKey, labelFn, selected) {
 }
 function articleLabel(item) { return item.symbol; }
 function workerLabel(worker) { return worker.name; }
+function syncTrialFields() {
+  const enabled = $('#trial-flag').checked;
+  $('#trial-symbol-wrap').hidden = !enabled;
+  $('#trial-symbol').required = enabled;
+}
 function fillCommonControls() {
   const oldArticle = $('#article').value;
   const oldMachine = $('#machine').value;
@@ -105,11 +110,16 @@ function resetBaleFields(prefill = null) {
 function setFreshForm(keepCommon = true, prefill = null) {
   const common = keepCommon ? {
     article: $('#article').value,
+    isTrial: $('#trial-flag').checked,
+    trialSymbol: $('#trial-symbol').value,
     machine: $('#machine').value,
     date: $('#production-date').value,
     worker: $('#worker-primary').value,
   } : {};
   $('#article').value = common.article || '';
+  $('#trial-flag').checked = Boolean(common.isTrial);
+  $('#trial-symbol').value = common.trialSymbol || '';
+  syncTrialFields();
   $('#machine').value = common.machine || '';
   $('#production-date').value = common.date || state.data.today;
   fillWorkerControls(prefill?.primaryWorkerId || common.worker || '');
@@ -129,7 +139,7 @@ function renderBales() {
   const chronological = [...state.data.bales].sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
   const ordinals = new Map(chronological.map((row,index) => [row.id,index + 1]));
   tbody.innerHTML = state.data.bales.map(row => `<tr>
-    <td>${ordinals.get(row.id)}</td><td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}</td><td>${dateFmt(row.production_date)}</td>
+    <td>${ordinals.get(row.id)}</td><td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}${row.trial_symbol ? '<small class="trial-bale-badge">Próba</small>' : ''}</td><td>${dateFmt(row.production_date)}</td>
     <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
     <td>${row.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
     <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Do sprawdzenia' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
@@ -386,7 +396,7 @@ function editableReportInput(bale, field, value, type = 'text') {
 function renderDailyReportDetails(reportDate, container, report) {
   const editable = report.status !== 'sent';
   const bales = [...report.bales].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id.localeCompare(a.id));
-  const rows = bales.map(bale => `<tr><td>${bale.ordinal}</td><td>${escapeHtml(bale.number)}</td><td>${escapeHtml(bale.symbol)}</td><td>${escapeHtml(bale.machine)}</td><td>${editable ? editableReportInput(bale,'production_date',bale.production_date,'date') : dateFmt(bale.production_date)}</td><td>${editable ? editableReportInput(bale,'weight_kg',String(bale.weight_kg).replace('.',',')) : fmt(bale.weight_kg)}</td><td>${editable ? editableReportInput(bale,'meters',String(bale.meters).replace('.',',')) : fmt(bale.meters)}</td><td>${editable ? editableReportInput(bale,'errors',bale.errors) : bale.errors}</td><td>${editable ? editableReportInput(bale,'stops',bale.stops) : bale.stops}</td><td>${bale.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td><td>${escapeHtml(bale.lot)}</td><td>${editable ? editableReportInput(bale,'notes',bale.notes || '') : escapeHtml(bale.notes)}</td><td>${editable ? `<button class="table-action remove-report-bale" data-id="${escapeHtml(bale.id)}">Usuń z raportu</button>` : '—'}</td></tr>`).join('');
+  const rows = bales.map(bale => `<tr><td>${bale.ordinal}</td><td>${escapeHtml(bale.number)}</td><td>${escapeHtml(bale.symbol)}${bale.trial_symbol ? '<small class="trial-bale-badge">Próba</small>' : ''}</td><td>${escapeHtml(bale.machine)}</td><td>${editable ? editableReportInput(bale,'production_date',bale.production_date,'date') : dateFmt(bale.production_date)}</td><td>${editable ? editableReportInput(bale,'weight_kg',String(bale.weight_kg).replace('.',',')) : fmt(bale.weight_kg)}</td><td>${editable ? editableReportInput(bale,'meters',String(bale.meters).replace('.',',')) : fmt(bale.meters)}</td><td>${editable ? editableReportInput(bale,'errors',bale.errors) : bale.errors}</td><td>${editable ? editableReportInput(bale,'stops',bale.stops) : bale.stops}</td><td>${bale.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td><td>${escapeHtml(bale.lot)}</td><td>${editable ? editableReportInput(bale,'notes',bale.notes || '') : escapeHtml(bale.notes)}</td><td>${editable ? `<button class="table-action remove-report-bale" data-id="${escapeHtml(bale.id)}">Usuń z raportu</button>` : '—'}</td></tr>`).join('');
   const statusText = report.last_error ? `<p class="report-error">${escapeHtml(report.last_error)}</p>` : report.status === 'sent'
     ? `<p class="muted">Wysłano ${escapeHtml(reportDateTime(report.sent_at))}. Wysłanego raportu nie można zmieniać w panelu lokalnym; korekty wykonuje się w programie głównym.</p>`
     : `<p class="muted">Status: ${escapeHtml(reportStatusLabel(report.status))}</p>`;
@@ -517,6 +527,8 @@ function collectBale() {
     errors: number(errorsText),
     stops: number(stopsText),
     notes: $('#notes').value,
+    isTrial: $('#trial-flag').checked,
+    trialSymbol: $('#trial-flag').checked ? $('#trial-symbol').value.trim() : '',
     primaryWorkerId: String(primaryId),
     workers: [{ workerId: primaryId, meters: remainder }, ...extras],
     extraWorkers: extras,
@@ -562,7 +574,7 @@ function startEdit(id) {
   if (!row || row.sync_status !== 'pending') { toast('Można poprawiać tylko belki oczekujące na wysłanie.', true); return; }
   showView('production');
   if (!state.data.articles.some(item => Number(item.id) === Number(row.article_id))) {
-    state.data.articles.push({ id: row.article_id, symbol: row.symbol, lot: row.lot || '' });
+    state.data.articles.push({ id: row.article_id, symbol: row.article_symbol || row.symbol, lot: row.lot || '' });
     fillCommonControls();
   }
   for (const worker of row.workers) {
@@ -571,6 +583,9 @@ function startEdit(id) {
     }
   }
   $('#article').value = String(row.article_id);
+  $('#trial-flag').checked = Boolean(row.trial_symbol);
+  $('#trial-symbol').value = row.trial_symbol || '';
+  syncTrialFields();
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -600,6 +615,9 @@ function startCopy(id) {
   }
   showView('production');
   $('#article').value = String(row.article_id);
+  $('#trial-flag').checked = Boolean(row.trial_symbol);
+  $('#trial-symbol').value = row.trial_symbol || '';
+  syncTrialFields();
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -712,6 +730,7 @@ $('#cancel-report-add').addEventListener('click', async () => {
 $('#refresh').addEventListener('click', refresh);
 $('#retry-startup').addEventListener('click', refresh);
 $('#back-to-production').addEventListener('click', () => showView('production'));
+$('#trial-flag').addEventListener('change', syncTrialFields);
 $('#worker-primary').addEventListener('change', updateShareSummary);
 $('#meters').addEventListener('input', updateShareSummary);
 $('#sequence-year').addEventListener('change', () => renderSequenceList($('#sequence-year').value));

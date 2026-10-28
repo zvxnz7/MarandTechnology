@@ -32,7 +32,7 @@
         <section class="panel production-entry">
           <div class="panel-heading"><div><h2 id="bale-form-title">Wprowadź nową belkę do rejestru</h2><span class="small muted">Artykuł, maszyna i dane belki</span></div><button id="copy-last-bale" type="button" class="copy-last-button">Skopiuj ostatnią belkę</button></div>
           <div class="common-grid">
-            <label>Artykuł<select id="article" required></select></label>
+            <div class="article-field"><label>Artykuł<select id="article" required></select></label><label class="trial-toggle"><input id="trial-flag" type="checkbox"> Próba</label><label id="trial-symbol-wrap" hidden>Symbol próby<input id="trial-symbol" type="text" maxlength="150" autocomplete="off" placeholder="Np. PR-123"></label></div>
             <label>Maszyna<select id="machine" required></select></label>
             <label>Data produkcji<input id="production-date" type="date" required></label>
           </div>

@@ -32,7 +32,7 @@ function initialize(db) {
       errors INTEGER NOT NULL DEFAULT 0 CHECK(errors>=0),
       stops INTEGER NOT NULL DEFAULT 0 CHECK(stops>=0),
       needs_check INTEGER NOT NULL DEFAULT 0 CHECK(needs_check IN (0,1)),
-      lot TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+      lot TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', trial_symbol TEXT NOT NULL DEFAULT '',
       workers_json TEXT NOT NULL DEFAULT '[]',
       local_created_at TEXT NOT NULL, uploaded_at TEXT NOT NULL
     );
@@ -52,6 +52,8 @@ function initialize(db) {
       updated_at TEXT NOT NULL
     );
   `);
+  const baleColumns = db.prepare('PRAGMA table_info(production_bales)').all().map(column => column.name);
+  if (!baleColumns.includes('trial_symbol')) db.exec("ALTER TABLE production_bales ADD COLUMN trial_symbol TEXT NOT NULL DEFAULT '';");
   // Older versions keyed these rows by upload date. Rebuild them on startup
   // from the per-bale production date so the one-time correction also covers
   // historical pieces that are not part of the next upload batch.
@@ -100,6 +102,8 @@ function receiveUpload(db, authorization, payload, helpers) {
     const machine = String(row.machine || '').trim();
     const number = String(row.number || '').trim();
     const date = String(row.production_date || '');
+    const trialSymbol = String(row.trial_symbol || '').trim();
+    if (trialSymbol.length > 150) throw responseError(400, `Belka ${index + 1}: symbol próby może mieć maksymalnie 150 znaków.`);
     const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T12:00:00Z`)) && new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) === date && date <= today;
     const weight = Number(row.weight_kg), meters = Number(row.meters), errors = Number(row.errors), stops = Number(row.stops);
     if (!machine || machine.length > 40 || !number || number.length > 80 || !validDate) throw responseError(400, `Belka ${index + 1}: nieprawidłowa maszyna, numer lub data produkcji.`);
@@ -118,6 +122,7 @@ function receiveUpload(db, authorization, payload, helpers) {
       errors, stops, lot: String(row.lot || '').trim().slice(0, 120),
       needsCheck: row.needs_check ? 1 : 0,
       notes: String(row.notes || '').trim().slice(0, 1000),
+      trialSymbol,
       workers: JSON.stringify(workers),
       localCreatedAt: String(row.created_at || '').slice(0, 30),
     };
@@ -131,17 +136,17 @@ function receiveUpload(db, authorization, payload, helpers) {
       articles.set(symbol, matches[0] || helpers.makeArticle(null, symbol));
     }
     const save = db.prepare(`INSERT INTO production_bales
-      (local_id,article_id,article_symbol,machine,bale_number,production_date,weight_kg,meters,errors,stops,needs_check,lot,notes,workers_json,local_created_at,uploaded_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      (local_id,article_id,article_symbol,machine,bale_number,production_date,weight_kg,meters,errors,stops,needs_check,lot,notes,trial_symbol,workers_json,local_created_at,uploaded_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(local_id) DO UPDATE SET article_id=excluded.article_id,article_symbol=excluded.article_symbol,
       machine=excluded.machine,bale_number=excluded.bale_number,production_date=excluded.production_date,
       weight_kg=excluded.weight_kg,meters=excluded.meters,errors=excluded.errors,stops=excluded.stops,
-      needs_check=excluded.needs_check,lot=excluded.lot,notes=excluded.notes,workers_json=excluded.workers_json,
+      needs_check=excluded.needs_check,lot=excluded.lot,notes=excluded.notes,trial_symbol=excluded.trial_symbol,workers_json=excluded.workers_json,
       local_created_at=excluded.local_created_at,uploaded_at=excluded.uploaded_at`);
     const accepted = [];
     for (const row of valid) {
       const articleId = articles.get(row.symbol).id;
-      save.run(row.localId, articleId, row.symbol, row.machine, row.number, row.date, row.weight, row.meters, row.errors, row.stops, row.needsCheck, row.lot, row.notes, row.workers, row.localCreatedAt || uploadedAt, uploadedAt);
+      save.run(row.localId, articleId, row.symbol, row.machine, row.number, row.date, row.weight, row.meters, row.errors, row.stops, row.needsCheck, row.lot, row.notes, row.trialSymbol, row.workers, row.localCreatedAt || uploadedAt, uploadedAt);
       if (db.prepare('SELECT 1 FROM production_bales WHERE local_id=?').get(row.localId)) accepted.push(row.localId);
     }
     const snapshots = [];
