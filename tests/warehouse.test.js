@@ -114,18 +114,20 @@ test('historia specyfikacji zachowuje dostęp do belek usuniętych korektą',()=
   }finally{f.db.close();}
 });
 
-test('wykończalnia i przycisk dodania są nad tabelami przy 200 belkach',()=>{
+test('przycisk utworzenia specyfikacji jest obok wyszukiwarki przy 200 belkach',()=>{
   const f=fixture(200);
   try{
     const created=createShipment(f),id=Number(created.location.split('/').pop());
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/select`,{},`?article_id=${f.articleId}`));
     assert.equal((page.body.match(/<input type="checkbox" value="bale-/g)||[]).length,200);
-    assert.ok(page.body.indexOf('shipment-picker-controls')<page.body.indexOf('data-range-picked-rows'));
+    assert.ok(page.body.indexOf('shipment-selection-toolbar')<page.body.indexOf('data-range-picked-rows'));
+    assert.match(page.body,/<button type="submit" form="shipment-picker-form" class="primary shipment-create-spec-button">Utwórz specyfikację<\/button>/);
+    assert.doesNotMatch(page.body,/shipment-picker-controls|<label>Wykończalnia/);
     assert.match(page.body,/Dodane belki/);
     assert.match(page.body,/\bBłędy\b/);
     assert.match(page.body,/\bStopy\b/);
     assert.match(page.body,/href="\/warehouse\/bales\/bale-1" target="_blank"/);
-    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-picker-controls\{grid-column:2;grid-row:1;display:flex/);
+    assert.match(fs.readFileSync(path.join(__dirname,'..','static','app.css'),'utf8'),/shipment-selection-toolbar\{display:flex;align-items:flex-end/);
     assert.doesNotMatch(page.body,/Wybór wykończalni jest wymagany/);
   }finally{f.db.close();}
 });
@@ -142,7 +144,7 @@ test('biblioteki pokazują wykończalnie, dziewiarzy, artykuły i przyszły sło
   }finally{f.db.close();}
 });
 
-test('WZ drukuje belki i wykończalnię, bez parametrów technologii wykończenia',()=>{
+test('WZ drukuje nadawcę Marand Zduńska Wola i odbiorcę Marand Łódź',()=>{
   const f=fixture();
   try{
     const created=createShipment(f),id=Number(created.location.split('/').pop());
@@ -150,7 +152,9 @@ test('WZ drukuje belki i wykończalnię, bez parametrów technologii wykończeni
     const item=f.db.prepare('SELECT id FROM shipment_articles WHERE shipment_id=?').get(id);
     f.db.prepare('UPDATE shipments SET status=\'closed\' WHERE id=?').run(id);
     const page=Warehouse.handle(f.ctx('GET',`/shipments/${id}/wz/${item.id}`));
-    assert.match(page.body,/Wykończalnia:<\/b> Anfarb/);
+    assert.match(page.body,/Dostawca:<\/b> MARAND · ul\. Szadkowska 72, 98-220 Zduńska Wola/);
+    assert.match(page.body,/Odbiorca:<\/b> MARAND · Łódź/);
+    assert.doesNotMatch(page.body,/Wykończalnia:<\/b>/);
     assert.match(page.body,/TEST-KNIT/);
     assert.doesNotMatch(page.body,/Dane technologiczne artykułu|docelowa/);
   }finally{f.db.close();}
