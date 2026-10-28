@@ -61,7 +61,7 @@ document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
  const preview=form.querySelector('[data-correction-specification-preview]'),count=form.querySelector('[data-correction-spec-count]');
  const updatePreview=()=>{
   const removed=[...form.querySelectorAll('[data-correction-remove]')].filter(box=>box.checked);
-  form.querySelectorAll('[data-correction-current-row]').forEach(row=>row.classList.toggle('shipment-correction-removed',Boolean(row.querySelector('[data-correction-remove]')?.checked)));
+  form.querySelectorAll('[data-correction-current-row]').forEach(row=>{const selected=Boolean(row.querySelector('[data-correction-remove]')?.checked),status=row.querySelector('[data-correction-disposition]');row.classList.toggle('shipment-correction-removed',selected);if(status){status.hidden=!selected;status.disabled=!selected;}});
   form.querySelectorAll('.shipment-correction-preview-added').forEach(row=>row.remove());
   const added=[...form.querySelectorAll('[data-correction-add]:checked')];
   if(preview){
