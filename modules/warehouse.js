@@ -487,7 +487,7 @@ function shipmentPage(ctx, shipment) {
       const removed=Boolean(b.removed_at);
       const reason=b.correction_reason||b.batch_reason||b.removal_reason;
       const disposition=b.correction_disposition||b.batch_disposition;
-      const dispositionLabels={returned:'wróciła do bieżącego stanu',mistaken:'pomylona sztuka · wróciła do bieżącego stanu',lost:'zagubiona',shipped_out:'wyjechała i pozostaje poza stanem'};
+      const dispositionLabels={mistaken:'Pomylona sztuka · wróciła do bieżącego stanu'};
       const assignmentStatus=removed?(disposition?`Usunięta korektą · ${dispositionLabels[disposition]||disposition}`:'Usunięta z wysyłki'):b.correction_action==='added'?'Dodana korektą':'W specyfikacji';
       return `<tr class="${removed?'shipment-bale-removed':''}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td>${canEdit&&!removed?`<td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="specification_id" value="${item.id}"><input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td>`:canEdit?'<td></td>':''}</tr>`;
     }).join('');
