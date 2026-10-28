@@ -55,21 +55,34 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
 const warehouseBulkStatus=document.querySelector('#warehouse-bulk-status');
 if(warehouseBulkStatus){const selected=warehouseBulkStatus.querySelector('[data-warehouse-selected]');warehouseBulkStatus.addEventListener('submit',event=>{selected.value=[...document.querySelectorAll('[data-warehouse-check]:checked')].map(box=>box.value).join(',');if(!selected.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});}
 document.querySelectorAll('[data-warehouse-live-search]').forEach(form=>{
- const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-warehouse-search-results]');let timer=null,controller=null;
+ const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-warehouse-search-results]');let timer=null,controller=null,activeIndex=-1;
+ const options=()=>[...results.querySelectorAll('[role="option"]')];
+ const setActive=index=>{
+  const items=options();if(!items.length){activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');return;}
+  activeIndex=(index+items.length)%items.length;
+  items.forEach((item,i)=>{const active=i===activeIndex;item.setAttribute('aria-selected',String(active));item.classList.toggle('selected',active);});
+  input.setAttribute('aria-activedescendant',items[activeIndex].id);input.setAttribute('aria-expanded','true');items[activeIndex].scrollIntoView({block:'nearest'});
+ };
  const search=async()=>{
   const q=input.value.trim();controller?.abort();controller=null;
-   if(!q){results.replaceChildren();input.setAttribute('aria-expanded','false');return;}
-   if(q.length<2){results.innerHTML='<p class="warehouse-search-hint">Wpisz co najmniej 2 znaki.</p>';input.setAttribute('aria-expanded','false');return;}
+   if(!q){results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');return;}
   controller=new AbortController();
   try{
    const response=await fetch(`/warehouse?partial=search&q=${encodeURIComponent(q)}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});
    if(!response.ok)throw new Error('Nie udało się wyszukać artykułów.');
-   results.innerHTML=await response.text();input.setAttribute('aria-expanded',String(Boolean(results.querySelector('a'))));
-  }catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać artykułów.';input.setAttribute('aria-expanded','false');}}
+   results.innerHTML=await response.text();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded',String(Boolean(options().length)));
+  }catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać artykułów.';input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}}
  };
- input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180);});
+ input.addEventListener('input',()=>{activeIndex=-1;controller?.abort();results.replaceChildren();input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');clearTimeout(timer);timer=setTimeout(search,180);});
+ input.addEventListener('keydown',event=>{
+  const items=options();
+  if(event.key==='ArrowDown'&&items.length){event.preventDefault();setActive(activeIndex<0?0:activeIndex+1);}
+  else if(event.key==='ArrowUp'&&items.length){event.preventDefault();setActive(activeIndex<0?items.length-1:activeIndex-1);}
+  else if(event.key==='Enter'&&activeIndex>=0&&items[activeIndex]){event.preventDefault();items[activeIndex].click();}
+  else if(event.key==='Escape'){event.preventDefault();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}
+ });
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
- document.addEventListener('click',event=>{if(!form.contains(event.target))input.setAttribute('aria-expanded','false');});
+ document.addEventListener('click',event=>{if(!form.contains(event.target)){clearTimeout(timer);controller?.abort();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}});
 });
 document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
  const input=form.querySelector('input[name="q"]'),results=form.querySelector('[data-shipment-search-results]');let timer=null,controller=null,activeIndex=-1;

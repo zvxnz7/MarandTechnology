@@ -222,10 +222,10 @@ function baleRows(rows, options = {}) {
 }
 
 function articleSearchResults(ctx, q) {
-  if (q.length < 2) return q ? '<p class="warehouse-search-hint">Wpisz co najmniej 2 znaki.</p>' : '';
+  if (!q) return '';
   const matches = articleBalances(ctx.db, q).filter(article => article.stock_pieces > 0);
   if (!matches.length) return '<p class="warehouse-search-empty">Brak artykułów z dostępnymi belkami.</p>';
-  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article => `<a role="option" href="/warehouse?article_id=${article.id}" class="warehouse-article-option"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
+  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article => `<a id="warehouse-article-option-${article.id}" role="option" aria-selected="false" href="/warehouse?article_id=${article.id}" class="warehouse-article-option"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
 }
 
 function catalogPage(ctx) {
@@ -233,7 +233,7 @@ function catalogPage(ctx) {
   const rawArticleId = Number(ctx.url.searchParams.get('article_id') || 0);
   if (ctx.url.searchParams.get('partial') === 'search') return articleSearchResults(ctx, q);
   const current = Number.isSafeInteger(rawArticleId) && rawArticleId > 0 ? articleBalances(ctx.db).find(a => a.id === rawArticleId) : null;
-  const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Symbol lub opis artykułu" aria-label="Szukaj artykułu" autocomplete="off" aria-controls="warehouse-search-results"></label><p class="muted small">Wpisz co najmniej 2 znaki. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia. Przy kilku słowach każde musi pasować.</p><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
+  const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Symbol lub opis artykułu" aria-label="Szukaj artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="warehouse-search-results"></label><p class="muted small">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia. Przy kilku słowach każde musi pasować.</p><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
   let selectedView = '';
   if (current) {
     const bales = registeredBales(ctx.db, current.id);
