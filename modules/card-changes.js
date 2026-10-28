@@ -2,7 +2,7 @@
 const V=require('../views');
 function flatten(v) {
  const rows={};
- for(const [key,label] of [['symbol','Artykuł'],['number','Nr projektu'],['date','Data'],['client','Klient'],['description','Opis / założenia'],['comments','Komentarz dodatkowy'],['knitter_notes','Stałe uwagi dla dziewiarza']])rows[label]=v[key]||'';
+ for(const [key,label] of [['symbol','Artykuł'],['number','Nr projektu'],['date','Data'],['client','Klient'],['description','Opis / założenia'],['comments','Komentarz dodatkowy'],['knitter_notes','Uwagi dla dziewiarza']])rows[label]=v[key]||'';
  for(const [group,title,fields] of [['tech','Maszyna',V.TECH],['raw','Dzianina surowa',V.RAW_METRICS],['targets','Dzianina wykończona',V.TARGET_METRICS]])
  for(const [key,label]of fields)rows[`${title} — ${label}`]=v[group]?.[key]||'';
  for(const g of v.gb||[])for(const [key,label]of V.GB)if(key!=='number')rows[`GB${g.number} — ${label}`]=g[key]||'';
