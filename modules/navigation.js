@@ -6,7 +6,7 @@ module.exports = [
   { id: 'projects', label: 'Projekty / próby', href: '/projects' },
   { id: 'warehouse', label: 'MAGAZYN', children: [
     { id: 'production', label: 'Stan bieżący', href: '/production' },
-    { id: 'catalog', label: 'Kartoteka', href: '/warehouse' },
+    { id: 'catalog', label: 'Wykaz sztuk', href: '/warehouse' },
     { id: 'shipments', label: 'Wysyłka', href: '/shipments' },
   ] },
   { id: 'finishing', label: 'WYKAŃCZANIE', children: [

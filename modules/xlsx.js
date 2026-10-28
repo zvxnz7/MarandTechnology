@@ -46,7 +46,7 @@ function zip(files) {
   return Buffer.concat([...local, centralBuffer, end]);
 }
 
-function workbook(headers, rows, sheetName = 'Kartoteka sztuk') {
+function workbook(headers, rows, sheetName = 'Wykaz sztuk') {
   const allRows = [headers, ...rows];
   const sheetRows = allRows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
     const ref = `${columnName(columnIndex)}${rowIndex + 1}`;

@@ -3,9 +3,7 @@
 const crypto = require('node:crypto');
 const V = require('../views');
 const Warehouse = require('./warehouse');
-const Xlsx = require('./xlsx');
 
-const TEST_ARTICLE_KEY = 'WT56-21(5)';
 const STOCK_STATES = {
   in_production: 'W produkcji',
   standard: 'Standard',
@@ -15,7 +13,6 @@ const STOCK_STATES = {
   second_grade: 'II gatunek',
 };
 const normalizeSymbol = value => String(value || '').toLocaleUpperCase('pl-PL').replace(/\s+/g, '');
-const escapeLike = value => String(value).replace(/[\\%_]/g, '\\$&');
 
 function initialize(db) {
   db.exec(`
@@ -256,7 +253,7 @@ function overviewPage(ctx) {
   const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);
   const updatedAt = latest.map(row => row.uploaded_at).sort().at(-1);
   const summary = `<p class="stock-summary"><strong>Liczba sztuk: ${pieces}</strong><strong>Łączna waga: ${Number(weight).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</strong></p><p class="muted">Stan zaktualizowano: ${updatedAt ? V.datepl(updatedAt) : 'brak danych'}</p>`;
-  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div><a class="button" href="/production/bales" target="_blank" rel="noopener">Kartoteka sztuk ↗</a></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column">${days.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('')}</colgroup><thead><tr><th class="stock-fixed-header" rowspan="2">Stan</th><th class="stock-fixed-header" rowspan="2">Artykuł</th>${dayHeaders}</tr><tr>${daySubheaders}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + days.length * 2}">Brak artykułów z niezerowym stanem.</td></tr>`}</tbody></table></div><p class="muted small">Pokazano zawsze pięć ostatnich dni roboczych. Stan z każdego dnia obejmuje narastająco przyjęcia z programu lokalnego oraz wyjścia z zamkniętych wysyłek.</p>`;
+  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column">${days.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('')}</colgroup><thead><tr><th class="stock-fixed-header" rowspan="2">Stan</th><th class="stock-fixed-header" rowspan="2">Artykuł</th>${dayHeaders}</tr><tr>${daySubheaders}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + days.length * 2}">Brak artykułów z niezerowym stanem.</td></tr>`}</tbody></table></div><p class="muted small">Pokazano zawsze pięć ostatnich dni roboczych. Stan z każdego dnia obejmuje narastająco przyjęcia z programu lokalnego oraz wyjścia z zamkniętych wysyłek.</p>`;
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Stan bieżący · Marand', body });
 }
 
@@ -268,51 +265,9 @@ function connectionPage(ctx, oneTimeToken = '') {
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Połączenie z panelem lokalnym · Marand', body });
 }
 
-function balesData(ctx) {
-  const query = String(ctx.url.searchParams.get('q') || '').trim();
-  const terms = query.split(/\s+/).map(ctx.normalize).filter(Boolean);
-  const where = ['a.symbol_key=?'];
-  const params = [TEST_ARTICLE_KEY];
-  for (const term of terms) {
-    where.push("search_text(a.symbol || ' ' || b.bale_number || ' ' || b.machine || ' ' || b.lot || ' ' || b.notes || ' ' || b.workers_json) LIKE ? ESCAPE '\\'");
-    params.push(`%${escapeLike(term)}%`);
-  }
-  const from = String(ctx.url.searchParams.get('date_from') || '');
-  const to = String(ctx.url.searchParams.get('date_to') || '');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { where.push('b.production_date>=?'); params.push(from); }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { where.push('b.production_date<=?'); params.push(to); }
-  const items = ctx.db.prepare(`SELECT b.*,a.symbol FROM production_bales b JOIN articles a ON a.id=b.article_id
-    WHERE ${where.join(' AND ')} ORDER BY b.production_date DESC,b.uploaded_at DESC,b.bale_number LIMIT 1000`).all(...params);
-  return { query, from, to, items };
-}
-
-function balesPage(ctx) {
-  const { query, from, to, items } = balesData(ctx);
-  const rows = items.map(row => {
-    let workers = [];
-    try { workers = JSON.parse(row.workers_json || '[]'); } catch {}
-    const workerText = workers.map(worker => `${V.esc(worker.name)} · ${Number(worker.meters).toLocaleString('pl-PL')} m`).join('<br>') || '—';
-    return `<tr><td>${V.esc(row.bale_number)}</td><td>${V.esc(row.symbol)}</td><td>${V.esc(row.machine)}</td><td>${V.esc(row.production_date.split('-').reverse().join('.'))}</td><td>${Number(row.weight_kg).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td>${workerText}</td><td>${V.esc(row.lot)}</td><td>${V.esc(row.notes)}</td><td>${row.needs_check ? 'Do sprawdzenia' : '—'}</td><td>${V.datepl(row.uploaded_at)}</td></tr>`;
-  }).join('');
-  const form = `<form class="searchbar production-bale-filters"><input name="q" value="${V.esc(query)}" placeholder="Szukaj belki, dziewiarza lub LOT"><label class="date-filter">Od<input type="date" name="date_from" value="${V.esc(from)}"></label><label class="date-filter">Do<input type="date" name="date_to" value="${V.esc(to)}"></label><button class="primary">Szukaj</button></form>`;
-  const exportQuery = new URLSearchParams({ q: query, date_from: from, date_to: to }).toString();
-  const actions = `<div class="actions production-bale-actions"><button type="button" data-print-page>Drukuj</button><a class="button" href="/production/bales/export.xlsx?${exportQuery}">Eksportuj do Excela</a></div>`;
-  const body = `<a class="breadcrumb" href="/production">← Stan bieżący</a><div class="pagehead"><div><span class="eyebrow">KARTOTEKA PRODUKCJI</span><h1>Belki · WT 56-21 (5)</h1><p class="muted">${items.length} wpisów${items.length === 1000 ? ' · pokazano maksymalnie 1000 najnowszych' : ''}</p></div>${actions}</div>${form}<div class="panel scroll production-bales-table"><table class="listing"><thead><tr><th>Belka</th><th>Artykuł</th><th>Maszyna</th><th>Data</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział</th><th>LOT</th><th>Uwagi</th><th>Do sprawdzenia</th><th>Wysłano</th></tr></thead><tbody>${rows || '<tr><td colspan="13">Nie wysłano jeszcze belek dla tego artykułu.</td></tr>'}</tbody></table></div>`;
-  return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Kartoteka sztuk · Marand', body });
-}
-
 async function handle(ctx) {
   const { req, res, p, send, redirect, role, db } = ctx;
-  if (p === '/production/bales/export.xlsx' && req.method === 'GET') {
-    const { items } = balesData(ctx);
-    const rows = items.map(row => {
-      let workers = [];
-      try { workers = JSON.parse(row.workers_json || '[]'); } catch {}
-      return [row.bale_number, row.symbol, row.machine, row.production_date.split('-').reverse().join('.'), Number(row.weight_kg), Number(row.meters), Number(row.errors), Number(row.stops), workers.map(worker => `${worker.name} · ${Number(worker.meters).toLocaleString('pl-PL')} m`).join('; ') || '—', row.lot || '', row.notes || '', row.needs_check ? 'Do sprawdzenia' : '—', V.datepl(row.uploaded_at)];
-    });
-    const workbook = Xlsx.workbook(['Belka','Artykuł','Maszyna','Data','kg','Metry','Błędy','Stopy','Dziewiarze / udział','LOT','Uwagi','Do sprawdzenia','Wysłano'], rows);
-    return send(req, res, 200, workbook, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', { 'Content-Disposition': 'attachment; filename="kartoteka-sztuk.xlsx"' });
-  }
+  if ((p === '/production/bales' || p === '/production/bales/export.xlsx') && req.method === 'GET') return redirect(req, res, '/warehouse');
   if (p === '/production/token' && req.method === 'POST') {
     role(req.user, 'admin');
     const token = crypto.randomBytes(32).toString('hex');
@@ -337,7 +292,6 @@ async function handle(ctx) {
     return redirect(req, res, '/production', 'Stan artykułu został zapisany.');
   }
   if (p === '/production' && req.method === 'GET') return send(req, res, 200, overviewPage(ctx));
-  if (p === '/production/bales' && req.method === 'GET') return send(req, res, 200, balesPage(ctx));
   return false;
 }
 

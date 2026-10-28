@@ -2,11 +2,14 @@
 
 const crypto = require('node:crypto');
 const V = require('../views');
+const Xlsx = require('./xlsx');
 
 const editableRoles = ['admin', 'approver', 'technologist'];
 const managerRoles = ['admin', 'approver'];
 const hidden = (name, value) => `<input type="hidden" name="${V.esc(name)}" value="${V.esc(value)}">`;
 const normalizeSearch = value => String(value || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
+const printerSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/><path d="M18 11h.01"/></svg>';
+const shipmentPrintIcon = (id, label) => `<a class="shipment-print-icon" href="/shipments/${id}/report" target="_blank" rel="noopener" aria-label="Drukuj raport wysyłki ${V.esc(label)}" title="Drukuj raport wysyłki">${printerSvg}</a>`;
 
 function initialize(db) {
   db.exec(`
@@ -210,15 +213,35 @@ function baleRows(rows, options = {}) {
     return `lot-color-${hash % 8}`;
   };
   return rows.map((row, index) => {
-    const noteForm = options.editNotes ? `<form method="post" action="/warehouse/bales/${encodeURIComponent(row.local_id)}/notes" class="warehouse-note-form" data-warehouse-note-form>${hidden('csrf', options.csrf)}<input name="notes" value="${V.esc(row.notes)}" aria-label="Uwagi do belki ${V.esc(row.bale_number)}" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>` : V.esc(row.notes || '—');
+    const noteForm = options.editNotes ? `<form method="post" action="/warehouse/bales/${encodeURIComponent(row.local_id)}/notes" class="warehouse-note-form" data-warehouse-note-form>${hidden('csrf', options.csrf)}<input name="notes" value="${V.esc(row.notes)}" aria-label="Uwagi do belki ${V.esc(row.bale_number)}" data-warehouse-note><span class="print-only">${V.esc(row.notes || '—')}</span><span class="warehouse-note-status no-print" aria-live="polite"></span></form>` : V.esc(row.notes || '—');
     const statusAction = options.manageStatuses && row.inventory_status !== 'lost' && row.reserved_status !== 'draft'
       ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz belkę ${V.esc(row.bale_number)}"></label>`
       : options.manageStatuses && row.inventory_status === 'lost'
         ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz zagubioną belkę ${V.esc(row.bale_number)}"></label>`
         : '';
     const lot = String(row.lot || '').trim();
-     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td>${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
+     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
   }).join('');
+}
+
+function warehouseExcelStatus(row) {
+  const statuses=[];
+  if(row.inventory_status==='lost') statuses.push('Zagubiona');
+  const tags=String(row.quality_tags||'').split(',');
+  if(tags.includes('second_grade')) statuses.push('II gatunek');
+  if(tags.includes('stripe_risk')) statuses.push('Ryzyko pasiastości');
+  if(row.custom_status) statuses.push(row.custom_status);
+  if(!statuses.length) statuses.push(row.reserved_status==='draft'?'W przygotowaniu':'Dostępna');
+  return statuses.join('; ');
+}
+
+function warehouseExcel(ctx, articleId) {
+  const article=articleBalances(ctx.db).find(row=>row.id===articleId);
+  if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
+  const rows=registeredBales(ctx.db,articleId).map((row,index)=>[
+    index+1,row.symbol,row.bale_number,Number(row.weight_kg),Number(row.meters),Number(row.errors),Number(row.stops),row.lot||'',row.notes||'',date(row.production_date),warehouseExcelStatus(row),
+  ]);
+  return Xlsx.workbook(['LP','Symbol','Nr szt.','Masa kg','Metry','Błędy','Stopy','LOT','Uwagi','Data produkcji','Status'],rows,article.symbol);
 }
 
 function articleSearchResults(ctx, q) {
@@ -243,14 +266,15 @@ function catalogPage(ctx) {
     const canManageStatuses = managerRoles.includes(ctx.req.user.role);
     const lostForm = canManageStatuses ? `<form method="post" action="/warehouse/bales/status" id="warehouse-bulk-status" class="warehouse-bulk-status">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="article_id" value="${current.id}"><input type="hidden" name="bale_ids" value="" data-warehouse-selected><input name="reason" placeholder="Powód zagubienia (opcjonalnie)" maxlength="500"><button name="status" value="lost" class="button danger">Oznacz jako zagubione</button><button name="status" value="second_grade" class="button warehouse-action-second-grade">Oznacz jako drugi gatunek</button><button name="status" value="stripe_risk" class="button warehouse-action-stripe-risk">Oznacz jako ryzyko pasiastości</button><input name="custom_status" maxlength="120" placeholder="Własny status"><button name="status" value="custom" class="button warehouse-action-custom-status">Dodaj status</button>${lostCount||bales.some(b=>b.quality_tags||b.custom_status) ? '<button name="status" value="available" class="button">Usuń oznaczenia / przywróć dostępność</button>' : ''}</form>` : '';
     const cols = canManageStatuses ? 11 : 10;
-    selectedView = `<section class="warehouse-selected"><div class="pagehead"><div><h2>${V.esc(current.symbol)}</h2><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th>✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`}</tbody></table></div></section>`;
+    const exportButtons=`<div class="actions warehouse-export-actions"><button type="button" data-print-page>Drukuj</button><a class="button" href="/warehouse/export.xlsx?article_id=${current.id}">Eksportuj do Excela</a></div>`;
+    selectedView = `<section class="warehouse-selected"><div class="pagehead"><div><h2>${V.esc(current.symbol)}</h2><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div>${exportButtons}</div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`}</tbody></table></div></section>`;
   }
   if (!current) {
     const canManageStatuses=managerRoles.includes(ctx.req.user.role),cols=canManageStatuses?11:10;
     selectedView=`<section class="warehouse-selected"><div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses?'<th>LP</th><th>✓</th>':'<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="${cols}">Wybierz artykuł, aby wyświetlić jego belki.</td></tr></tbody></table></div></section>`;
   }
-    const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Kartoteka</h1><p class="muted">Wyszukaj artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${selectedView}`;
-  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Kartoteka magazynowa · Marand',body});
+    const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wykaz sztuk</h1><p class="muted">Wyszukaj artykuł, aby zobaczyć jego belki i bieżący stan.</p></div></div>${search}${selectedView}`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Wykaz sztuk · Marand',body});
 }
 
 function baleDetailPage(ctx, localId) {
@@ -281,8 +305,8 @@ function baleDetailPage(ctx, localId) {
   const canEditNote=editableRoles.includes(ctx.req.user.role)&&bale.shipment_status!=='closed'&&bale.inventory_status!=='shipped_out';
   const noteForm=canEditNote?`<form method="post" action="/warehouse/bales/${encodeURIComponent(bale.local_id)}/notes" class="warehouse-detail-note" data-warehouse-note-form>${hidden('csrf',ctx.req.session.csrf)}<input name="notes" value="${V.esc(bale.notes)}" aria-label="Uwagi do belki" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>`:V.esc(bale.notes||'—');
   const entries=[['Symbol artykułu',`<a href="/warehouse?article_id=${bale.article_id}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',noteForm],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
-  const body=`<a class="breadcrumb" href="/warehouse?article_id=${bale.article_id}">← Kartoteka ${V.esc(bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
-  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Belka ${bale.bale_number} · Kartoteka · Marand`,body});
+  const body=`<a class="breadcrumb" href="/warehouse?article_id=${bale.article_id}">← Wykaz sztuk · ${V.esc(bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Belka ${bale.bale_number} · Wykaz sztuk · Marand`,body});
 }
 
 function shipmentRecord(db, id) {
@@ -390,8 +414,9 @@ function shipmentsPage(ctx) {
   }).map(s => {
     const items = shipmentArticles(ctx.db,s.id);
     const itemRows = s.status==='cancelled'?'':items.map(item => `<li><a href="/shipments/${s.id}/wz/${item.id}" target="_blank" rel="noopener">${articleNo(s,item)} ${V.esc(item.symbol)}</a> · ${item.bale_count} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · <span class="plant-chip ${plantColor(item.finishing_plant_id)}">${V.esc(item.finishing_plant_name)}</span>`:''}</li>`).join('');
+    const print=s.status==='closed'?shipmentPrintIcon(s.id,shipmentNo(s)):'';
     const remove=managerRoles.includes(ctx.req.user.role)&&s.status!=='closed'?`<a class="shipment-delete-button shipment-delete-link" href="/shipments/${s.id}/delete" title="Usuń wysyłkę" aria-label="Usuń wysyłkę ${shipmentNo(s)}">×</a>`:'';
-    return `<tr><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td><td class="shipment-delete-cell">${remove}</td></tr>`;
+    return `<tr><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td><td class="shipment-delete-cell"><div class="shipment-row-actions">${print}${remove}</div></td></tr>`;
   }).join('');
   const filters = `<form method="get" action="/shipments" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input type="search" name="q" value="${V.esc(q)}" placeholder="Nr wysyłki, artykuł lub wykończalnia" autocomplete="off"></label><label>Rok<select name="year"><option value="">Wszystkie lata</option>${years.map(value => `<option value="${V.esc(value)}"${year===value?' selected':''}>${V.esc(value)}</option>`).join('')}</select></label><label>Data od<input type="date" name="date_from" value="${V.esc(from)}"></label><label>Data do<input type="date" name="date_to" value="${V.esc(to)}"></label><button class="primary">Filtruj</button><a class="button" href="/shipments">Wyczyść</a><p class="muted small shipment-list-filter-hint">${q&&!searchReady?'Wpisz co najmniej 2 znaki. ':''}Szukamy po numerze wysyłki, statusie, symbolu artykułu i wykończalni. Wielkość liter i polskie znaki nie mają znaczenia; przy kilku słowach każde musi pasować.</p></form>`;
   const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłki</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div>${create}</div>${filters}<div class="panel scroll"><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="8">${shipments.length?'Brak wysyłek dla wybranych filtrów.':'Nie ma jeszcze wysyłek.'}</td></tr>`}</tbody></table></div>`;
@@ -422,8 +447,8 @@ function shipmentPage(ctx, shipment) {
   const close = canClose && items.some(item=>item.bale_count>0) ? `<form method="post" action="/shipments/${shipment.id}/close" class="shipment-close-form">${hidden('csrf',ctx.req.session.csrf)}<label class="check"><input type="checkbox" name="confirm_close" value="1" required> Potwierdzam zamknięcie wysyłki. Belki znikną z bieżącego rejestru.</label><button class="primary">Zamknij wysyłkę</button></form>` : '';
   const cancel = canClose ? `<a class="button danger" href="/shipments/${shipment.id}/cancel">Anuluj wysyłkę i zwolnij belki</a>` : '';
   const correction = shipment.status==='closed' && managerRoles.includes(ctx.req.user.role) ? correctionForm(ctx,shipment,items) : '';
-  const reportLink = shipment.status==='closed' ? `<a class="button" href="/shipments/${shipment.id}/report" target="_blank" rel="noopener">Drukuj raport wysyłki</a>` : '';
-  const body = `<a class="breadcrumb" href="/shipments">← Wysyłki</a><div class="pagehead"><div><span class="eyebrow">${status}</span><h1>Wysyłka ${shipmentNo(shipment)}</h1>${details}</div><div class="shipment-totals"><strong>${items.reduce((s,x)=>s+x.bale_count,0)} szt</strong><strong>${money(items.reduce((s,x)=>s+x.weight_kg,0))} kg</strong></div></div>${reportLink}<div class="shipment-final-actions">${close}</div>${actions}${itemViews||'<p class="muted">Dodaj specyfikację i wybierz belki do wysyłki.</p>'}<div class="shipment-final-actions">${cancel}</div>${correction}`;
+  const reportIcon = shipment.status==='closed' ? shipmentPrintIcon(shipment.id,shipmentNo(shipment)) : '';
+  const body = `<a class="breadcrumb" href="/shipments">← Wysyłki</a><div class="pagehead"><div><span class="eyebrow">${status}</span><h1>Wysyłka ${shipmentNo(shipment)}</h1>${details}</div><div class="shipment-totals"><strong>${items.reduce((s,x)=>s+x.bale_count,0)} szt</strong><strong>${money(items.reduce((s,x)=>s+x.weight_kg,0))} kg</strong>${reportIcon}</div></div><div class="shipment-final-actions">${close}</div>${actions}${itemViews||'<p class="muted">Dodaj specyfikację i wybierz belki do wysyłki.</p>'}<div class="shipment-final-actions">${cancel}</div>${correction}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Wysyłka ${shipmentNo(shipment)} · Marand`,body});
 }
 
@@ -634,6 +659,11 @@ function handle(ctx) {
     const result=db.prepare('UPDATE finishing_types SET active=1-active,updated_at=?,updated_by=? WHERE id=?').run(ctx.now(),req.user.id,Number(finishToggle[1]));
     if(!result.changes) throw Object.assign(new Error('Nie znaleziono rodzaju wykończenia.'),{status:404});
     return redirect(req,res,'/settings/libraries','Zmieniono status rodzaju wykończenia.');
+  }
+  if(p==='/warehouse/export.xlsx'&&req.method==='GET') {
+    const articleId=Number(ctx.url.searchParams.get('article_id')||0);
+    if(!Number.isSafeInteger(articleId)||articleId<1) throw Object.assign(new Error('Wybierz artykuł przed eksportem.'),{status:400});
+    return send(req,res,200,warehouseExcel(ctx,articleId),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':'attachment; filename="wykaz-sztuk.xlsx"' });
   }
   if(p==='/warehouse'&&req.method==='GET') return send(req,res,200,catalogPage(ctx));
   if(p==='/warehouse/bales/status'&&req.method==='POST') {
