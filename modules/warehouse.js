@@ -445,17 +445,6 @@ function shipmentCorrectionSearchResults(db, shipments, q) {
   return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące wysyłki">${matches.map(({shipment,items})=>`<a id="shipment-correction-option-${shipment.id}" role="option" aria-selected="false" href="/shipments/correct?shipment_id=${shipment.id}" class="warehouse-article-option"><strong>Wysyłka ${shipmentNo(shipment)} · ${date(shipment.shipment_date)}</strong><span>${items.map(item=>`${V.esc(articleNo(shipment,item))} ${V.esc(item.symbol)}`).join(' · ')||'Bez specyfikacji'}</span></a>`).join('')||'<p class="muted small">Brak pasujących zamkniętych wysyłek.</p>'}</div>`;
 }
 
-function shipmentCorrectionSpecificationSearchResults(db, shipment, specifications, q) {
-  const terms=String(q||'').trim().split(/\s+/).map(normalizeSearch).filter(Boolean);
-  const matches=specifications.map(item=>{
-    const bales=shipmentBales(db,item.id);
-    const matchingBales=bales.filter(bale=>terms.some(term=>normalizeSearch(bale.bale_number).includes(term)));
-    const fields=[articleNo(shipment,item),item.symbol,item.finishing_plant_name||'',...bales.map(bale=>bale.bale_number)].map(normalizeSearch);
-    return {item,bales,matchingBales,match:terms.every(term=>fields.some(field=>field.includes(term)))};
-  }).filter(result=>result.match);
-  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące specyfikacje">${matches.map(({item,bales,matchingBales})=>`<a id="shipment-correction-specification-option-${item.id}" role="option" aria-selected="false" href="/shipments/correct?shipment_id=${shipment.id}&specification_id=${item.id}" class="warehouse-article-option"><strong>${V.esc(articleNo(shipment,item))} · ${V.esc(item.symbol)}</strong><span>${bales.length} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · ${V.esc(item.finishing_plant_name)}`:''}${matchingBales.length?` · Pasujące sztuki: ${matchingBales.map(bale=>V.esc(bale.bale_number)).join(', ')}`:''}</span></a>`).join('')||'<p class="muted small">Brak pasujących specyfikacji ani numerów sztuk.</p>'}</div>`;
-}
-
 function shipmentsPage(ctx) {
   const q = String(ctx.url.searchParams.get('q') || '').trim();
   const dateFrom = String(ctx.url.searchParams.get('date_from') || '').trim();
@@ -554,8 +543,6 @@ function shipmentCorrectionPage(ctx) {
   const shipments=ctx.db.prepare("SELECT * FROM shipments WHERE status='closed' ORDER BY shipment_year DESC,sequence DESC").all();
   const searchQuery=String(ctx.url.searchParams.get('q')||'').trim();
   if(ctx.url.searchParams.get('partial')==='search'){
-    const searchShipmentId=Number(ctx.url.searchParams.get('shipment_id')||0),searchShipment=shipments.find(row=>row.id===searchShipmentId);
-    if(searchShipment) return shipmentCorrectionSpecificationSearchResults(ctx.db,searchShipment,shipmentArticles(ctx.db,searchShipment.id),searchQuery);
     return shipmentCorrectionSearchResults(ctx.db,shipments,searchQuery);
   }
   const shipmentId=Number(ctx.url.searchParams.get('shipment_id')||0);
@@ -565,8 +552,7 @@ function shipmentCorrectionPage(ctx) {
   const item=specifications.find(row=>row.id===specificationId);
   const shipmentSearchValue=shipment?`Wysyłka ${shipmentNo(shipment)} · ${date(shipment.shipment_date)}`:'';
   const shipmentPicker=`<section class="panel padded shipment-correction-step"><h2>1. Wybierz wysyłkę do korekty</h2><form method="get" action="/shipments/correct" class="shipment-correction-picker shipment-correction-search" data-shipment-live-search><label>Wysyłka<input type="search" name="q" value="${V.esc(shipmentSearchValue)}" placeholder="Wpisz numer wysyłki, symbol artykułu…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shipment-correction-search-results"></label><div id="shipment-correction-search-results" class="warehouse-search-results-wrap" data-shipment-search-results></div></form>${shipments.length?'':'<p class="muted">Nie ma zamkniętych wysyłek do skorygowania.</p>'}</section>`;
-  const selectedSpecification=item?`${articleNo(shipment,item)} · ${item.symbol}`:'';
-  const specificationPicker=shipment?`<section class="panel padded shipment-correction-step"><h2>2. Wybierz specyfikację do korekty</h2><p class="muted">Wysyłka ${shipmentNo(shipment)} · ${date(shipment.shipment_date)}</p><form method="get" action="/shipments/correct" class="shipment-correction-picker shipment-correction-search" data-shipment-live-search>${hidden('shipment_id',shipment.id)}<label>Specyfikacja<input type="search" name="q" value="${V.esc(selectedSpecification)}" placeholder="Wpisz numer specyfikacji, symbol lub numer sztuki…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shipment-correction-specification-search-results"></label><div id="shipment-correction-specification-search-results" class="warehouse-search-results-wrap" data-shipment-search-results></div></form>${specifications.length?'':'<p class="muted">Ta wysyłka nie ma specyfikacji.</p>'}</section>`:'';
+  const specificationPicker=shipment?`<section class="panel padded shipment-correction-step"><h2>2. Wybierz specyfikację do korekty</h2><p class="muted">Wysyłka ${shipmentNo(shipment)} · ${date(shipment.shipment_date)}</p><form method="get" action="/shipments/correct" class="shipment-correction-picker">${hidden('shipment_id',shipment.id)}<label>Specyfikacja<select name="specification_id" data-auto-submit required><option value="">Wybierz specyfikację</option>${specifications.map(row=>`<option value="${row.id}"${row.id===specificationId?' selected':''}>${articleNo(shipment,row)} · ${V.esc(row.symbol)} · ${row.bale_count} szt · ${money(row.weight_kg)} kg</option>`).join('')}</select></label></form>${specifications.length?'':'<p class="muted">Ta wysyłka nie ma specyfikacji.</p>'}</section>`:'';
   let editSection='';
   if(item){
     const currentBales=shipmentBales(ctx.db,item.id);
