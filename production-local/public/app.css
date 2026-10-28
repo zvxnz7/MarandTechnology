@@ -560,3 +560,24 @@ body.keypad-open .top-nav { display: none; }
   .touch-key-actions button { min-height: 43px; }
   .touch-digit-row button { min-height: 43px; font-size: 14px; }
 }
+@media (max-height: 820px) and (min-width: 601px) {
+  .touch-view { padding: clamp(14px, 2.65vw, 34px); }
+  .touch-header { margin-bottom: clamp(12px, 1.8vh, 24px); }
+  .touch-header button, .touch-back { min-height: 55px; }
+  .touch-home-actions { gap: clamp(10px, 1.9vw, 20px); }
+  .touch-home-actions button { min-height: clamp(98px, 16vh, 158px); font-size: clamp(23px, 2.85vw, 34px); }
+  .touch-tiles { gap: 11px; }
+  .touch-tile { min-height: clamp(84px, 12.4vh, 122px); padding: 14px; font-size: clamp(20px, 2.1vw, 28px); }
+  .touch-machine-tiles .touch-tile { min-height: clamp(95px, 15.2vh, 142px); font-size: clamp(27px, 2.9vw, 38px); }
+  #touch-article-tiles .touch-tile { min-height: clamp(120px, 15.2vh, 170px); font-size: clamp(24px, 2.65vw, 34px); }
+  .touch-data-step { height: calc(100dvh - 164px); }
+  .touch-data-layout { gap: clamp(10px, 1.8vw, 20px); }
+  .touch-data-fields { gap: 9px; }
+  .touch-data-fields input, .touch-data-fields textarea { min-height: 55px; }
+  .touch-data-fields textarea { min-height: 90px; }
+  .touch-keyboard-panel { padding: clamp(9px, 1.5vw, 16px); }
+  .touch-keyboard-prompt { font-size: clamp(23px, 2.5vw, 32px); }
+  .touch-numeric-keyboard { gap: clamp(6px, .95vw, 11px); }
+  .touch-numeric-keyboard button { min-height: clamp(62px, 9.5vh, 89px); font-size: clamp(26px, 2.85vw, 37px); }
+  .touch-next { min-height: 64px; margin-top: 10px; font-size: 22px; }
+}
