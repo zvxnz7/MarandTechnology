@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, textShift: false, extras: [], saving: false } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -147,6 +147,7 @@ function render(data) {
   $('#pending-pill').textContent = `${data.pending} ${data.pending === 1 ? 'belka' : 'belek'} w kolejce lokalnej`;
   $('#history-caption').textContent = `${data.bales.length} belek w bieżącej produkcji · najnowsze na górze`;
   renderBales();
+  paintTouch();
 }
 async function refresh() {
   try {
@@ -163,11 +164,159 @@ async function refresh() {
     return false;
   }
 }
+function touchArticle() { return state.data?.articles.find(item => String(item.id) === String(state.touch.articleId)); }
+function touchWorker() { return state.data?.workers.find(item => String(item.id) === String(state.touch.workerId)); }
+function touchReset() {
+  const touch = state.touch;
+  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, textShift: false, extras: [], saving: false });
+  $('#touch-date').value = state.data?.today || '';
+  for (const id of ['meters', 'weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
+  $('#touch-data-error').hidden = true;
+  $('#touch-data-error').textContent = '';
+  paintTouch();
+}
+function renderTouchHome() {
+  const bales = state.data?.bales || [];
+  $('#touch-accepted-count').textContent = `${bales.length} ${bales.length === 1 ? 'sztuka' : 'sztuk'}`;
+  $('#touch-copy-last').disabled = !state.data?.lastBale;
+  $('#touch-accepted-list').innerHTML = bales.length ? bales.slice(0, 80).map(row => `<article class="touch-accepted-card"><strong>${escapeHtml(row.number)} · ${escapeHtml(row.symbol)}</strong><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><small>${dateFmt(row.production_date)} · ${escapeHtml(row.machine)} · ${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></article>`).join('') : '<p class="touch-empty">Nie ma jeszcze przyjętych sztuk.</p>';
+}
+function touchRenderTiles() {
+  const { step, articleId, machine, workerId } = state.touch;
+  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
+  $('#touch-machine-tiles').innerHTML = state.data.machines.map(item => `<button type="button" class="touch-tile" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
+  $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
+  for (const key of ['article', 'machine', 'worker', 'data']) $(`#touch-step-${key}`).hidden = step !== key;
+  $('#touch-home').hidden = step !== 'home';
+  $('#touch-wizard').hidden = step === 'home';
+  $('#touch-step-name').textContent = ({ article: '1 / 4', machine: '2 / 4', worker: '3 / 4', data: '4 / 4' })[step] || '';
+  $('#touch-back').textContent = step === 'article' ? '← Do początku' : '← Cofnij';
+  const selections = [];
+  if (articleId) selections.push(`Artykuł: ${touchArticle()?.symbol || '—'}`);
+  if (machine) selections.push(`Maszyna: ${machine}`);
+  if (workerId) selections.push(`Dziewiarz: ${touchWorker()?.name || '—'}`);
+  $('#touch-selection-summary').innerHTML = selections.map((text, index) => `<span class="touch-selection-chip ${index === selections.length - 1 ? 'current' : ''}">${escapeHtml(text)}</span>`).join('');
+  $('#touch-data-title').textContent = `${touchArticle()?.symbol || 'Belka'}${touchArticle()?.isTrial ? ' · Próba' : ''} — wpisz dane`;
+  if (step === 'data') renderTouchExtras();
+}
+function renderTouchExtras() {
+  const primaryId = String(state.touch.workerId);
+  const extras = state.touch.extras;
+  $('#touch-extra-worker-list').innerHTML = extras.map((item, index) => `<div class="touch-extra-row"><label>Dziewiarz<select data-touch-extra-worker="${index}"><option value="">Wybierz osobę</option>${options(state.data.workers.filter(worker => String(worker.id) !== primaryId), 'id', workerLabel, item.workerId)}</select></label><label>Metry<input type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" data-touch-extra-meters="${index}" value="${escapeHtml(item.meters)}" placeholder="metry"></label><button type="button" data-touch-remove-extra="${index}" aria-label="Usuń osobę">×</button></div>`).join('');
+  updateTouchShare();
+}
+function updateTouchShare() {
+  const meters = number($('#touch-meters').value);
+  const extraTotal = state.touch.extras.reduce((sum, item) => sum + number(item.meters), 0);
+  const remainder = Math.round((meters - extraTotal) * 100) / 100;
+  const primary = touchWorker()?.name || 'głównego dziewiarza';
+  $('#touch-share-summary').textContent = meters > 0 ? `Udział ${primary}: ${fmt(remainder)} m` : 'Wpisz metry belki, aby zobaczyć podział.';
+  $('#touch-share-summary').classList.toggle('invalid', remainder <= 0 && state.touch.extras.length > 0);
+}
+function paintTouch() {
+  if (!state.data) return;
+  renderTouchHome();
+  touchRenderTiles();
+  const active = state.touch.activeInput;
+  $('#touch-numeric-keyboard').hidden = !active || !active.matches('[data-touch-numeric]');
+  $('#touch-text-keyboard').hidden = !active || active.id !== 'touch-notes';
+  $('#touch-keyboard-hint').hidden = Boolean(active);
+  $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
+  $('#touch-save').disabled = state.touch.saving;
+}
+function touchStart() {
+  if (!state.data.articles.length || !state.data.workers.length) { toast('Najpierw wybierz artykuły i pracowników w Ustawieniach.', true); return; }
+  touchReset();
+  state.touch.step = 'article';
+  paintTouch();
+}
+function touchCopyLast() {
+  const row = state.data.lastBale;
+  if (!row) { toast('Nie ma jeszcze belki do skopiowania.', true); return; }
+  if (!state.data.articles.some(item => Number(item.id) === Number(row.article_id))) { toast('Artykuł z ostatniej belki jest wyłączony. Włącz go w Ustawieniach.', true); return; }
+  if (row.workers.some(item => !state.data.workers.some(worker => Number(worker.id) === Number(item.workerId)))) { toast('Dziewiarz z ostatniej belki jest wyłączony. Włącz go w Ustawieniach.', true); return; }
+  const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
+  touchReset();
+  Object.assign(state.touch, { step: 'data', articleId: String(row.article_id), machine: row.machine, workerId: String(contributions[0]?.workerId || ''), extras: contributions.slice(1).map(item => ({ workerId: String(item.workerId), meters: String(item.meters).replace('.', ',') })) });
+  $('#touch-date').value = row.production_date;
+  $('#touch-meters').value = String(row.meters).replace('.', ',');
+  $('#touch-weight').value = String(row.weight_kg).replace('.', ',');
+  $('#touch-errors').value = '';
+  $('#touch-stops').value = String(row.stops);
+  $('#touch-notes').value = row.notes || '';
+  $('#touch-data-title').textContent = `Kopia belki ${row.number} — wpisz dane`;
+  paintTouch();
+  toast(`Skopiowano dane belki ${row.number}; błędy wyzerowano.`);
+}
+function touchBack() {
+  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker' }[state.touch.step] || 'home';
+  state.touch.activeInput = null;
+  if (prev === 'home') touchReset(); else { state.touch.step = prev; paintTouch(); }
+}
+function touchFocusInput(input) {
+  state.touch.activeInput = input;
+  $('#touch-keyboard-hint').hidden = true;
+  $('#touch-numeric-keyboard').hidden = !input.matches('[data-touch-numeric]');
+  $('#touch-text-keyboard').hidden = input.id !== 'touch-notes';
+  $('.touch-decimal-key').hidden = input.dataset.touchNumeric === 'integer';
+  const label = input.closest('label')?.childNodes[0]?.textContent.trim() || input.getAttribute('aria-label') || 'Wpisz wartość';
+  $('#touch-keyboard-hint').textContent = `Wpisywanie: ${label}`;
+  input.focus({ preventScroll: true });
+}
+function touchWriteNumeric(key) {
+  const input = state.touch.activeInput;
+  if (!input?.isConnected || !input.matches('[data-touch-numeric]')) return;
+  let start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start, value = input.value;
+  if (key === 'clear') { value = ''; start = end = 0; }
+  else if (key === 'backspace') { if (start === end && start > 0) start--; value = value.slice(0, start) + value.slice(end); end = start; }
+  else if (key === ',') { if (input.dataset.touchNumeric === 'integer' || /[.,]/.test(value)) return; value = value.slice(0, start) + ',' + value.slice(end); start++; end = start; }
+  else if (/^\d$/.test(key)) { value = value.slice(0, start) + key + value.slice(end); start++; end = start; }
+  else return;
+  input.value = value; input.setSelectionRange(start, end); input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function touchTextAction(action) {
+  const input = $('#touch-notes');
+  let start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start, value = input.value;
+  if (action === 'shift') { state.touch.textShift = !state.touch.textShift; $('#touch-text-keyboard [data-touch-text-action="shift"]').classList.toggle('active', state.touch.textShift); return; }
+  if (action === 'clear') { input.value = ''; start = end = 0; }
+  else if (action === 'backspace') { if (start === end && start > 0) start--; input.value = value.slice(0, start) + value.slice(end); end = start; }
+  else if (action === 'done') { state.touch.activeInput = null; paintTouch(); return; }
+  input.setSelectionRange(start, end); input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+async function saveTouchBale() {
+  const touch = state.touch, article = touchArticle();
+  const date = $('#touch-date').value, year = String(date).slice(0, 4), machine = touch.machine;
+  const meters = number($('#touch-meters').value), weightKg = number($('#touch-weight').value);
+  const errorsText = $('#touch-errors').value.trim(), stopsText = $('#touch-stops').value.trim();
+  const extras = touch.extras.map(item => ({ workerId: Number(item.workerId), meters: number(item.meters) }));
+  let message = '';
+  if (!article || !touch.workerId || !machine || !date) message = 'Wybierz artykuł, maszynę, dziewiarza i datę.';
+  else if (state.data.sequences?.[year]?.[machine] === undefined) message = `Najpierw ustaw numerację dla ${machine} i roku ${year} w Ustawieniach.`;
+  else if (meters <= 0 || weightKg <= 0) message = 'Metry i masa belki muszą być większe od zera.';
+  else if (!/^\d+$/.test(errorsText) || !/^\d+$/.test(stopsText)) message = 'Wpisz całkowitą liczbę błędów i stopów (0, jeśli ich nie ma).';
+  else if (extras.some(item => !item.workerId || item.meters <= 0)) message = 'Wybierz dziewiarza i wpisz jego metry dla każdej dodatkowej osoby.';
+  else if (extras.some(item => item.workerId === Number(touch.workerId)) || new Set(extras.map(item => item.workerId)).size !== extras.length) message = 'Każdego dziewiarza wybierz tylko raz.';
+  const remaining = Math.round((meters - extras.reduce((sum, item) => sum + item.meters, 0)) * 100) / 100;
+  if (!message && remaining <= 0) message = 'Metry dodatkowych osób muszą zostawić część dla głównego dziewiarza.';
+  if (message) { $('#touch-data-error').textContent = message; $('#touch-data-error').hidden = false; return; }
+  touch.saving = true; $('#touch-save').disabled = true; $('#touch-data-error').hidden = true;
+  try {
+    const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ articleId: article.id, machine, productionDate: date, bales: [{ weightKg, meters, errors: Number(errorsText), stops: Number(stopsText), notes: $('#touch-notes').value.trim(), primaryWorkerId: touch.workerId, trialSymbol: article.isTrial ? article.symbol : '', workers: [{ workerId: Number(touch.workerId), meters: remaining }, ...extras] }] }) });
+    render(await api('/api/bootstrap'));
+    touchReset();
+    toast(`Zapisano belkę ${result.created[0].number}.`);
+    await loadDailyReports();
+  } catch (error) { $('#touch-data-error').textContent = error.message; $('#touch-data-error').hidden = false; }
+  finally { touch.saving = false; $('#touch-save').disabled = false; }
+}
 function showView(name) {
   hideKeypad();
   $('#view-production').hidden = name !== 'production';
   $('#view-daily-production').hidden = name !== 'daily-production';
   $('#view-settings').hidden = name !== 'settings';
+  $('#view-touch').hidden = name !== 'touch';
+  document.body.classList.toggle('touch-mode', name === 'touch');
+  if (name === 'touch') paintTouch();
   document.querySelectorAll('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.view === name));
   if (name === 'settings') loadSettings();
 }
@@ -753,6 +902,70 @@ document.addEventListener('click', event => {
 $('#numeric-keypad').querySelectorAll('[data-key]').forEach(button => button.addEventListener('click', () => writeKey(button.dataset.key)));
 $('#keypad-close').addEventListener('click', hideKeypad);
 $('#keypad-enter').addEventListener('click', moveToNextField);
+$('#touch-exit').addEventListener('click', () => showView('production'));
+$('#touch-choose-article').addEventListener('click', touchStart);
+$('#touch-copy-last').addEventListener('click', touchCopyLast);
+$('#touch-back').addEventListener('click', touchBack);
+$('#touch-save').addEventListener('click', saveTouchBale);
+$('#touch-add-worker').addEventListener('click', () => { state.touch.extras.push({ workerId: '', meters: '' }); renderTouchExtras(); });
+$('#touch-wizard').addEventListener('click', event => {
+  const articleButton = event.target.closest('[data-touch-article]');
+  if (articleButton) { state.touch.articleId = articleButton.dataset.touchArticle; state.touch.step = 'machine'; paintTouch(); return; }
+  const machineButton = event.target.closest('[data-touch-machine]');
+  if (machineButton) { state.touch.machine = machineButton.dataset.touchMachine; state.touch.step = 'worker'; paintTouch(); return; }
+  const workerButton = event.target.closest('[data-touch-worker]');
+  if (workerButton) {
+    state.touch.workerId = workerButton.dataset.touchWorker;
+    $('#touch-date').value ||= state.data.today;
+    state.touch.step = 'data';
+    paintTouch();
+    touchFocusInput($('#touch-meters'));
+    return;
+  }
+  const remove = event.target.closest('[data-touch-remove-extra]');
+  if (remove) { state.touch.extras.splice(Number(remove.dataset.touchRemoveExtra), 1); renderTouchExtras(); return; }
+  const numKey = event.target.closest('[data-touch-num]');
+  if (numKey) {
+    if (numKey.dataset.touchNum === 'done') {
+      const fields = [...$('#touch-data-fields').querySelectorAll('[data-touch-numeric]')];
+      const index = fields.indexOf(state.touch.activeInput);
+      const next = fields[index + 1];
+      if (next) touchFocusInput(next); else { state.touch.activeInput = null; paintTouch(); }
+    } else touchWriteNumeric(numKey.dataset.touchNum);
+    return;
+  }
+  const textKey = event.target.closest('[data-touch-text]');
+  if (textKey) {
+    const input = $('#touch-notes');
+    let start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start;
+    let value = textKey.dataset.touchText;
+    if (state.touch.textShift) { value = value.toLocaleUpperCase('pl-PL'); state.touch.textShift = false; $('#touch-text-keyboard [data-touch-text-action="shift"]').classList.remove('active'); }
+    input.value = input.value.slice(0, start) + value + input.value.slice(end);
+    start += value.length;
+    input.setSelectionRange(start, start);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
+  const textAction = event.target.closest('[data-touch-text-action]');
+  if (textAction) touchTextAction(textAction.dataset.touchTextAction);
+});
+$('#touch-wizard').addEventListener('focusin', event => {
+  const input = event.target.closest('[data-touch-numeric], #touch-notes');
+  if (input) touchFocusInput(input);
+});
+$('#touch-wizard').addEventListener('input', event => {
+  const input = event.target;
+  if (input.id === 'touch-meters' || input.matches('[data-touch-extra-meters]')) {
+    const index = Number(input.dataset.touchExtraMeters);
+    if (input.id !== 'touch-meters' && state.touch.extras[index]) state.touch.extras[index].meters = input.value;
+    updateTouchShare();
+  }
+});
+$('#touch-wizard').addEventListener('change', event => {
+  const select = event.target.closest('[data-touch-extra-worker]');
+  if (select) state.touch.extras[Number(select.dataset.touchExtraWorker)].workerId = select.value;
+});
+$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !$('#numeric-keypad').hidden) hideKeypad();
   if (event.key === 'Enter' && event.target.matches?.('#production-form [data-numeric]')) {

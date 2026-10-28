@@ -11,7 +11,7 @@
 <body>
   <header class="topbar">
     <div class="brand"><img class="brand-logo" src="/marand-logo.jpg" alt="MARAND Technical textiles"></div>
-    <nav class="top-nav" aria-label="Główne zakładki"><button type="button" class="nav-button active" data-view="production">Produkcja</button><button type="button" class="nav-button" data-view="daily-production">Produkcja dzienna</button><button type="button" class="nav-button" data-view="settings">Ustawienia</button></nav>
+    <nav class="top-nav" aria-label="Główne zakładki"><button type="button" class="nav-button active" data-view="production">Produkcja</button><button type="button" class="nav-button" data-view="touch">Dotykowe</button><button type="button" class="nav-button" data-view="daily-production">Produkcja dzienna</button><button type="button" class="nav-button" data-view="settings">Ustawienia</button></nav>
     <div class="connection"><span class="local-dot"></span>Praca lokalna</div>
   </header>
   <main>
@@ -61,6 +61,51 @@
         <div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Lp.</th><th>Belka</th><th>Artykuł</th><th>Data</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział metrów</th><th>Stan</th><th>Akcje</th></tr></thead><tbody id="bale-list"></tbody></table></div></div>
       </section>
       <p class="footnote">Dane pozostają zapisane lokalnie po zamknięciu programu. Wysłane belki są zachowane także w kartotece głównej.</p>
+    </section>
+
+    <section id="view-touch" class="view touch-view" hidden>
+      <header class="touch-header"><div><span class="eyebrow">TRYB DOTYKOWY</span><h1>Przyjęcie belki</h1></div><button id="touch-exit" type="button" class="secondary">Wróć do zwykłego panelu</button></header>
+      <section id="touch-home" class="touch-home">
+        <div class="touch-home-actions"><button id="touch-choose-article" type="button" class="touch-action-primary">＋ Wybierz artykuł</button><button id="touch-copy-last" type="button" class="touch-action-secondary">Kopiuj ostatnią</button></div>
+        <div class="touch-accepted"><div class="touch-section-heading"><div><h2>Przyjęte sztuki</h2><p class="muted">Najnowsze wpisy z lokalnej listy produkcji.</p></div><span id="touch-accepted-count" class="touch-count"></span></div><div id="touch-accepted-list" class="touch-accepted-list"></div></div>
+      </section>
+      <section id="touch-wizard" class="touch-wizard" hidden>
+        <div class="touch-step-toolbar"><button id="touch-back" type="button" class="touch-back">← Cofnij</button><div id="touch-selection-summary" class="touch-selection-summary"></div><span id="touch-step-name" class="touch-step-name"></span></div>
+        <section id="touch-step-article" class="touch-step" hidden><h2>Wybierz artykuł</h2><div id="touch-article-tiles" class="touch-tiles"></div></section>
+        <section id="touch-step-machine" class="touch-step" hidden><h2>Wybierz maszynę</h2><div id="touch-machine-tiles" class="touch-tiles touch-machine-tiles"></div></section>
+        <section id="touch-step-worker" class="touch-step" hidden><h2>Wybierz dziewiarza</h2><div id="touch-worker-tiles" class="touch-tiles"></div></section>
+        <section id="touch-step-data" class="touch-step touch-data-step" hidden>
+          <h2 id="touch-data-title">Wpisz dane belki</h2>
+          <div class="touch-data-layout">
+            <div class="touch-data-fields">
+              <label class="touch-date-field">Data produkcji<input id="touch-date" type="date"></label>
+              <div class="touch-number-fields">
+                <label>Metry<input id="touch-meters" type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" placeholder="0,00"></label>
+                <label>Waga · kg<input id="touch-weight" type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" placeholder="0,00"></label>
+                <label>Błędy<input id="touch-errors" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"></label>
+                <label>Stopy<input id="touch-stops" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"></label>
+              </div>
+              <div class="touch-extra-workers"><div class="touch-extra-heading"><strong>Dodatkowi dziewiarze</strong><button id="touch-add-worker" type="button" class="touch-small-action">＋ Dodaj osobę</button></div><div id="touch-extra-worker-list"></div><p id="touch-share-summary" class="touch-share-summary"></p></div>
+              <label>Opis / uwagi<textarea id="touch-notes" inputmode="none" autocomplete="off" maxlength="1000" placeholder="Dotknij, aby wpisać opis"></textarea></label>
+              <p id="touch-data-error" class="touch-error" role="alert" hidden></p>
+              <button id="touch-save" type="button" class="touch-save">Zapisz belkę</button>
+            </div>
+            <div class="touch-keyboard-panel"><p id="touch-keyboard-hint" class="touch-keyboard-hint">Wybierz pole, aby otworzyć klawiaturę.</p><div id="touch-numeric-keyboard" class="touch-numeric-keyboard" hidden>
+              <button type="button" data-touch-num="1">1</button><button type="button" data-touch-num="2">2</button><button type="button" data-touch-num="3">3</button>
+              <button type="button" data-touch-num="4">4</button><button type="button" data-touch-num="5">5</button><button type="button" data-touch-num="6">6</button>
+              <button type="button" data-touch-num="7">7</button><button type="button" data-touch-num="8">8</button><button type="button" data-touch-num="9">9</button>
+              <button type="button" class="touch-key-alt" data-touch-num="clear">Wyczyść</button><button type="button" data-touch-num="0">0</button><button type="button" class="touch-key-alt" data-touch-num="backspace">⌫</button>
+              <button type="button" class="touch-key-alt touch-decimal-key" data-touch-num=",">,</button><button type="button" class="touch-key-done" data-touch-num="done">Gotowe</button>
+            </div><div id="touch-text-keyboard" class="touch-text-keyboard" hidden>
+              <div class="touch-letter-row"><button data-touch-text="q">q</button><button data-touch-text="w">w</button><button data-touch-text="e">e</button><button data-touch-text="r">r</button><button data-touch-text="t">t</button><button data-touch-text="y">y</button><button data-touch-text="u">u</button><button data-touch-text="i">i</button><button data-touch-text="o">o</button><button data-touch-text="p">p</button></div>
+              <div class="touch-letter-row"><button data-touch-text="a">a</button><button data-touch-text="s">s</button><button data-touch-text="d">d</button><button data-touch-text="f">f</button><button data-touch-text="g">g</button><button data-touch-text="h">h</button><button data-touch-text="j">j</button><button data-touch-text="k">k</button><button data-touch-text="l">l</button></div>
+              <div class="touch-letter-row"><button data-touch-text="z">z</button><button data-touch-text="x">x</button><button data-touch-text="c">c</button><button data-touch-text="v">v</button><button data-touch-text="b">b</button><button data-touch-text="n">n</button><button data-touch-text="m">m</button><button data-touch-text="-">-</button></div>
+              <div class="touch-letter-row touch-polish-row"><button data-touch-text="ą">ą</button><button data-touch-text="ć">ć</button><button data-touch-text="ę">ę</button><button data-touch-text="ł">ł</button><button data-touch-text="ń">ń</button><button data-touch-text="ó">ó</button><button data-touch-text="ś">ś</button><button data-touch-text="ź">ź</button><button data-touch-text="ż">ż</button></div>
+              <div class="touch-letter-row touch-key-actions"><button type="button" data-touch-text-action="shift">⇧</button><button type="button" data-touch-text=" ">Spacja</button><button type="button" data-touch-text-action="backspace">⌫</button><button type="button" data-touch-text-action="clear">Wyczyść</button><button type="button" data-touch-text-action="done">Gotowe</button></div>
+            </div></div>
+          </div>
+        </section>
+      </section>
     </section>
 
     <section id="view-daily-production" class="view" hidden>
