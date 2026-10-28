@@ -57,6 +57,13 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
  if(all)all.addEventListener('change',()=>{boxes.forEach(box=>box.checked=all.checked);save();});
  form.addEventListener('submit',event=>{save();if(!hidden.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});
 });
+document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>form.addEventListener('submit',event=>{
+ const removed=[...form.querySelectorAll('[data-correction-remove]:checked')].map(box=>({id:box.value,disposition:box.closest('tr')?.querySelector('[data-correction-disposition]')?.value||'returned'}));
+ const added=[...form.querySelectorAll('[data-correction-add]:checked')].map(box=>box.value);
+ if(!removed.length&&!added.length){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę do usunięcia lub dodania.');return;}
+ form.querySelector('[name="removed_items"]').value=JSON.stringify(removed);
+ form.querySelector('[data-correction-added-values]').value=added.join(',');
+}));
 const warehouseBulkStatus=document.querySelector('#warehouse-bulk-status');
 if(warehouseBulkStatus){const selected=warehouseBulkStatus.querySelector('[data-warehouse-selected]');warehouseBulkStatus.addEventListener('submit',event=>{selected.value=[...document.querySelectorAll('[data-warehouse-check]:checked')].map(box=>box.value).join(',');if(!selected.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});}
 document.querySelectorAll('[data-warehouse-live-search]').forEach(form=>{
