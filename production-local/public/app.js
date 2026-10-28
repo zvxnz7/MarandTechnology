@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, textShift: false, extras: [], saving: false } };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, workerPickerIndex: null, textShift: false, extras: [], saving: false } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -168,7 +168,7 @@ function touchArticle() { return state.data?.articles.find(item => String(item.i
 function touchWorker() { return state.data?.workers.find(item => String(item.id) === String(state.touch.workerId)); }
 function touchReset() {
   const touch = state.touch;
-  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, textShift: false, extras: [], saving: false });
+  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, workerPickerIndex: null, textShift: false, extras: [], saving: false });
   $('#touch-date').value = state.data?.today || '';
   for (const id of ['meters', 'weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
   $('#touch-data-error').hidden = true;
@@ -177,15 +177,31 @@ function touchReset() {
 }
 function renderTouchHome() {
   const bales = state.data?.bales || [];
-  $('#touch-accepted-count').textContent = `${bales.length} ${bales.length === 1 ? 'sztuka' : 'sztuk'}`;
+  const latest = state.data?.lastBale || null;
+  const allRows = [...new Map([...bales, ...(latest ? [latest] : [])].map(row => [row.id, row])).values()]
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(b.id).localeCompare(String(a.id)));
+  const previous = allRows.filter(row => row.id !== latest?.id);
+  $('#touch-accepted-count').textContent = `${allRows.length} ${allRows.length === 1 ? 'sztuka' : 'sztuk'}`;
   $('#touch-copy-last').disabled = !state.data?.lastBale;
-  $('#touch-accepted-list').innerHTML = bales.length ? bales.slice(0, 80).map(row => `<article class="touch-accepted-card"><strong>${escapeHtml(row.number)} · ${escapeHtml(row.symbol)}</strong><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><small>${dateFmt(row.production_date)} · ${escapeHtml(row.machine)} · ${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></article>`).join('') : '<p class="touch-empty">Nie ma jeszcze przyjętych sztuk.</p>';
+  $('#touch-latest-bale').innerHTML = latest ? touchBaleCard(latest, true) : '<p class="touch-empty">Nie ma jeszcze przyjętych sztuk.</p>';
+  $('#touch-older-heading').hidden = !previous.length;
+  $('#touch-accepted-list').innerHTML = previous.length ? previous.slice(0, 80).map(row => touchBaleCard(row)).join('') : '';
+}
+function touchTimeFmt(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'godzina niedostępna' : date.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function touchBaleCard(row, latest = false) {
+  const review = row.sync_status === 'pending'
+    ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? '✓ Do sprawdzenia przez kierownika' : 'Oznacz do sprawdzenia'}</button>`
+    : `<span class="touch-review-locked">${row.needs_check ? 'Oznaczona do sprawdzenia' : 'Belka wysłana'}</span>`;
+  return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
   $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
-  $('#touch-machine-tiles').innerHTML = state.data.machines.map(item => `<button type="button" class="touch-tile" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
-  $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
+  $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
+  $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
   for (const key of ['article', 'machine', 'worker', 'data']) $(`#touch-step-${key}`).hidden = step !== key;
   $('#touch-home').hidden = step !== 'home';
   $('#touch-wizard').hidden = step === 'home';
@@ -202,8 +218,25 @@ function touchRenderTiles() {
 function renderTouchExtras() {
   const primaryId = String(state.touch.workerId);
   const extras = state.touch.extras;
-  $('#touch-extra-worker-list').innerHTML = extras.map((item, index) => `<div class="touch-extra-row"><label>Dziewiarz<select data-touch-extra-worker="${index}"><option value="">Wybierz osobę</option>${options(state.data.workers.filter(worker => String(worker.id) !== primaryId), 'id', workerLabel, item.workerId)}</select></label><label>Metry<input type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" data-touch-extra-meters="${index}" value="${escapeHtml(item.meters)}" placeholder="metry"></label><button type="button" data-touch-remove-extra="${index}" aria-label="Usuń osobę">×</button></div>`).join('');
+  $('#touch-extra-worker-list').innerHTML = extras.map((item, index) => {
+    const worker = state.data.workers.find(entry => String(entry.id) === String(item.workerId));
+    const name = worker?.name || 'Wybierz dziewiarza';
+    return `<div class="touch-extra-row"><button type="button" class="touch-extra-worker-choice ${worker ? `touch-worker-color-${touchColorIndex(worker.name)}` : ''}" data-touch-pick-extra="${index}">${escapeHtml(name)}</button><label>Metry<input type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" data-touch-extra-meters="${index}" value="${escapeHtml(item.meters)}" placeholder="metry"></label><button type="button" data-touch-remove-extra="${index}" aria-label="Usuń osobę">×</button></div>`;
+  }).join('');
   updateTouchShare();
+}
+function touchColorIndex(value) {
+  return [...String(value || '')].reduce((sum, char) => (sum * 31 + char.codePointAt(0)) >>> 0, 7) % 8;
+}
+function renderTouchExtraPicker() {
+  const index = state.touch.workerPickerIndex;
+  const host = $('#touch-extra-worker-picker');
+  host.hidden = index === null || index < 0 || index >= state.touch.extras.length;
+  if (host.hidden) { host.replaceChildren(); return; }
+  const chosen = new Set(state.touch.extras.filter((_, itemIndex) => itemIndex !== index).map(item => String(item.workerId)).filter(Boolean));
+  chosen.add(String(state.touch.workerId));
+  const available = state.data.workers.filter(worker => !chosen.has(String(worker.id)));
+  host.innerHTML = `<strong>Wybierz dodatkowego dziewiarza</strong><div class="touch-extra-worker-tiles">${available.length ? available.map(worker => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(worker.name)}" data-touch-extra-worker-tile="${escapeHtml(worker.id)}">${escapeHtml(worker.name)}</button>`).join('') : '<p class="touch-empty">Nie ma już innych dostępnych dziewiarzy.</p>'}</div><button type="button" class="touch-picker-cancel" data-touch-picker-cancel>Anuluj wybór</button>`;
 }
 function updateTouchShare() {
   const meters = number($('#touch-meters').value);
@@ -217,10 +250,13 @@ function paintTouch() {
   if (!state.data) return;
   renderTouchHome();
   touchRenderTiles();
+  renderTouchExtraPicker();
   const active = state.touch.activeInput;
-  $('#touch-numeric-keyboard').hidden = !active || !active.matches('[data-touch-numeric]');
-  $('#touch-text-keyboard').hidden = !active || active.id !== 'touch-notes';
-  $('#touch-keyboard-hint').hidden = Boolean(active);
+  const choosingWorker = !$('#touch-extra-worker-picker').hidden;
+  $('.touch-keyboard-panel').classList.toggle('worker-picker-open', choosingWorker);
+  $('#touch-numeric-keyboard').hidden = choosingWorker || !active || !active.matches('[data-touch-numeric]');
+  $('#touch-text-keyboard').hidden = choosingWorker || !active || active.id !== 'touch-notes';
+  $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
   $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
   $('#touch-save').disabled = state.touch.saving;
 }
@@ -251,10 +287,13 @@ function touchCopyLast() {
 function touchBack() {
   const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker' }[state.touch.step] || 'home';
   state.touch.activeInput = null;
+  state.touch.workerPickerIndex = null;
   if (prev === 'home') touchReset(); else { state.touch.step = prev; paintTouch(); }
 }
 function touchFocusInput(input) {
   state.touch.activeInput = input;
+  state.touch.workerPickerIndex = null;
+  $('#touch-extra-worker-picker').hidden = true;
   $('#touch-keyboard-hint').hidden = true;
   $('#touch-numeric-keyboard').hidden = !input.matches('[data-touch-numeric]');
   $('#touch-text-keyboard').hidden = input.id !== 'touch-notes';
@@ -907,7 +946,16 @@ $('#touch-choose-article').addEventListener('click', touchStart);
 $('#touch-copy-last').addEventListener('click', touchCopyLast);
 $('#touch-back').addEventListener('click', touchBack);
 $('#touch-save').addEventListener('click', saveTouchBale);
-$('#touch-add-worker').addEventListener('click', () => { state.touch.extras.push({ workerId: '', meters: '' }); renderTouchExtras(); });
+$('#touch-add-worker').addEventListener('click', () => {
+  state.touch.extras.push({ workerId: '', meters: '' });
+  state.touch.workerPickerIndex = state.touch.extras.length - 1;
+  state.touch.activeInput = null;
+  paintTouch();
+});
+$('#touch-latest-bale, #touch-accepted-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-touch-review]');
+  if (button) setReviewFlag(button.dataset.touchReview, button.dataset.check === '1');
+});
 $('#touch-wizard').addEventListener('click', event => {
   const articleButton = event.target.closest('[data-touch-article]');
   if (articleButton) { state.touch.articleId = articleButton.dataset.touchArticle; state.touch.step = 'machine'; paintTouch(); return; }
@@ -923,7 +971,32 @@ $('#touch-wizard').addEventListener('click', event => {
     return;
   }
   const remove = event.target.closest('[data-touch-remove-extra]');
-  if (remove) { state.touch.extras.splice(Number(remove.dataset.touchRemoveExtra), 1); renderTouchExtras(); return; }
+  if (remove) {
+    const removedIndex = Number(remove.dataset.touchRemoveExtra);
+    state.touch.extras.splice(removedIndex, 1);
+    if (state.touch.workerPickerIndex === removedIndex) state.touch.workerPickerIndex = null;
+    else if (state.touch.workerPickerIndex > removedIndex) state.touch.workerPickerIndex--;
+    paintTouch();
+    return;
+  }
+  const chooseExtra = event.target.closest('[data-touch-pick-extra]');
+  if (chooseExtra) {
+    state.touch.workerPickerIndex = Number(chooseExtra.dataset.touchPickExtra);
+    state.touch.activeInput = null;
+    paintTouch();
+    return;
+  }
+  const extraWorkerTile = event.target.closest('[data-touch-extra-worker-tile]');
+  if (extraWorkerTile) {
+    const index = state.touch.workerPickerIndex;
+    if (state.touch.extras[index]) state.touch.extras[index].workerId = extraWorkerTile.dataset.touchExtraWorkerTile;
+    state.touch.workerPickerIndex = null;
+    paintTouch();
+    const metersInput = $(`[data-touch-extra-meters="${index}"]`);
+    if (metersInput) touchFocusInput(metersInput);
+    return;
+  }
+  if (event.target.closest('[data-touch-picker-cancel]')) { state.touch.workerPickerIndex = null; paintTouch(); return; }
   const numKey = event.target.closest('[data-touch-num]');
   if (numKey) {
     if (numKey.dataset.touchNum === 'done') {
@@ -960,10 +1033,6 @@ $('#touch-wizard').addEventListener('input', event => {
     if (input.id !== 'touch-meters' && state.touch.extras[index]) state.touch.extras[index].meters = input.value;
     updateTouchShare();
   }
-});
-$('#touch-wizard').addEventListener('change', event => {
-  const select = event.target.closest('[data-touch-extra-worker]');
-  if (select) state.touch.extras[Number(select.dataset.touchExtraWorker)].workerId = select.value;
 });
 $('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; });
 document.addEventListener('keydown', event => {

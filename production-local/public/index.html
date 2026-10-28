@@ -67,7 +67,7 @@
       <header class="touch-header"><div><span class="eyebrow">TRYB DOTYKOWY</span><h1>Przyjęcie belki</h1></div><button id="touch-exit" type="button" class="secondary">Wróć do zwykłego panelu</button></header>
       <section id="touch-home" class="touch-home">
         <div class="touch-home-actions"><button id="touch-choose-article" type="button" class="touch-action-primary">＋ Wybierz artykuł</button><button id="touch-copy-last" type="button" class="touch-action-secondary">Kopiuj ostatnią</button></div>
-        <div class="touch-accepted"><div class="touch-section-heading"><div><h2>Przyjęte sztuki</h2><p class="muted">Najnowsze wpisy z lokalnej listy produkcji.</p></div><span id="touch-accepted-count" class="touch-count"></span></div><div id="touch-accepted-list" class="touch-accepted-list"></div></div>
+        <div class="touch-accepted"><div class="touch-section-heading"><div><h2>Przyjęte sztuki</h2><p class="muted">Ostatnia belka jest wyróżniona na górze.</p></div><span id="touch-accepted-count" class="touch-count"></span></div><div id="touch-latest-bale"></div><h3 id="touch-older-heading" class="touch-older-heading">Wcześniej przyjęte</h3><div id="touch-accepted-list" class="touch-accepted-list"></div></div>
       </section>
       <section id="touch-wizard" class="touch-wizard" hidden>
         <div class="touch-step-toolbar"><button id="touch-back" type="button" class="touch-back">← Cofnij</button><div id="touch-selection-summary" class="touch-selection-summary"></div><span id="touch-step-name" class="touch-step-name"></span></div>
@@ -85,18 +85,19 @@
                 <label>Błędy<input id="touch-errors" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"></label>
                 <label>Stopy<input id="touch-stops" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"></label>
               </div>
-              <div class="touch-extra-workers"><div class="touch-extra-heading"><strong>Dodatkowi dziewiarze</strong><button id="touch-add-worker" type="button" class="touch-small-action">＋ Dodaj osobę</button></div><div id="touch-extra-worker-list"></div><p id="touch-share-summary" class="touch-share-summary"></p></div>
+              <div class="touch-extra-workers"><div class="touch-extra-heading"><strong>Dodatkowi dziewiarze</strong><button id="touch-add-worker" type="button" class="touch-add-person">＋ Dodaj osobę</button></div><div id="touch-extra-worker-list"></div><p id="touch-share-summary" class="touch-share-summary"></p></div>
               <label>Opis / uwagi<textarea id="touch-notes" inputmode="none" autocomplete="off" maxlength="1000" placeholder="Dotknij, aby wpisać opis"></textarea></label>
               <p id="touch-data-error" class="touch-error" role="alert" hidden></p>
               <button id="touch-save" type="button" class="touch-save">Zapisz belkę</button>
             </div>
-            <div class="touch-keyboard-panel"><p id="touch-keyboard-hint" class="touch-keyboard-hint">Wybierz pole, aby otworzyć klawiaturę.</p><div id="touch-numeric-keyboard" class="touch-numeric-keyboard" hidden>
+            <div class="touch-keyboard-panel"><p id="touch-keyboard-hint" class="touch-keyboard-hint">Wybierz pole, aby otworzyć klawiaturę.</p><div id="touch-extra-worker-picker" class="touch-extra-worker-picker" hidden></div><div id="touch-numeric-keyboard" class="touch-numeric-keyboard" hidden>
               <button type="button" data-touch-num="1">1</button><button type="button" data-touch-num="2">2</button><button type="button" data-touch-num="3">3</button>
               <button type="button" data-touch-num="4">4</button><button type="button" data-touch-num="5">5</button><button type="button" data-touch-num="6">6</button>
               <button type="button" data-touch-num="7">7</button><button type="button" data-touch-num="8">8</button><button type="button" data-touch-num="9">9</button>
               <button type="button" class="touch-key-alt" data-touch-num="clear">Wyczyść</button><button type="button" data-touch-num="0">0</button><button type="button" class="touch-key-alt" data-touch-num="backspace">⌫</button>
               <button type="button" class="touch-key-alt touch-decimal-key" data-touch-num=",">,</button><button type="button" class="touch-key-done" data-touch-num="done">Gotowe</button>
             </div><div id="touch-text-keyboard" class="touch-text-keyboard" hidden>
+              <div class="touch-letter-row touch-digit-row"><button data-touch-text="1">1</button><button data-touch-text="2">2</button><button data-touch-text="3">3</button><button data-touch-text="4">4</button><button data-touch-text="5">5</button><button data-touch-text="6">6</button><button data-touch-text="7">7</button><button data-touch-text="8">8</button><button data-touch-text="9">9</button><button data-touch-text="0">0</button></div>
               <div class="touch-letter-row"><button data-touch-text="q">q</button><button data-touch-text="w">w</button><button data-touch-text="e">e</button><button data-touch-text="r">r</button><button data-touch-text="t">t</button><button data-touch-text="y">y</button><button data-touch-text="u">u</button><button data-touch-text="i">i</button><button data-touch-text="o">o</button><button data-touch-text="p">p</button></div>
               <div class="touch-letter-row"><button data-touch-text="a">a</button><button data-touch-text="s">s</button><button data-touch-text="d">d</button><button data-touch-text="f">f</button><button data-touch-text="g">g</button><button data-touch-text="h">h</button><button data-touch-text="j">j</button><button data-touch-text="k">k</button><button data-touch-text="l">l</button></div>
               <div class="touch-letter-row"><button data-touch-text="z">z</button><button data-touch-text="x">x</button><button data-touch-text="c">c</button><button data-touch-text="v">v</button><button data-touch-text="b">b</button><button data-touch-text="n">n</button><button data-touch-text="m">m</button><button data-touch-text="-">-</button></div>
