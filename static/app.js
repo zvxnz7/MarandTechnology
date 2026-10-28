@@ -388,7 +388,7 @@ document.querySelectorAll('[data-article-description]').forEach(container=>{
  view.addEventListener('click',open);
  view.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
  input.addEventListener('input',()=>{clearTimeout(timer);setStatus('Niezapisane zmiany…');timer=setTimeout(persist,700);});
- input.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();clearTimeout(timer);input.value=saved;setStatus('');showSaved();}});
+ input.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();if(busy){setStatus('Zapis trwa — poczekaj.');return;}clearTimeout(timer);input.value=saved;setStatus('');showSaved();}});
  form.addEventListener('focusout',()=>setTimeout(()=>{if(form.hidden||form.contains(document.activeElement))return;clearTimeout(timer);persist();},0));
 });
 
