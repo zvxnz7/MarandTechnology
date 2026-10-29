@@ -282,7 +282,7 @@ const threadingMarkup=(index,full)=>{
 const syncThreading=editor=>{
  const cells=[...editor.querySelectorAll('[data-threading-cell]')],sequence=cells.map(cell=>cell.dataset.threadingState==='full'?'|':'.').join('');
  editor.querySelector('[data-threading-value]').value=sequence;
- editor.querySelector('[data-threading-display]').textContent=sequence||'—';
+ editor.querySelector('[data-threading-display]').textContent=sequence;
  const legacy=editor.querySelector('[data-threading-legacy]');if(legacy){legacy.hidden=true;legacy.textContent='';}
  cells.forEach((cell,index)=>{const full=cell.dataset.threadingState==='full';cell.setAttribute('aria-label',`Pozycja ${index+1} — nitka ${full?'pełna':'pusta'}`);cell.title=`Kliknij, aby zmienić na nitkę ${full?'pustą':'pełną'}`;cell.nextElementSibling.setAttribute('aria-label',`Usuń pozycję ${index+1}`);});
 };
@@ -315,8 +315,8 @@ if(addGB)addGB.addEventListener('click',()=>{
   const number=Math.max(0,...rows.map(r=>Number(r.dataset.gbNumber)))+1;
   if(number>32){alert('Osiągnięto maksymalne oznaczenie GB32.');return;}
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
-  next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'&&c.name.endsWith('_number')?String(number):'';c.classList.remove('inherited-value');});
-  next.querySelector('[data-threading-positions]').replaceChildren();next.querySelector('[data-threading-display]').textContent='—';const legacy=next.querySelector('[data-threading-legacy]');if(legacy){legacy.hidden=true;legacy.textContent='';}
+  next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'&&c.name.endsWith('_number')?String(number):c.name.endsWith('_threading')?'|':'';c.classList.remove('inherited-value');});
+  const threadingEditor=next.querySelector('[data-threading-editor]'),threadingPositions=next.querySelector('[data-threading-positions]');threadingPositions.replaceChildren(threadingMarkup(0,true));next.querySelector('[data-threading-display]').textContent='|';const legacy=next.querySelector('[data-threading-legacy]');if(legacy){legacy.hidden=true;legacy.textContent='';}syncThreading(threadingEditor);
   list.appendChild(next);updateGbRows();dirty=true;next.querySelector('input:not([type=hidden])').focus();
 });
 document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('submit',async event=>{
