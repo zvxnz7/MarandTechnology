@@ -317,6 +317,8 @@ function updateTouchKeyboardPanel() {
   $('#touch-weight-suggestion').textContent = touch.weightSuggestion ? `Podpowiedź na podstawie belki ${touch.weightSuggestion.number} z ${dateFmt(touch.weightSuggestion.production_date)}.` : '';
   $('#touch-text-preview').textContent = $('#touch-notes').value.trim() || 'Wpisany opis pojawi się tutaj';
   $('#touch-next').hidden = choosingWorker || !numeric;
+  const countRequired = active?.id === 'touch-errors' || active?.id === 'touch-stops';
+  $('#touch-next').disabled = Boolean(countRequired && !/^\d+$/.test(active.value.trim()));
   $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
   $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
 }
@@ -324,8 +326,8 @@ function touchPromptLabel(input) {
   if (!input) return '';
   if (input.id === 'touch-meters') return 'Ile metrów?';
   if (input.id === 'touch-weight') return 'Ile kg?';
-  if (input.id === 'touch-errors') return 'Ile błędów?';
-  if (input.id === 'touch-stops') return 'Ile stopów?';
+  if (input.id === 'touch-errors') return 'Ile błędów? Wpisz 0, jeśli brak';
+  if (input.id === 'touch-stops') return 'Ile stopów? Wpisz 0, jeśli brak';
   if (input.id === 'touch-notes') return 'Uwagi — wpisz opis';
   if (input.matches('[data-touch-extra-meters]')) {
     const index = Number(input.dataset.touchExtraMeters);
@@ -420,6 +422,7 @@ function touchResumeAfterExtra(cancel = false) {
 async function touchAdvancePrompt() {
   const touch = state.touch, active = touch.activeInput;
   if (!active) return;
+  if ((active.id === 'touch-errors' || active.id === 'touch-stops') && !/^\d+$/.test(active.value.trim())) return;
   if (active.matches('[data-touch-extra-meters]')) { touchResumeAfterExtra(); return; }
   if (active.id === 'touch-meters') await updateTouchWeightSuggestion();
   if (touch.activeInput !== active) return;
