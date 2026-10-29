@@ -39,8 +39,7 @@ function articleLabel(item) { const label = item.isTrial ? `${item.symbol} · Pr
 function selectedArticleChoice() { return state.data?.articles.find(item => String(item.choiceId ?? item.id) === String($('#article')?.value)); }
 function articleMachine(item) {
   if (!item?.machine) return '';
-  if (item.machine !== '0') return item.machine;
-  return String(item.symbol || '').match(/^(M[1-8]|B[1-3])\b/i)?.[1].toUpperCase() || '';
+  return item.machine === '0' ? '' : item.machine;
 }
 function workerLabel(worker) { return worker.name; }
 function fillCommonControls() {
@@ -227,7 +226,7 @@ function renderTouchSelectionSummary() {
 }
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
-  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}${item.machine ? `<small>${item.machine === '0' ? articleMachine(item) ? `Maszyna ${escapeHtml(articleMachine(item))} z symbolu` : '0 — dziewiarz · symbol bez maszyny' : `Maszyna ${escapeHtml(item.machine)}`}</small>` : ''}</button>`).join('');
+  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}${item.machine ? `<small>${item.machine === '0' ? '0 — dziewiarz' : `Maszyna ${escapeHtml(item.machine)}`}</small>` : ''}</button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
   for (const key of ['article', 'machine', 'worker', 'data', 'weight-check', 'options', 'confirm']) {
@@ -951,7 +950,7 @@ async function saveProduction(event) {
   if (!state.data.articles.length || !state.data.workers.length) { toast('Najpierw dodaj artykuły i pracowników w Ustawieniach.', true); return; }
   const selectedChoice = selectedArticleChoice();
   const common = { articleId: selectedChoice?.articleId || selectedChoice?.id, machine: articleMachine(selectedChoice) || $('#machine').value, productionDate: $('#production-date').value };
-  if (selectedChoice?.machine === '0' && !articleMachine(selectedChoice)) { toast(`Symbol „${selectedChoice.symbol}” przy maszynie 0 musi zaczynać się od kodu maszyny, np. M6-TDZ 56-24.`, true); return; }
+  if (selectedChoice?.machine === '0') { toast(`Dla artykułu „${selectedChoice.symbol}” ustaw konkretny numer maszyny w Ustawieniach kierownika.`, true); return; }
   const year = String(common.productionDate).slice(0, 4);
   if (state.data.sequences?.[year]?.[common.machine] === undefined) { toast('Najpierw ustaw ostatni użyty numer tej maszyny i roku w Ustawieniach.', true); return; }
   let bale;
@@ -1211,11 +1210,9 @@ $('#touch-wizard').addEventListener('click', event => {
     const touch = state.touch;
     touch.articleId = articleButton.dataset.touchArticle;
     const article = touchArticle();
-    if (article?.machine) {
-      const machine = articleMachine(article);
-      if (!machine) { toast(`Symbol „${article.symbol}” przy maszynie 0 musi zaczynać się od kodu maszyny, np. M6-TDZ 56-24.`, true); return; }
-      touch.machine = machine; touch.step = 'worker';
-    } else touch.step = 'machine';
+    if (article?.machine === '0') { toast(`Dla artykułu „${article.symbol}” ustaw konkretny numer maszyny w Ustawieniach kierownika.`, true); return; }
+    if (article?.machine) { touch.machine = article.machine; touch.step = 'worker'; }
+    else touch.step = 'machine';
     paintTouch(); return;
   }
   const machineButton = event.target.closest('[data-touch-machine]');
