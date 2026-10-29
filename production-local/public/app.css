@@ -69,6 +69,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-selection-summary { display: flex; flex-wrap: wrap; gap: 7px; }
 .touch-selection-chip { display: inline-flex; align-items: center; min-height: 39px; padding: 5px 12px; border: 1px solid #d9dee3; border-radius: 999px; background: white; color: #4c5660; font-size: 14px; font-weight: 700; }
 .touch-selection-chip.current { border-color: #e3b0b2; background: #fff1f1; color: #8f2529; }
+.touch-selection-chip.touch-bale-number-chip { border-color: #c93035; background: #c93035; color: white; font-size: 15px; font-weight: 850; }
 .touch-step-name { color: var(--muted); font-size: 14px; font-weight: 700; }
 .touch-step > h2 { margin: 7px 0 15px; font-size: clamp(24px, 2.5vw, 32px); }
 .touch-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 13px; max-height: calc(100dvh - 230px); overflow: auto; padding: 2px 5px 6px 1px; }

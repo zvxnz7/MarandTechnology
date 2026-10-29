@@ -197,6 +197,24 @@ function touchBaleCard(row, latest = false, reviewable = false) {
     : '<span class="touch-review-locked">Oznaczanie dostępne dla 3 ostatnich belek</span>';
   return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
+function touchNextBaleNumber() {
+  const machine = state.touch.machine;
+  if (!machine) return '';
+  const year = String($('#touch-date').value || state.data.today).slice(0, 4);
+  const lastValue = state.data.sequences?.[year]?.[machine];
+  return lastValue === undefined
+    ? `Brak numeracji dla ${machine}/${year}`
+    : `${machine}/${Number(lastValue) + 1}`;
+}
+function renderTouchSelectionSummary() {
+  const { articleId, machine, workerId } = state.touch;
+  const selections = [];
+  if (articleId) selections.push({ text: `Artykuł: ${touchArticle()?.symbol || '—'}` });
+  if (machine) selections.push({ text: `Maszyna: ${machine}` });
+  if (workerId) selections.push({ text: `Dziewiarz: ${touchWorker()?.name || '—'}` });
+  if (machine) selections.push({ text: `Przyjęcie belki: ${touchNextBaleNumber()}`, number: true });
+  $('#touch-selection-summary').innerHTML = selections.map((item, index) => `<span class="touch-selection-chip ${item.number ? 'touch-bale-number-chip' : index === selections.length - 1 ? 'current' : ''}">${escapeHtml(item.text)}</span>`).join('');
+}
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
   $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
@@ -207,11 +225,7 @@ function touchRenderTiles() {
   $('#touch-wizard').hidden = step === 'home';
   $('#touch-step-name').textContent = ({ article: '1 / 6', machine: '2 / 6', worker: '3 / 6', data: '4 / 6', options: '5 / 6', confirm: '6 / 6' })[step] || '';
   $('#touch-back').textContent = step === 'article' ? '← Do początku' : '← Cofnij';
-  const selections = [];
-  if (articleId) selections.push(`Artykuł: ${touchArticle()?.symbol || '—'}`);
-  if (machine) selections.push(`Maszyna: ${machine}`);
-  if (workerId) selections.push(`Dziewiarz: ${touchWorker()?.name || '—'}`);
-  $('#touch-selection-summary').innerHTML = selections.map((text, index) => `<span class="touch-selection-chip ${index === selections.length - 1 ? 'current' : ''}">${escapeHtml(text)}</span>`).join('');
+  renderTouchSelectionSummary();
   $('#touch-data-title').textContent = `${touchArticle()?.symbol || 'Belka'}${touchArticle()?.isTrial ? ' · Próba' : ''} — wpisz dane`;
   if (step === 'data') renderTouchExtras();
   if (step === 'options') renderTouchOptions();
@@ -1177,7 +1191,7 @@ $('#touch-wizard').addEventListener('input', event => {
   if (input.id === 'touch-notes') $('#touch-text-preview').textContent = input.value.trim() || 'Wpisany opis pojawi się tutaj';
   if (input.matches('[data-touch-numeric]')) updateTouchKeyboardPanel();
 });
-$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; updateTouchWeightSuggestion(); });
+$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; renderTouchSelectionSummary(); updateTouchWeightSuggestion(); });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !$('#numeric-keypad').hidden) hideKeypad();
   if (event.key === 'Enter' && event.target.matches?.('#production-form [data-numeric]')) {
