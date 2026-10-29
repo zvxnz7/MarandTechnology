@@ -133,7 +133,7 @@ function renderBales() {
     <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
     <td>${row.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
     <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Błędny zapis' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
-    <td class="actions-cell"><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? '✓ Błędny zapis' : 'Błędny zapis / sprawdź'}</button>${row.sync_status === 'pending' ? `<button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : ''}</td>
+    <td class="actions-cell"><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? '✓ Błędny zapis' : 'Zgłoś błędny zapis'}</button>${row.sync_status === 'pending' ? `<button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : ''}</td>
   </tr>`).join('');
   tbody.querySelectorAll('.edit-bale').forEach(button => button.addEventListener('click', () => startEdit(button.dataset.id)));
   tbody.querySelectorAll('.review-bale').forEach(button => button.addEventListener('click', () => setReviewFlag(button.dataset.id, button.dataset.check === '1')));
@@ -193,7 +193,7 @@ function touchTimeFmt(value) {
 }
 function touchBaleCard(row, latest = false, reviewable = false) {
   const review = reviewable || row.needs_check
-    ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Zgłoszono błędny zapis' : 'Błędny zapis / sprawdź'}</button>`
+    ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Zgłoszono błędny zapis' : 'Zgłoś błędny zapis'}</button>`
     : '<span class="touch-review-locked">Oznaczanie dostępne dla 3 ostatnich belek</span>';
   return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
