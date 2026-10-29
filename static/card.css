@@ -6,6 +6,7 @@
 .machine-specs th{background:#a6a6a6}
 .logo{height:180px}.logo img{object-fit:cover}.production-notes-row{min-height:42px;margin-bottom:8px;line-height:1.45}.one-time-production-notes{break-inside:avoid}
 .production-notes-heading{background:#ef981c;color:#fff;border:1px solid #d8840b;font-weight:bold;padding:5px;margin-bottom:0}.production-notes-row{margin-top:0}
+.instructions-weight-control{display:inline-flex;align-items:center;gap:7px;color:#fff;font-size:13px;cursor:pointer}.instructions-weight-control input{width:auto;margin:0;accent-color:#cf2e31}.instructions.instructions-regular{font-weight:normal}
 @media print{header{gap:4px;margin-bottom:0}.logo{height:110px;overflow:hidden;position:relative}.logo img{position:absolute;top:-45px;left:0;width:100%;height:200px;object-fit:cover}.identity{padding:4px 0;margin-bottom:8px}.production-notes-heading{background:#ef981c!important;color:#fff!important}}
 
 /* Keep the on-screen A4 preview aligned with the compact print layout. */

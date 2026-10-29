@@ -270,6 +270,10 @@ document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',
   if(alert && !window.confirm(alert.innerText+'\n\nCzy zapoznano się ze zmianami i kontynuować drukowanie?'))return;
   window.print();
 }));
+document.querySelectorAll('[data-instructions-bold]').forEach(toggle=>toggle.addEventListener('change',()=>{
+ const instructions=document.querySelector('.instructions');
+ if(instructions)instructions.classList.toggle('instructions-regular',!toggle.checked);
+}));
 const gbList=document.querySelector('[data-gb-list]');
 const gbRows=()=>gbList?[...gbList.querySelectorAll('[data-gb-index]')]:[];
 const threadingMarkup=(index,full)=>{
