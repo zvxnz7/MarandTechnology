@@ -352,8 +352,7 @@ async function updateTouchWeightSuggestion() {
     if (requestId !== touch.weightSuggestionRequestId) return;
   }
   const currentWeight = $('#touch-weight').value.trim();
-  if (match) touch.weightSuggestion = match;
-  else touch.weightSuggestion = null;
+  touch.weightSuggestion = touch.weightManuallyEdited ? null : match;
   if (!touch.weightManuallyEdited && (!currentWeight || currentWeight === touch.weightAutoValue)) {
     $('#touch-weight').value = match ? number(match.weight_kg).toFixed(2).replace('.', ',') : '';
     touch.weightAutoValue = $('#touch-weight').value;
@@ -442,6 +441,10 @@ async function touchAdvancePrompt() {
 function touchWriteNumeric(key) {
   const input = state.touch.activeInput;
   if (!input?.isConnected || !input.matches('[data-touch-numeric]')) return;
+  if (input.id === 'touch-weight' && /^\d$/.test(key)) {
+    state.touch.weightManuallyEdited = true;
+    state.touch.weightSuggestion = null;
+  }
   let start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start, value = input.value;
   if (key === 'clear') { value = ''; start = end = 0; }
   else if (key === 'backspace') { if (start === end && start > 0) start--; value = value.slice(0, start) + value.slice(end); end = start; }
@@ -1195,7 +1198,10 @@ $('#touch-wizard').addEventListener('input', event => {
     updateTouchShare();
     if (input.id === 'touch-meters') updateTouchWeightSuggestion();
   }
-  if (input.id === 'touch-weight' && input.value.trim() !== state.touch.weightAutoValue) state.touch.weightManuallyEdited = true;
+  if (input.id === 'touch-weight' && input.value.trim() !== state.touch.weightAutoValue) {
+    state.touch.weightManuallyEdited = true;
+    state.touch.weightSuggestion = null;
+  }
   if (input.id === 'touch-notes') $('#touch-text-preview').textContent = input.value.trim() || 'Wpisany opis pojawi się tutaj';
   if (input.matches('[data-touch-numeric]')) updateTouchKeyboardPanel();
 });
