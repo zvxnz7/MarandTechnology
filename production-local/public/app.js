@@ -225,7 +225,7 @@ function renderTouchSelectionSummary() {
 }
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
-  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}<small>${item.machine ? `Maszyna ${escapeHtml(item.machine)}` : 'Przypisz maszynę w Ustawieniach'}</small></button>`).join('');
+  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba</small>' : ''}<small>${item.machine ? `Maszyna ${escapeHtml(item.machine)}` : 'Przypisz maszynę w Ustawieniach'}</small></button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
   for (const key of ['article', 'machine', 'worker', 'data', 'weight-check', 'options', 'confirm']) {
