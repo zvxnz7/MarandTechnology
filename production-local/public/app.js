@@ -395,7 +395,7 @@ async function updateTouchWeightSuggestion() {
   }
   touch.weightInfo = info;
   touch.weightSuggestion = info?.suggestion || null;
-  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'weighed' : 'calculated';
+  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'gross' : 'calculated';
 }
 function touchShowConfirmation() {
   state.touch.step = 'confirm';
@@ -1193,7 +1193,7 @@ $('#touch-wizard').addEventListener('click', event => {
       $('#touch-weight').value = number(touch.weightSuggestion.weight_kg).toFixed(1).replace('.', ',');
       touch.weightAutoValue = $('#touch-weight').value;
       touchFocusInput($('#touch-errors'));
-    } else touchFocusInput($(touch.weightMode === 'gross' ? '#touch-weight-gross' : '#touch-weight'));
+    } else touchFocusInput($('#touch-weight-gross'));
     return;
   }
   const articleButton = event.target.closest('[data-touch-article]');
