@@ -75,19 +75,10 @@
         <section id="touch-step-machine" class="touch-step" hidden><h2>Wybierz maszynę</h2><div id="touch-machine-tiles" class="touch-tiles touch-machine-tiles"></div></section>
         <section id="touch-step-worker" class="touch-step" hidden><h2>Wybierz dziewiarza</h2><div id="touch-worker-tiles" class="touch-tiles"></div></section>
         <section id="touch-step-data" class="touch-step touch-data-step" hidden>
-          <h2 id="touch-data-title">Wpisz dane belki</h2>
+          <div class="touch-data-heading"><h2 id="touch-data-title">Wpisz dane belki</h2><label class="touch-date-field">Data produkcji<input id="touch-date" type="date"></label></div>
+          <div id="touch-extra-meter-fields" class="touch-extra-meter-fields" hidden></div>
+          <div class="touch-data-inputs" aria-hidden="true"><input id="touch-meters" type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" placeholder="0,00"><input id="touch-weight" type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" placeholder="0,00"><input id="touch-errors" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"><input id="touch-stops" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"><textarea id="touch-notes" inputmode="none" autocomplete="off" maxlength="1000"></textarea></div>
           <div class="touch-data-layout">
-            <div class="touch-data-fields">
-              <label class="touch-date-field">Data produkcji<input id="touch-date" type="date"></label>
-              <div class="touch-number-fields">
-                <label>Metry<input id="touch-meters" type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" placeholder="0,00"></label>
-                <label>Waga · kg<input id="touch-weight" type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" placeholder="0,00"></label>
-                <label>Błędy<input id="touch-errors" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"></label>
-                <label>Stopy<input id="touch-stops" type="text" inputmode="none" autocomplete="off" data-touch-numeric="integer" placeholder="0"></label>
-              </div>
-              <div class="touch-extra-workers"><div class="touch-extra-heading"><strong>Dodatkowi dziewiarze</strong><button id="touch-add-worker" type="button" class="touch-add-person">＋ Dodaj dziewiarza przy zmianie</button></div><div id="touch-extra-worker-list"></div><p id="touch-share-summary" class="touch-share-summary"></p></div>
-              <label>Opis / uwagi<textarea id="touch-notes" inputmode="none" autocomplete="off" maxlength="1000" placeholder="Dotknij, aby wpisać opis"></textarea></label>
-            </div>
             <div class="touch-keyboard-panel"><p id="touch-keyboard-hint" class="touch-keyboard-hint">Wybierz pole, aby otworzyć klawiaturę.</p><div id="touch-keyboard-prompt" class="touch-keyboard-prompt" hidden></div><output id="touch-keyboard-value" class="touch-keyboard-value" hidden></output><p id="touch-weight-suggestion" class="touch-weight-suggestion" hidden></p><div id="touch-extra-worker-picker" class="touch-extra-worker-picker" hidden></div><div id="touch-numeric-keyboard" class="touch-numeric-keyboard" hidden>
               <button type="button" data-touch-num="1">1</button><button type="button" data-touch-num="2">2</button><button type="button" data-touch-num="3">3</button>
               <button type="button" data-touch-num="4">4</button><button type="button" data-touch-num="5">5</button><button type="button" data-touch-num="6">6</button>
@@ -109,6 +100,15 @@
               </div>
             </div>
           </div>
+        </section>
+        <section id="touch-step-options" class="touch-step touch-options-step" hidden>
+          <h2>Co dodać do belki?</h2>
+          <div class="touch-option-grid">
+            <button type="button" class="touch-option-card" data-touch-add-extra><strong>＋ Dodaj dziewiarza</strong><span id="touch-option-extra-status">Jeśli przy belce pracowała dodatkowa osoba</span></button>
+            <button type="button" class="touch-option-card" data-touch-add-notes><strong id="touch-option-notes-title">＋ Dodaj opis</strong><span id="touch-option-notes-status">Możesz dodać opis lub uwagi</span></button>
+          </div>
+          <div id="touch-option-extra-list" class="touch-option-extra-list"></div>
+          <div class="touch-options-actions"><button id="touch-options-confirm" type="button" class="touch-next">Przejdź do podsumowania</button></div>
         </section>
         <section id="touch-step-confirm" class="touch-step touch-confirm-step" hidden>
           <h2>Sprawdź dane belki</h2>

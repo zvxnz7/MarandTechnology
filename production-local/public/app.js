@@ -203,10 +203,10 @@ function touchRenderTiles() {
   $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
-  for (const key of ['article', 'machine', 'worker', 'data', 'confirm']) $(`#touch-step-${key}`).hidden = step !== key;
+  for (const key of ['article', 'machine', 'worker', 'data', 'options', 'confirm']) $(`#touch-step-${key}`).hidden = step !== key;
   $('#touch-home').hidden = step !== 'home';
   $('#touch-wizard').hidden = step === 'home';
-  $('#touch-step-name').textContent = ({ article: '1 / 5', machine: '2 / 5', worker: '3 / 5', data: '4 / 5', confirm: '5 / 5' })[step] || '';
+  $('#touch-step-name').textContent = ({ article: '1 / 6', machine: '2 / 6', worker: '3 / 6', data: '4 / 6', options: '5 / 6', confirm: '6 / 6' })[step] || '';
   $('#touch-back').textContent = step === 'article' ? '← Do początku' : '← Cofnij';
   const selections = [];
   if (articleId) selections.push(`Artykuł: ${touchArticle()?.symbol || '—'}`);
@@ -215,17 +215,35 @@ function touchRenderTiles() {
   $('#touch-selection-summary').innerHTML = selections.map((text, index) => `<span class="touch-selection-chip ${index === selections.length - 1 ? 'current' : ''}">${escapeHtml(text)}</span>`).join('');
   $('#touch-data-title').textContent = `${touchArticle()?.symbol || 'Belka'}${touchArticle()?.isTrial ? ' · Próba' : ''} — wpisz dane`;
   if (step === 'data') renderTouchExtras();
+  if (step === 'options') renderTouchOptions();
   if (step === 'confirm') renderTouchConfirmation();
 }
 function renderTouchExtras() {
-  const primaryId = String(state.touch.workerId);
+  const touch = state.touch;
+  const host = $('#touch-extra-meter-fields');
+  const enteringExtra = touch.returnPrompt === 'options' && touch.workerPickerIndex === null && touch.pickerCreatedIndex >= 0;
+  host.hidden = !enteringExtra;
+  if (!enteringExtra) { host.replaceChildren(); return; }
+  const index = touch.pickerCreatedIndex;
+  const item = touch.extras[index];
+  if (!item) { host.replaceChildren(); return; }
+  const worker = state.data.workers.find(entry => String(entry.id) === String(item.workerId));
+  host.innerHTML = `<div class="touch-extra-meter-card"><strong>${escapeHtml(worker?.name || 'Dodatkowy dziewiarz')}</strong><label>Ile metrów dla tej osoby?<input type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" data-touch-extra-meters="${index}" value="${escapeHtml(item.meters)}" placeholder="metry"></label></div>`;
+}
+function renderTouchOptions() {
   const extras = state.touch.extras;
-  $('#touch-extra-worker-list').innerHTML = extras.map((item, index) => {
+  const completed = extras.filter(item => item.workerId && number(item.meters) > 0);
+  $('#touch-option-extra-status').textContent = completed.length
+    ? `Dodano ${completed.length} ${completed.length === 1 ? 'dziewiarza' : 'dziewiarzy'}. Możesz dodać kolejną osobę.`
+    : 'Jeśli przy belce pracowała dodatkowa osoba';
+  const hasNotes = Boolean($('#touch-notes').value.trim());
+  $('#touch-option-notes-title').textContent = hasNotes ? '✎ Edytuj opis' : '＋ Dodaj opis';
+  $('#touch-option-notes-status').textContent = hasNotes ? 'Opis jest już dodany' : 'Możesz dodać opis lub uwagi';
+  $('#touch-option-extra-list').innerHTML = completed.map((item, index) => {
+    const actualIndex = extras.indexOf(item);
     const worker = state.data.workers.find(entry => String(entry.id) === String(item.workerId));
-    const name = worker?.name || 'Wybierz dziewiarza';
-    return `<div class="touch-extra-row"><button type="button" class="touch-extra-worker-choice ${worker ? `touch-worker-color-${touchColorIndex(worker.name)}` : ''}" data-touch-pick-extra="${index}">${escapeHtml(name)}</button><label>Metry<input type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" data-touch-extra-meters="${index}" value="${escapeHtml(item.meters)}" placeholder="metry"></label><button type="button" data-touch-remove-extra="${index}" aria-label="Usuń osobę">×</button></div>`;
+    return `<div class="touch-option-extra"><span>${escapeHtml(worker?.name || 'Dziewiarz')} · ${fmt(number(item.meters))} m</span><button type="button" data-touch-remove-extra="${actualIndex}" aria-label="Usuń dodatkowego dziewiarza">Usuń</button></div>`;
   }).join('');
-  updateTouchShare();
 }
 function touchColorIndex(value) {
   return [...String(value || '')].reduce((sum, char) => (sum * 31 + char.codePointAt(0)) >>> 0, 7) % 8;
@@ -241,12 +259,7 @@ function renderTouchExtraPicker() {
   host.innerHTML = `<strong>Wybierz dodatkowego dziewiarza</strong><div class="touch-extra-worker-tiles">${available.length ? available.map(worker => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(worker.name)}" data-touch-extra-worker-tile="${escapeHtml(worker.id)}">${escapeHtml(worker.name)}</button>`).join('') : '<p class="touch-empty">Nie ma już innych dostępnych dziewiarzy.</p>'}</div><button type="button" class="touch-picker-cancel" data-touch-picker-cancel>Anuluj wybór</button>`;
 }
 function updateTouchShare() {
-  const meters = number($('#touch-meters').value);
-  const extraTotal = state.touch.extras.reduce((sum, item) => sum + number(item.meters), 0);
-  const remainder = Math.round((meters - extraTotal) * 100) / 100;
-  const primary = touchWorker()?.name || 'głównego dziewiarza';
-  $('#touch-share-summary').textContent = meters > 0 ? `Udział ${primary}: ${fmt(remainder)} m` : 'Wpisz metry belki, aby zobaczyć podział.';
-  $('#touch-share-summary').classList.toggle('invalid', remainder <= 0 && state.touch.extras.length > 0);
+  if (state.touch.step === 'options') renderTouchOptions();
 }
 function paintTouch() {
   if (!state.data) return;
@@ -364,13 +377,23 @@ function touchCopyLast() {
   toast(`Skopiowano dane belki ${row.number}; błędy wyzerowano.`);
 }
 function touchBack() {
-  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker', confirm: 'data' }[state.touch.step] || 'home';
-  state.touch.activeInput = null;
-  state.touch.currentPrompt = '';
-  state.touch.returnPrompt = '';
-  state.touch.workerPickerIndex = null;
-  state.touch.pickerCreatedIndex = -1;
-  if (prev === 'home') touchReset(); else { state.touch.step = prev; paintTouch(); }
+  const touch = state.touch;
+  if (touch.step === 'data' && touch.returnPrompt === 'options') {
+    touchResumeAfterExtra(true);
+    return;
+  }
+  const fromOptions = touch.step === 'options';
+  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker', options: 'data', confirm: 'options' }[touch.step] || 'home';
+  touch.activeInput = null;
+  touch.currentPrompt = '';
+  touch.returnPrompt = '';
+  touch.workerPickerIndex = null;
+  touch.pickerCreatedIndex = -1;
+  if (prev === 'home') touchReset(); else {
+    touch.step = prev;
+    paintTouch();
+    if (fromOptions) touchFocusInput($('#touch-stops'));
+  }
 }
 function touchFocusInput(input) {
   state.touch.activeInput = input;
@@ -380,13 +403,22 @@ function touchFocusInput(input) {
   updateTouchKeyboardPanel();
   input.focus({ preventScroll: true });
 }
-function touchResumeAfterExtra() {
+function touchResumeAfterExtra(cancel = false) {
   const touch = state.touch;
-  if (touch.pickerCreatedIndex >= 0 && !touch.extras[touch.pickerCreatedIndex]?.workerId) touch.extras.splice(touch.pickerCreatedIndex, 1);
-  const prompt = touch.returnPrompt || 'touch-notes';
+  const index = touch.pickerCreatedIndex;
+  const prompt = touch.currentPrompt || 'touch-meters';
+  const returnToOptions = touch.returnPrompt === 'options';
+  if (cancel && index >= 0 && (!touch.extras[index]?.workerId || !number(touch.extras[index]?.meters))) touch.extras.splice(index, 1);
+  else if (!cancel && index >= 0 && (!touch.extras[index]?.workerId || number(touch.extras[index]?.meters) <= 0)) {
+    toast('Wpisz metry dodatkowego dziewiarza.', true);
+    return;
+  }
   touch.returnPrompt = '';
   touch.workerPickerIndex = null;
   touch.pickerCreatedIndex = -1;
+  touch.activeInput = null;
+  touch.currentPrompt = '';
+  if (returnToOptions) { touch.step = 'options'; paintTouch(); return; }
   paintTouch();
   const input = prompt.startsWith('extra:')
     ? $(`[data-touch-extra-meters="${prompt.slice(6)}"]`)
@@ -403,7 +435,8 @@ async function touchAdvancePrompt() {
   const index = sequence.indexOf(active.id);
   if (index >= 0) {
     const next = sequence[index + 1];
-    touchFocusInput(next ? $(`#${next}`) : $('#touch-notes'));
+    if (next) touchFocusInput($(`#${next}`));
+    else { touch.step = 'options'; touch.activeInput = null; touch.currentPrompt = ''; paintTouch(); }
   }
 }
 function touchWriteNumeric(key) {
@@ -424,7 +457,11 @@ function touchTextAction(action) {
   if (action === 'clear') { input.value = ''; start = end = 0; }
   else if (action === 'backspace') { if (start === end && start > 0) start--; input.value = value.slice(0, start) + value.slice(end); end = start; }
   else if (action === 'done') {
-    touchShowConfirmation();
+    state.touch.activeInput = null;
+    state.touch.currentPrompt = '';
+    state.touch.returnPrompt = '';
+    state.touch.step = 'options';
+    paintTouch();
     return;
   }
   input.setSelectionRange(start, end); input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1058,15 +1095,8 @@ $('#touch-choose-article').addEventListener('click', touchStart);
 $('#touch-copy-last').addEventListener('click', touchCopyLast);
 $('#touch-back').addEventListener('click', touchBack);
 $('#touch-save').addEventListener('click', saveTouchBale);
-$('#touch-confirm-back').addEventListener('click', () => { $('#touch-confirm-error').hidden = true; state.touch.step = 'data'; state.touch.activeInput = null; paintTouch(); });
-$('#touch-add-worker').addEventListener('click', () => {
-  state.touch.extras.push({ workerId: '', meters: '' });
-  state.touch.returnPrompt = state.touch.currentPrompt || 'touch-meters';
-  state.touch.workerPickerIndex = state.touch.extras.length - 1;
-  state.touch.pickerCreatedIndex = state.touch.workerPickerIndex;
-  state.touch.activeInput = null;
-  paintTouch();
-});
+$('#touch-confirm-back').addEventListener('click', () => { $('#touch-confirm-error').hidden = true; state.touch.step = 'options'; state.touch.activeInput = null; paintTouch(); });
+$('#touch-options-confirm').addEventListener('click', touchShowConfirmation);
 $('#touch-home').addEventListener('click', event => {
   const button = event.target.closest('[data-touch-review]');
   if (button) setReviewFlag(button.dataset.touchReview, button.dataset.check === '1');
@@ -1083,6 +1113,25 @@ $('#touch-wizard').addEventListener('click', event => {
     state.touch.step = 'data';
     paintTouch();
     touchFocusInput($('#touch-meters'));
+    return;
+  }
+  if (event.target.closest('[data-touch-add-extra]')) {
+    const touch = state.touch;
+    touch.extras.push({ workerId: '', meters: '' });
+    touch.returnPrompt = 'options';
+    touch.workerPickerIndex = touch.extras.length - 1;
+    touch.pickerCreatedIndex = touch.workerPickerIndex;
+    touch.activeInput = null;
+    touch.step = 'data';
+    paintTouch();
+    return;
+  }
+  if (event.target.closest('[data-touch-add-notes]')) {
+    state.touch.returnPrompt = 'options';
+    state.touch.activeInput = null;
+    state.touch.step = 'data';
+    paintTouch();
+    touchFocusInput($('#touch-notes'));
     return;
   }
   const remove = event.target.closest('[data-touch-remove-extra]');
@@ -1108,13 +1157,12 @@ $('#touch-wizard').addEventListener('click', event => {
     const index = state.touch.workerPickerIndex;
     if (state.touch.extras[index]) state.touch.extras[index].workerId = extraWorkerTile.dataset.touchExtraWorkerTile;
     state.touch.workerPickerIndex = null;
-    state.touch.pickerCreatedIndex = -1;
     paintTouch();
     const metersInput = $(`[data-touch-extra-meters="${index}"]`);
     if (metersInput) touchFocusInput(metersInput);
     return;
   }
-  if (event.target.closest('[data-touch-picker-cancel]')) { state.touch.workerPickerIndex = null; touchResumeAfterExtra(); return; }
+  if (event.target.closest('[data-touch-picker-cancel]')) { state.touch.workerPickerIndex = null; touchResumeAfterExtra(true); return; }
   const numKey = event.target.closest('[data-touch-num]');
   if (numKey) {
     touchWriteNumeric(numKey.dataset.touchNum);
