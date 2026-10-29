@@ -109,7 +109,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-extra-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
 .touch-small-action { min-height: 43px; padding: 6px 10px; font-size: 13px; }
 .touch-add-person { min-height: 56px; max-width: 285px; padding: 10px 16px; border-color: #b8c4ce; font-size: 16px; font-weight: 800; line-height: 1.2; }
-.touch-keyboard-prompt { flex: 0 0 auto; margin: 0 0 12px; color: #20252b; font-size: clamp(24px, 2.6vw, 34px); font-weight: 850; text-align: center; }
+.touch-keyboard-prompt { flex: 0 0 auto; margin: 0 0 clamp(20px, 3vh, 34px); padding: clamp(16px, 2.2vh, 24px) 14px; border: 2px solid #e6cc8c; border-radius: 14px; background: #fff6df; color: #302b20; font-size: clamp(25px, 2.8vw, 36px); font-weight: 850; line-height: 1.2; text-align: center; }
 .touch-next { flex: 0 0 auto; width: 100%; min-height: 68px; margin-top: 12px; border-color: var(--red); background: var(--red); color: white; font-size: 23px; font-weight: 850; }
 .touch-next:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
 .touch-extra-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, .6fr) 48px; gap: 8px; align-items: end; margin-top: 7px; }
@@ -125,19 +125,24 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-picker-cancel { width: 100%; min-height: 50px; margin-top: 9px; }
 .touch-share-summary { margin: 5px 0 0; color: var(--muted); font-size: 13px; font-weight: 650; }
 .touch-error { margin: 0; color: #aa242a; font-size: 15px; font-weight: 750; }
-.touch-save { min-height: 65px; border-color: var(--red); background: var(--red); color: white; font-size: 22px; font-weight: 800; }
+.touch-save { position: sticky; bottom: 0; z-index: 2; flex: 0 0 auto; min-height: 65px; margin-top: auto; border-color: var(--red); background: var(--red); color: white; font-size: 22px; font-weight: 800; box-shadow: 0 -8px 18px rgb(238 241 244 / 90%); }
 .touch-save:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
 .touch-keyboard-panel { display: flex; flex-direction: column; justify-content: center; min-height: 0; padding: clamp(10px, 1.6vw, 18px); border: 1px solid #d8dde2; border-radius: 14px; background: white; }
 .touch-keyboard-hint { margin: auto; color: var(--muted); font-size: 19px; text-align: center; }
 .touch-numeric-keyboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(7px, 1vw, 12px); }
-.touch-numeric-keyboard button { min-height: clamp(65px, 10vh, 94px); border: 1px solid #d6dce1; border-radius: 12px; font-size: clamp(27px, 3vw, 39px); font-weight: 800; touch-action: manipulation; }
+.touch-numeric-keyboard button { min-height: clamp(70px, 10vh, 104px); border: 1px solid #d6dce1; border-radius: 12px; font-size: clamp(30px, 3.2vw, 42px); font-weight: 800; touch-action: manipulation; }
 .touch-numeric-keyboard .touch-key-alt { background: #f0f2f4; font-size: clamp(16px, 1.5vw, 20px); }
 .touch-numeric-keyboard .touch-key-done { grid-column: span 2; background: #e8f0f5; font-size: 20px; }
-.touch-text-keyboard { display: flex; flex-direction: column; gap: 7px; }
+.touch-text-keyboard-overlay { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: clamp(10px, 2.5vh, 28px); background: rgb(25 31 39 / 76%); }
+.touch-text-keyboard-dialog { display: flex; flex-direction: column; gap: clamp(12px, 2vh, 22px); width: min(100%, 1440px); max-height: 100%; overflow: auto; padding: clamp(16px, 2.5vw, 34px); border: 1px solid #d8dde2; border-radius: 20px; background: #f6f8fa; box-shadow: 0 18px 60px rgb(0 0 0 / 25%); }
+.touch-text-keyboard-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.touch-text-keyboard-heading h2 { font-size: clamp(25px, 3vw, 38px); }
+.touch-text-keyboard-heading p { margin: 4px 0 0; color: var(--muted); font-size: clamp(15px, 1.5vw, 19px); }
+.touch-text-keyboard-close { min-width: 150px; min-height: 58px; border-color: var(--red); background: var(--red); color: white; font-size: 19px; font-weight: 800; }
+.touch-text-keyboard { display: flex; flex-direction: column; gap: clamp(8px, 1.5vh, 14px); }
 .touch-letter-row { display: flex; justify-content: center; gap: 5px; }
-.touch-letter-row button { flex: 1 1 0; min-width: 0; min-height: clamp(45px, 7vh, 65px); padding: 4px; border: 1px solid #d6dce1; border-radius: 8px; font-size: clamp(16px, 2vw, 23px); font-weight: 700; touch-action: manipulation; }
-.touch-polish-row button { font-size: clamp(14px, 1.7vw, 20px); }
-.touch-key-actions button { font-size: clamp(12px, 1.35vw, 17px); }
+.touch-letter-row button { flex: 1 1 0; min-width: 0; min-height: clamp(62px, 10.5vh, 104px); padding: 5px; border: 1px solid #d6dce1; border-radius: 11px; font-size: clamp(24px, 3vw, 38px); font-weight: 750; touch-action: manipulation; }
+.touch-key-actions button { min-height: clamp(58px, 9vh, 88px); font-size: clamp(16px, 1.8vw, 22px); }
 .touch-letter-row button[data-touch-text=" "] { flex: 2.7 1 0; }
 .touch-keyboard-panel button:active, .touch-tile:active, .touch-home-actions button:active { transform: scale(.98); }
 
@@ -524,10 +529,11 @@ body.keypad-open .top-nav { display: none; }
   .touch-data-step { height: auto; min-height: calc(100dvh - 160px); }
   .touch-data-layout { grid-template-columns: 1fr; }
   .touch-keyboard-panel { min-height: 320px; }
-  .touch-numeric-keyboard { max-width: 520px; width: 100%; margin: auto; }
+  .touch-numeric-keyboard { max-width: 700px; width: 100%; margin: auto; }
   .touch-text-keyboard { max-width: 760px; width: 100%; margin: auto; }
-  .touch-numeric-keyboard button { min-height: clamp(58px, 8vh, 78px); }
-  .touch-letter-row button { min-height: clamp(42px, 6vh, 56px); }
+  .touch-numeric-keyboard button { min-height: clamp(64px, 9vh, 88px); }
+  .touch-text-keyboard-dialog { padding: 16px; }
+  .touch-letter-row button { min-height: clamp(56px, 9vh, 82px); }
   #touch-worker-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
@@ -557,8 +563,14 @@ body.keypad-open .top-nav { display: none; }
   .touch-extra-row { grid-template-columns: minmax(0, 1fr) minmax(0, .7fr) 42px; }
   .touch-extra-row select, .touch-extra-row input { font-size: 14px; }
   .touch-key-actions { flex-wrap: wrap; }
-  .touch-key-actions button { min-height: 43px; }
-  .touch-digit-row button { min-height: 43px; font-size: 14px; }
+  .touch-key-actions button { min-height: 52px; }
+  .touch-text-keyboard-overlay { padding: 8px; }
+  .touch-text-keyboard-dialog { gap: 12px; padding: 12px; border-radius: 14px; }
+  .touch-text-keyboard-heading { gap: 8px; }
+  .touch-text-keyboard-close { min-width: 90px; min-height: 48px; padding: 6px 10px; }
+  .touch-letter-row { gap: 4px; }
+  .touch-letter-row button { min-height: clamp(48px, 8vh, 68px); padding: 2px; font-size: clamp(20px, 5vw, 28px); }
+  .touch-key-actions button { font-size: 13px; }
 }
 @media (max-height: 980px) and (min-width: 901px) {
   .touch-view { padding: clamp(12px, 2.45vw, 30px); }
@@ -575,9 +587,9 @@ body.keypad-open .top-nav { display: none; }
   .touch-data-fields { gap: 7px; }
   .touch-data-fields input, .touch-data-fields textarea { min-height: 48px; font-size: 21px; }
   .touch-data-fields textarea { min-height: 76px; }
-  .touch-keyboard-panel { max-width: 700px; justify-self: end; width: 100%; padding: clamp(8px, 1.25vw, 13px); }
-  .touch-keyboard-prompt { font-size: clamp(21px, 2.2vw, 28px); }
+  .touch-keyboard-panel { max-width: 840px; justify-self: end; width: 100%; padding: clamp(8px, 1.25vw, 13px); }
+  .touch-keyboard-prompt { margin-bottom: clamp(18px, 2.7vh, 26px); font-size: clamp(21px, 2.2vw, 28px); }
   .touch-numeric-keyboard { gap: clamp(5px, .75vw, 9px); }
-  .touch-numeric-keyboard button { min-height: clamp(54px, 7.5vh, 72px); font-size: clamp(22px, 2.4vw, 30px); }
+  .touch-numeric-keyboard button { min-height: clamp(62px, 8.5vh, 84px); font-size: clamp(26px, 2.6vw, 34px); }
   .touch-next { min-height: 56px; margin-top: 8px; font-size: 20px; }
 }

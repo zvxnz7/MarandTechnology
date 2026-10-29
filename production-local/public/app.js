@@ -256,10 +256,11 @@ function updateTouchKeyboardPanel() {
   const touch = state.touch, active = touch.activeInput;
   const choosingWorker = !$('#touch-extra-worker-picker').hidden;
   const numeric = Boolean(active?.matches('[data-touch-numeric]'));
+  const textEntry = Boolean(active && active.id === 'touch-notes');
   $('.touch-keyboard-panel').classList.toggle('worker-picker-open', choosingWorker);
   $('#touch-numeric-keyboard').hidden = choosingWorker || !numeric;
-  $('#touch-text-keyboard').hidden = choosingWorker || !active || active.id !== 'touch-notes';
-  $('#touch-keyboard-prompt').hidden = choosingWorker || !active;
+  $('#touch-text-keyboard-overlay').hidden = choosingWorker || !textEntry;
+  $('#touch-keyboard-prompt').hidden = choosingWorker || !active || textEntry;
   $('#touch-keyboard-prompt').textContent = choosingWorker ? 'Wybierz dodatkowego dziewiarza' : touchPromptLabel(active);
   $('#touch-next').hidden = choosingWorker || !numeric;
   $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
