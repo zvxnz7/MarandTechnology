@@ -442,6 +442,10 @@ function touchWriteNumeric(key) {
   const input = state.touch.activeInput;
   if (!input?.isConnected || !input.matches('[data-touch-numeric]')) return;
   if (input.id === 'touch-weight' && /^\d$/.test(key)) {
+    if (!state.touch.weightManuallyEdited && input.value.trim() === state.touch.weightAutoValue) {
+      input.value = '';
+      input.setSelectionRange(0, 0);
+    }
     state.touch.weightManuallyEdited = true;
     state.touch.weightSuggestion = null;
   }
