@@ -899,6 +899,9 @@ function createBales(body, reportDate = '') {
             : `Po ${weightInfo.weighInterval} belkach bez ważenia kolejna belka musi być zważona.`;
           fail(409, reason);
         }
+        if (!weightInfo.suggestion || Math.abs(item.weightKg - weightInfo.suggestion.weight_kg) >= 0.005) {
+          fail(409, 'Przy wadze sugerowanej nie można zmieniać wartości. Wybierz rzeczywiste ważenie, aby wpisać inną wagę.');
+        }
       }
       const id = crypto.randomUUID();
       const serial = allocateSerial(machine, year);

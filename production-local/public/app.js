@@ -171,6 +171,7 @@ function touchReset() {
   Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'suggested', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: touch.weightSuggestionRequestId + 1 });
   $('#touch-date').value = state.data?.today || '';
   for (const id of ['meters', 'weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
+  $('#touch-weight').readOnly = false;
   $('#touch-confirm-error').hidden = true;
   $('#touch-confirm-error').textContent = '';
   paintTouch();
@@ -352,6 +353,10 @@ function updateTouchKeyboardPanel() {
   const positiveValue = number(activeValue);
   const positiveInvalid = positiveRequired && (!Number.isFinite(positiveValue) || positiveValue <= 0);
   $('#touch-next').disabled = Boolean(countInvalid || positiveInvalid);
+  $('#touch-weight').readOnly = active?.id === 'touch-weight' && !touch.weightWeighed;
+  $('#touch-numeric-keyboard').querySelectorAll('[data-touch-num]').forEach(button => {
+    button.disabled = active?.id === 'touch-weight' && !touch.weightWeighed;
+  });
   $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
   $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
 }
@@ -476,6 +481,7 @@ async function touchAdvancePrompt() {
 function touchWriteNumeric(key) {
   const input = state.touch.activeInput;
   if (!input?.isConnected || !input.matches('[data-touch-numeric]')) return;
+  if (input.id === 'touch-weight' && !state.touch.weightWeighed) return;
   if (input.id === 'touch-weight' && /^\d$/.test(key)) {
     if (!state.touch.weightManuallyEdited && input.value.trim() === state.touch.weightAutoValue) {
       input.value = '';
@@ -1166,6 +1172,7 @@ $('#touch-wizard').addEventListener('click', event => {
       touch.weightAutoValue = $('#touch-weight').value;
       touch.weightManuallyEdited = false;
     }
+    $('#touch-weight').readOnly = !touch.weightWeighed;
     touch.step = 'weight';
     paintTouch();
     touchFocusInput($('#touch-weight'));
@@ -1265,6 +1272,11 @@ $('#touch-wizard').addEventListener('input', event => {
     updateTouchShare();
   }
   if (input.id === 'touch-weight' && input.value.trim() !== state.touch.weightAutoValue) {
+    if (!state.touch.weightWeighed) {
+      input.value = state.touch.weightAutoValue;
+      updateTouchKeyboardPanel();
+      return;
+    }
     state.touch.weightManuallyEdited = true;
     state.touch.weightSuggestion = null;
   }
