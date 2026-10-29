@@ -330,6 +330,8 @@ tr:last-child td { border-bottom: 0; }
 .article-lot-label { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
 .article-machine-label,.article-weight-interval-label { display:grid; grid-template-columns: auto minmax(65px,1fr); align-items:center; gap:6px; color:var(--muted); font-size:11px; }
 .article-machine-label select,.article-weight-interval-input { box-sizing:border-box; width:100%; min-width:0; min-height:40px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:white; color:var(--ink); font-size:12px; }
+.article-weight-interval-label { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.article-weight-interval-input { width:4.2em; max-width:4.2em; flex:0 0 4.2em; padding-right:3px; padding-left:3px; text-align:center; }
 .article-lot-input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); font-size: 14px; }
 .article-trial-toggle { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .article-trial-toggle input { width: 18px; min-height: 18px; height: 18px; margin: 0; }

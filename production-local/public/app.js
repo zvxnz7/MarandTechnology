@@ -592,7 +592,7 @@ async function loadSettings() {
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}" required><option value="">Wybierz maszynę</option>${state.data.machines.map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${machine}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label">Ważenie co<input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="500" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"> belek</label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}" required><option value="">Wybierz maszynę</option>${state.data.machines.map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${machine}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label"><span>Ważenie co</span><input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="99" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"><span>belek</span></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
   articleList.querySelectorAll('.article-machine-input').forEach(input => input.addEventListener('change', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(item)item.machine=input.value; }));
   articleList.querySelectorAll('.article-weight-interval-input').forEach(input => input.addEventListener('input', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(!item)return; for(const row of state.catalogArticles) if(row.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL')) row.weightWeighInterval=Number(input.value); articleList.querySelectorAll('.article-weight-interval-input').forEach(control=>{if(state.catalogArticles[Number(control.dataset.index)]?.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL'))control.value=input.value;}); }));
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
@@ -621,16 +621,6 @@ function renderCatalogs() {
 function renderSequenceList(year) {
   const yearSequences = state.data.sequences?.[year] || {};
   $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
-}
-function addArticle(event) {
-  event.preventDefault();
-  const symbol = $('#article-new').value.trim();
-  if (!symbol) return;
-  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null, isTrial: false, machine: '', weightWeighInterval: 20 });
-  $('#article-new').value = '';
-  $('#article-new-lot').value = '';
-  renderCatalogs();
-  $('#article-new').focus();
 }
 let catalogSearchTimer;
 async function searchCentralArticles() {
@@ -1125,7 +1115,7 @@ function moveToNextField() {
 
 $('#production-form').addEventListener('submit', saveProduction);
 $('#article').addEventListener('change', () => { const choice=selectedArticleChoice(); $('#machine').disabled=true; $('#machine').value=articleMachine(choice); });
-$('#article-add-form').addEventListener('submit', addArticle);
+
 $('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(searchCentralArticles,180);});
 $('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
 $('#add-extra-worker').addEventListener('click', () => { addExtraWorkerRow(); updateShareSummary(); });
