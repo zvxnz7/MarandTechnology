@@ -395,7 +395,7 @@ async function updateTouchWeightSuggestion() {
   }
   touch.weightInfo = info;
   touch.weightSuggestion = info?.suggestion || null;
-  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'net' : 'calculated';
+  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'weighed' : 'calculated';
 }
 function touchShowConfirmation() {
   state.touch.step = 'confirm';
