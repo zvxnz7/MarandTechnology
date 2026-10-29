@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'suggested', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'calculated', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -35,16 +35,25 @@ async function api(url, options = {}) {
 function options(items, valueKey, labelFn, selected) {
   return items.map(item => `<option value="${escapeHtml(item[valueKey])}" ${String(item[valueKey]) === String(selected) ? 'selected' : ''}>${escapeHtml(labelFn(item))}</option>`).join('');
 }
-function articleLabel(item) { return item.isTrial ? `${item.symbol} · Próba` : item.symbol; }
+function articleLabel(item) { const label = item.isTrial ? `${item.symbol} · Próba` : item.symbol; return item.machine ? `${label} · ${item.machine === '0' ? 'dziewiarz' : item.machine}` : label; }
+function selectedArticleChoice() { return state.data?.articles.find(item => String(item.choiceId ?? item.id) === String($('#article')?.value)); }
+function articleMachine(item) {
+  if (!item?.machine) return '';
+  if (item.machine !== '0') return item.machine;
+  return String(item.symbol || '').match(/^(M[1-8]|B[1-3])\b/i)?.[1].toUpperCase() || '';
+}
 function workerLabel(worker) { return worker.name; }
 function fillCommonControls() {
   const oldArticle = $('#article').value;
   const oldMachine = $('#machine').value;
   const articles = state.data.articles;
-  $('#article').innerHTML = `<option value="">Wybierz artykuł</option>${options(articles, 'id', articleLabel, oldArticle)}`;
+  $('#article').innerHTML = `<option value="">Wybierz artykuł</option>${options(articles, 'choiceId', articleLabel, oldArticle)}`;
   if (oldArticle) $('#article').value = oldArticle;
-  else if (articles.length === 1) $('#article').value = String(articles[0].id);
+  else if (articles.length === 1) $('#article').value = String(articles[0].choiceId ?? articles[0].id);
   $('#machine').innerHTML = `<option value="">Wybierz maszynę</option>${state.data.machines.map(machine => `<option value="${machine}" ${machine === oldMachine ? 'selected' : ''}>${machine}</option>`).join('')}`;
+  const selected = selectedArticleChoice();
+  $('#machine').value = selected?.machine ? articleMachine(selected) : oldMachine;
+  $('#machine').disabled = Boolean(selected?.machine);
   if (!$('#production-date').value) $('#production-date').value = state.data.today;
   $('#setup-notice').hidden = articles.length > 0 && state.data.workers.length > 0;
   fillWorkerControls($('#worker-primary').value);
@@ -130,7 +139,7 @@ function renderBales() {
   const ordinals = new Map(chronological.map((row,index) => [row.id,index + 1]));
   tbody.innerHTML = state.data.bales.map(row => `<tr>
     <td>${ordinals.get(row.id)}</td><td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}${row.trial_symbol ? '<small class="trial-bale-badge">Próba</small>' : ''}</td><td>${dateFmt(row.production_date)}</td>
-    <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
+    <td>${fmt(row.weight_kg)}${row.weight_source === 'calculated' ? '<small class="weight-calculated-badge">Waga wyliczona</small>' : ''}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
     <td>${row.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
     <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Błędny zapis' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
     <td class="actions-cell"><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? '✓ Błędny zapis' : 'Zgłoś błędny zapis'}</button>${row.sync_status === 'pending' ? `<button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : ''}</td>
@@ -164,13 +173,13 @@ async function refresh() {
     return false;
   }
 }
-function touchArticle() { return state.data?.articles.find(item => String(item.id) === String(state.touch.articleId)); }
+function touchArticle() { return state.data?.articles.find(item => String(item.choiceId ?? item.id) === String(state.touch.articleId)); }
 function touchWorker() { return state.data?.workers.find(item => String(item.id) === String(state.touch.workerId)); }
 function touchReset() {
   const touch = state.touch;
-  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'suggested', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: touch.weightSuggestionRequestId + 1 });
+  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'calculated', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: touch.weightSuggestionRequestId + 1 });
   $('#touch-date').value = state.data?.today || '';
-  for (const id of ['meters', 'weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
+  for (const id of ['meters', 'weight', 'weight-gross', 'tube-weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
   $('#touch-weight').readOnly = false;
   $('#touch-confirm-error').hidden = true;
   $('#touch-confirm-error').textContent = '';
@@ -196,7 +205,7 @@ function touchBaleCard(row, latest = false, reviewable = false) {
   const review = reviewable || row.needs_check
     ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Zgłoszono błędny zapis' : 'Zgłoś błędny zapis'}</button>`
     : '<span class="touch-review-locked">Oznaczanie dostępne dla 3 ostatnich belek</span>';
-  return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
+  return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg${row.weight_source === 'calculated' ? '<small class="weight-calculated-badge">Waga wyliczona</small>' : ''}<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
 function touchNextBaleNumber() {
   const machine = state.touch.machine;
@@ -218,7 +227,7 @@ function renderTouchSelectionSummary() {
 }
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
-  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
+  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}${item.machine ? `<small>${item.machine === '0' ? articleMachine(item) ? `Maszyna ${escapeHtml(articleMachine(item))} z symbolu` : '0 — dziewiarz · symbol bez maszyny' : `Maszyna ${escapeHtml(item.machine)}`}</small>` : ''}</button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
   for (const key of ['article', 'machine', 'worker', 'data', 'weight-check', 'options', 'confirm']) {
@@ -251,27 +260,28 @@ function renderTouchExtras() {
 function renderTouchWeightCheck() {
   const touch = state.touch, info = touch.weightInfo || {}, suggestion = info.suggestion || touch.weightSuggestion;
   const notice = $('#touch-weight-check-notice');
-  notice.hidden = !info.mustWeigh;
+  const reminderDue = Number(info.reminderIn) > 0 && Number(info.reminderIn) <= 5;
+  notice.hidden = !info.mustWeigh && !reminderDue;
   notice.textContent = info.weighReason === 'startup'
     ? `${info.startupWeighNumber === 'druga' ? 'Druga' : 'Pierwsza'} belka tego artykułu — sprawdź wagę rzeczywistą.`
     : info.weighReason === 'interval'
       ? `Sprawdź wagę rzeczywistą kolejnej belki — od ostatniego ważenia minęło ${info.balesSinceLastWeigh} belek.`
-      : '';
+      : reminderDue ? `Uwaga: za ${info.reminderIn} ${info.reminderIn === 1 ? 'sztukę' : 'sztuki'} kontrola wagi — zważ tuleję.` : '';
   const last = info.lastWeighed;
   $('#touch-weight-check-history').innerHTML = last
-    ? `Ostatnio zważona belka: <strong>${escapeHtml(last.number)}</strong> · ${fmt(last.meters)} m · ${fmt(last.weight_kg)} kg · ${info.balesSinceLastWeigh === 0 ? 'ostatnia zważona belka' : `${info.balesSinceLastWeigh} ${info.balesSinceLastWeigh === 1 ? 'belkę' : 'belek'} temu`}.`
+    ? `Ostatnio zważona belka: <strong>${escapeHtml(last.symbol)} · ${escapeHtml(last.number)}</strong> · ${fmt(last.meters)} m · ${fmt(last.weight_kg)} kg · ${info.balesSinceLastWeigh === 0 ? 'ostatnia zważona belka' : `${info.balesSinceLastWeigh} ${info.balesSinceLastWeigh === 1 ? 'belkę' : 'belek'} temu`}.`
     : 'Brak zważonej belki w bieżącym miesiącu produkcji tego artykułu.';
-  const suggestedButton = $('[data-touch-weight-mode="suggested"]');
-  const weighedButton = $('[data-touch-weight-mode="weighed"]');
-  suggestedButton.disabled = Boolean(info.mustWeigh || !suggestion);
-  for (const [button, mode] of [[suggestedButton, 'suggested'], [weighedButton, 'weighed']]) {
+  const calculateButton = $('[data-touch-weight-mode="calculated"]');
+  calculateButton.disabled = Boolean(info.mustWeigh || !suggestion);
+  for (const button of document.querySelectorAll('#touch-step-weight-check [data-touch-weight-mode]')) {
+    const mode = button.dataset.touchWeightMode;
     button.classList.toggle('selected', touch.weightMode === mode);
     button.setAttribute('aria-pressed', String(touch.weightMode === mode));
   }
   $('#touch-weight-check-hint').textContent = suggestion
-    ? `Waga sugerowana: ${fmt(suggestion.weight_kg)} kg na podstawie belki ${suggestion.number}.`
-    : 'Brak sugerowanej wagi dla tej liczby metrów — zważ belkę i wpisz jej wagę.';
-  $('#touch-weight-check-continue').disabled = touch.weightMode === 'suggested' && !suggestion;
+    ? `Waga wyliczana: ${fmt(suggestion.weight_kg)} kg na podstawie ${suggestion.referenceCount} ostatnich zważonych ${suggestion.referenceCount === 1 ? 'belki' : 'belek'} (${suggestion.number}).`
+    : 'Brak zważonych belek do wyliczenia proporcji. Zważ tę belkę.';
+  $('#touch-weight-check-continue').disabled = touch.weightMode === 'calculated' && (!suggestion || info.mustWeigh);
 }
 function renderTouchOptions() {
   const extras = state.touch.extras;
@@ -323,7 +333,7 @@ function renderTouchConfirmation() {
   const rows = [
     ['Artykuł', article?.symbol || '—'], ['Maszyna', touch.machine || '—'],
     ['Data produkcji', dateFmt($('#touch-date').value)], ['Dziewiarze', workerLines.join('<br>')],
-    ['Metry', `${fmt(meters)} m`], ['Waga', `${fmt(number($('#touch-weight').value))} kg`],
+    ['Metry', `${fmt(meters)} m`], ['Waga', `${fmt(number($('#touch-weight').value))} kg${touch.weightMode === 'calculated' ? ' · Waga wyliczona' : ''}`],
     ['Błędy', $('#touch-errors').value.trim() || '—'], ['Stopy', $('#touch-stops').value.trim() || '—'],
     ['Opis / uwagi', $('#touch-notes').value.trim() || '—'],
   ];
@@ -348,22 +358,22 @@ function updateTouchKeyboardPanel() {
   $('#touch-text-preview').textContent = $('#touch-notes').value.trim() || 'Wpisany opis pojawi się tutaj';
   $('#touch-next').hidden = choosingWorker || !numeric;
   const countRequired = active?.id === 'touch-errors' || active?.id === 'touch-stops';
-  const positiveRequired = active?.id === 'touch-meters' || active?.id === 'touch-weight';
+  const positiveRequired = ['touch-meters','touch-weight','touch-weight-gross','touch-tube-weight'].includes(active?.id);
   const countInvalid = countRequired && !/^\d+$/.test(active.value.trim());
   const positiveValue = number(activeValue);
   const positiveInvalid = positiveRequired && (!Number.isFinite(positiveValue) || positiveValue <= 0);
   $('#touch-next').disabled = Boolean(countInvalid || positiveInvalid);
   $('#touch-weight').readOnly = active?.id === 'touch-weight' && !touch.weightWeighed;
-  $('#touch-numeric-keyboard').querySelectorAll('[data-touch-num]').forEach(button => {
-    button.disabled = active?.id === 'touch-weight' && !touch.weightWeighed;
-  });
+  $('#touch-numeric-keyboard').querySelectorAll('[data-touch-num]').forEach(button => { button.disabled = false; });
   $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
   $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
 }
 function touchPromptLabel(input) {
   if (!input) return '';
   if (input.id === 'touch-meters') return 'Ile metrów?';
-  if (input.id === 'touch-weight') return 'Ile kg?';
+  if (input.id === 'touch-weight') return 'Ile kg netto?';
+  if (input.id === 'touch-weight-gross') return 'Ile kg waży belka z tuleją?';
+  if (input.id === 'touch-tube-weight') return 'Ile kg waży sama tuleja?';
   if (input.id === 'touch-errors') return 'Ile błędów? Wpisz 0, jeśli brak';
   if (input.id === 'touch-stops') return 'Ile stopów? Wpisz 0, jeśli brak';
   if (input.id === 'touch-notes') return 'Uwagi — wpisz opis';
@@ -380,14 +390,14 @@ async function updateTouchWeightSuggestion() {
   const requestId = ++touch.weightSuggestionRequestId;
   let info = null;
   if (touch.weightSuggestionsEnabled && article && meters > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const query = new URLSearchParams({ articleId: article.id, productionDate: date, meters: String(meters) });
+    const query = new URLSearchParams({ articleId: article.articleId || article.id, productionDate: date, meters: String(meters) });
     try { info = await api(`/api/bales/weight-suggestion?${query}`); }
     catch { info = null; }
     if (requestId !== touch.weightSuggestionRequestId) return;
   }
   touch.weightInfo = info;
   touch.weightSuggestion = info?.suggestion || null;
-  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'weighed' : 'suggested';
+  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'net' : 'calculated';
 }
 function touchShowConfirmation() {
   state.touch.step = 'confirm';
@@ -458,7 +468,7 @@ async function touchAdvancePrompt() {
   const touch = state.touch, active = touch.activeInput;
   if (!active) return;
   if ((active.id === 'touch-errors' || active.id === 'touch-stops') && !/^\d+$/.test(active.value.trim())) return;
-  if ((active.id === 'touch-meters' || active.id === 'touch-weight') && (!Number.isFinite(number(active.value)) || number(active.value) <= 0)) return;
+  if (['touch-meters','touch-weight','touch-weight-gross','touch-tube-weight'].includes(active.id) && (!Number.isFinite(number(active.value)) || number(active.value) <= 0)) return;
   if (active.matches('[data-touch-extra-meters]')) { touchResumeAfterExtra(); return; }
   if (active.id === 'touch-meters') {
     await updateTouchWeightSuggestion();
@@ -470,6 +480,15 @@ async function touchAdvancePrompt() {
     return;
   }
   if (touch.activeInput !== active) return;
+  if (active.id === 'touch-weight-gross') { touchFocusInput($('#touch-tube-weight')); return; }
+  if (active.id === 'touch-tube-weight') {
+    const net = Math.round((number($('#touch-weight-gross').value) - number(active.value)) * 10) / 10;
+    if (net <= 0) { toast('Waga z tuleją musi być większa od wagi tulei.', true); return; }
+    $('#touch-weight').value = String(net).replace('.', ',');
+    const sequence = ['touch-errors', 'touch-stops'];
+    touchFocusInput($(`#${sequence[0]}`));
+    return;
+  }
   const sequence = ['touch-weight', 'touch-errors', 'touch-stops'];
   const index = sequence.indexOf(active.id);
   if (index >= 0) {
@@ -481,7 +500,7 @@ async function touchAdvancePrompt() {
 function touchWriteNumeric(key) {
   const input = state.touch.activeInput;
   if (!input?.isConnected || !input.matches('[data-touch-numeric]')) return;
-  if (input.id === 'touch-weight' && !state.touch.weightWeighed) return;
+  if (input.id === 'touch-weight' && state.touch.weightMode === 'calculated') return;
   if (input.id === 'touch-weight' && /^\d$/.test(key)) {
     if (!state.touch.weightManuallyEdited && input.value.trim() === state.touch.weightAutoValue) {
       input.value = '';
@@ -532,7 +551,7 @@ async function saveTouchBale() {
   if (message) { $('#touch-confirm-error').textContent = message; $('#touch-confirm-error').hidden = false; return; }
   touch.saving = true; $('#touch-save').disabled = true; $('#touch-confirm-error').hidden = true;
   try {
-    const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ articleId: article.id, machine, productionDate: date, bales: [{ weightKg, weightWeighed: touch.weightWeighed, meters, errors: Number(errorsText), stops: Number(stopsText), notes: $('#touch-notes').value.trim(), primaryWorkerId: touch.workerId, trialSymbol: article.isTrial ? article.symbol : '', workers: [{ workerId: Number(touch.workerId), meters: remaining }, ...extras] }] }) });
+    const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ articleId: article.articleId || article.id, machine, productionDate: date, bales: [{ weightKg, weightWeighed: touch.weightWeighed, weightSource: touch.weightMode === 'calculated' ? 'calculated' : 'weighed', weightGrossKg: touch.weightMode === 'gross' ? number($('#touch-weight-gross').value) : null, tubeWeightKg: touch.weightMode === 'gross' ? number($('#touch-tube-weight').value) : null, meters, errors: Number(errorsText), stops: Number(stopsText), notes: $('#touch-notes').value.trim(), primaryWorkerId: touch.workerId, trialSymbol: article.isTrial ? article.symbol : '', workers: [{ workerId: Number(touch.workerId), meters: remaining }, ...extras] }] }) });
     render(await api('/api/bootstrap'));
     touchReset();
     toast(`Zapisano belkę ${result.created[0].number}.`);
@@ -559,28 +578,36 @@ async function loadSettings() {
   } catch (error) {
     toast(error.message, true);
   }
-  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
+  state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: item.weightWeighInterval || 20 }));
   state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
   const workersSync=settingsData.centralWorkersSyncedAt?new Date(settingsData.centralWorkersSyncedAt).toLocaleString('pl-PL'):'lista nie była jeszcze aktualizowana';
   $('#worker-catalog-sync').textContent=`Ostatnia aktualizacja listy pracowników: ${workersSync}.`;
   $('#sequence-year').value = state.data.today.slice(0, 4);
-  $('#weight-weigh-interval').value = settingsData.weightWeighInterval || 20;
+  if ($('#production-server-url')) $('#production-server-url').value = settingsData.productionConnection?.serverUrl || 'http://192.168.1.14:8765';
+  if ($('#production-api-token')) $('#production-api-token').value = '';
+  if ($('#production-connection-status')) $('#production-connection-status').textContent = settingsData.productionConnection?.configured ? 'Token jest zapisany lokalnie. Adres programu głównego jest stały.' : 'Wklej token z programu głównego i wybierz „Sprawdź i zapisz token”.';
   const yearSequences = state.data.sequences?.[$('#sequence-year').value] || {};
   $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
   renderCatalogs();
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}"><option value="">Wybierana przy belce</option><option value="0" ${item.machine === '0' ? 'selected' : ''}>0 — dziewiarz</option>${state.data.machines.map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${machine}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label">Ważenie co<input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="500" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"> belek</label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.querySelectorAll('.article-machine-input').forEach(input => input.addEventListener('change', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(item)item.machine=input.value; }));
+  articleList.querySelectorAll('.article-weight-interval-input').forEach(input => input.addEventListener('input', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(!item)return; for(const row of state.catalogArticles) if(row.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL')) row.weightWeighInterval=Number(input.value); articleList.querySelectorAll('.article-weight-interval-input').forEach(control=>{if(state.catalogArticles[Number(control.dataset.index)]?.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL'))control.value=input.value;}); }));
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
     const item = state.catalogArticles[Number(input.dataset.index)];
-    if (item) item.lot = input.value;
+    if (!item) return;
+    for (const row of state.catalogArticles) if (row.symbol.toLocaleUpperCase('pl-PL') === item.symbol.toLocaleUpperCase('pl-PL')) row.lot = input.value;
+    articleList.querySelectorAll('.article-lot-input').forEach(control => { if (state.catalogArticles[Number(control.dataset.index)]?.symbol.toLocaleUpperCase('pl-PL') === item.symbol.toLocaleUpperCase('pl-PL')) control.value = input.value; });
   }));
   articleList.querySelectorAll('.article-trial-input').forEach(input => input.addEventListener('change', () => {
     const item = state.catalogArticles[Number(input.dataset.index)];
-    if (item) item.isTrial = input.checked;
+    if (!item) return;
+    for (const row of state.catalogArticles) if (row.symbol.toLocaleUpperCase('pl-PL') === item.symbol.toLocaleUpperCase('pl-PL')) row.isTrial = input.checked;
+    articleList.querySelectorAll('.article-trial-input').forEach(control => { if (state.catalogArticles[Number(control.dataset.index)]?.symbol.toLocaleUpperCase('pl-PL') === item.symbol.toLocaleUpperCase('pl-PL')) control.checked = input.checked; });
   }));
   articleList.querySelectorAll('.remove-article').forEach(button => button.addEventListener('click', () => {
     state.catalogArticles.splice(Number(button.dataset.index), 1);
@@ -601,10 +628,7 @@ function addArticle(event) {
   event.preventDefault();
   const symbol = $('#article-new').value.trim();
   if (!symbol) return;
-  if (state.catalogArticles.some(item => item.symbol.toLocaleUpperCase('pl-PL') === symbol.toLocaleUpperCase('pl-PL'))) {
-    toast('Ten artykuł jest już na liście.', true); return;
-  }
-  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null, isTrial: false });
+  state.catalogArticles.push({ symbol, lot: $('#article-new-lot').value.trim(), centralId: null, isTrial: false, machine: '', weightWeighInterval: 20 });
   $('#article-new').value = '';
   $('#article-new-lot').value = '';
   renderCatalogs();
@@ -624,8 +648,7 @@ function addCentralArticleFromSearch(event) {
   const button=event.target.closest('[data-central-id]');
   if(!button)return;
   const symbol=button.dataset.symbol,centralId=Number(button.dataset.centralId);
-  if(state.catalogArticles.some(item=>item.symbol.toLocaleUpperCase('pl-PL')===symbol.toLocaleUpperCase('pl-PL'))){toast('Ten artykuł jest już na lokalnej liście.',true);return;}
-  state.catalogArticles.push({symbol,lot:'',centralId,isTrial:false});
+  state.catalogArticles.push({symbol,lot:'',centralId,isTrial:false,machine:'',weightWeighInterval:20});
   renderCatalogs();
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
@@ -635,16 +658,15 @@ function setSettingsActionsDisabled(disabled) {
 async function saveSettings() {
   setSettingsActionsDisabled(true);
   try {
-    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
+    const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: Number(item.weightWeighInterval || 20) }));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
-    const weightWeighInterval = Number($('#weight-weigh-interval').value);
-    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences, weightWeighInterval }) });
+    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
     render(data);
-    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
+    state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: item.weightWeighInterval || 20 }));
     state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     renderCatalogs();
     showView('settings');
@@ -728,7 +750,7 @@ async function loadDailyReports() {
     const connection = data.productionConnection || {};
     $('#production-server-url').value = connection.serverUrl || 'http://192.168.1.14:8765';
     $('#production-api-token').placeholder = connection.configured ? 'Token zapisany; wpisz ponownie tylko po zmianie' : 'Wklej token wygenerowany na serwerze';
-    $('#production-connection-status').textContent = connection.configured ? 'Token jest zapisany lokalnie. Adres programu głównego jest stały.' : 'Wklej token z programu głównego i wybierz „Sprawdź i zapisz token”.';
+    $('#production-connection-status').textContent = connection.configured ? 'Token jest zapisany lokalnie. Adres programu głównego jest stały.' : 'Wklej token z programu głównego w Ustawieniach i wybierz „Sprawdź i zapisz token”.';
     renderDailyReports();
   } catch (error) { $('#daily-report-list').textContent = error.message; }
 }
@@ -911,7 +933,7 @@ function collectBale() {
   }
   const remainder = Math.round((meters - extras.reduce((sum, item) => sum + item.meters, 0)) * 100) / 100;
   if (remainder <= 0) throw new Error('Dodatkowe metry muszą zostawić część dla wybranego dziewiarza.');
-  const selectedArticle = state.data.articles.find(article => Number(article.id) === Number($('#article').value));
+  const selectedArticle = selectedArticleChoice();
   return {
     weightKg: number($('#weight-kg').value),
     meters,
@@ -927,7 +949,9 @@ function collectBale() {
 async function saveProduction(event) {
   event.preventDefault();
   if (!state.data.articles.length || !state.data.workers.length) { toast('Najpierw dodaj artykuły i pracowników w Ustawieniach.', true); return; }
-  const common = { articleId: $('#article').value, machine: $('#machine').value, productionDate: $('#production-date').value };
+  const selectedChoice = selectedArticleChoice();
+  const common = { articleId: selectedChoice?.articleId || selectedChoice?.id, machine: articleMachine(selectedChoice) || $('#machine').value, productionDate: $('#production-date').value };
+  if (selectedChoice?.machine === '0' && !articleMachine(selectedChoice)) { toast(`Symbol „${selectedChoice.symbol}” przy maszynie 0 musi zaczynać się od kodu maszyny, np. M6-TDZ 56-24.`, true); return; }
   const year = String(common.productionDate).slice(0, 4);
   if (state.data.sequences?.[year]?.[common.machine] === undefined) { toast('Najpierw ustaw ostatni użyty numer tej maszyny i roku w Ustawieniach.', true); return; }
   let bale;
@@ -964,7 +988,7 @@ function startEdit(id) {
   if (!row || row.sync_status !== 'pending') { toast('Można poprawiać tylko belki oczekujące na wysłanie.', true); return; }
   showView('production');
   if (!state.data.articles.some(item => Number(item.id) === Number(row.article_id))) {
-    state.data.articles.push({ id: row.article_id, symbol: row.article_symbol || row.symbol, lot: row.lot || '' });
+    state.data.articles.push({ id: row.article_id, articleId: row.article_id, choiceId: row.article_id, symbol: row.article_symbol || row.symbol, lot: row.lot || '', machine: '' });
     fillCommonControls();
   }
   for (const worker of row.workers) {
@@ -972,7 +996,9 @@ function startEdit(id) {
       state.data.workers.push({ id: worker.workerId, employee_uid: worker.employeeUid || '', name: worker.name });
     }
   }
-  $('#article').value = String(row.article_id);
+  const editChoice=state.data.articles.find(item=>Number(item.articleId||item.id)===Number(row.article_id)&&(!item.machine||item.machine===row.machine));
+  $('#article').value = String(editChoice?.choiceId ?? editChoice?.id ?? row.article_id);
+  $('#machine').disabled = false;
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -1001,7 +1027,9 @@ function startCopy(id) {
     return;
   }
   showView('production');
-  $('#article').value = String(row.article_id);
+  const copyChoice=state.data.articles.find(item=>Number(item.articleId||item.id)===Number(row.article_id)&&(!item.machine||item.machine===row.machine));
+  $('#article').value = String(copyChoice?.choiceId ?? copyChoice?.id ?? row.article_id);
+  $('#machine').disabled = false;
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -1096,6 +1124,7 @@ function moveToNextField() {
 }
 
 $('#production-form').addEventListener('submit', saveProduction);
+$('#article').addEventListener('change', () => { const choice=selectedArticleChoice(); $('#machine').disabled=Boolean(choice?.machine); $('#machine').value=articleMachine(choice); });
 $('#article-add-form').addEventListener('submit', addArticle);
 $('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(searchCentralArticles,180);});
 $('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
@@ -1154,32 +1183,41 @@ $('#touch-wizard').addEventListener('click', event => {
   const weightModeButton = event.target.closest('[data-touch-weight-mode]');
   if (weightModeButton) {
     const info = state.touch.weightInfo || {};
-    if (weightModeButton.dataset.touchWeightMode === 'suggested' && (info.mustWeigh || !info.suggestion)) return;
+    if (weightModeButton.dataset.touchWeightMode === 'calculated' && (info.mustWeigh || !info.suggestion)) return;
     state.touch.weightMode = weightModeButton.dataset.touchWeightMode;
     renderTouchWeightCheck();
     return;
   }
   if (event.target.closest('#touch-weight-check-continue')) {
     const touch = state.touch;
-    touch.weightWeighed = touch.weightMode === 'weighed';
+    touch.weightWeighed = touch.weightMode !== 'calculated';
     touch.weightManuallyEdited = touch.weightWeighed;
     touch.weightAutoValue = '';
-    touch.weightSuggestion = touch.weightWeighed ? null : touch.weightInfo?.suggestion || null;
-    $('#touch-weight').value = touch.weightMode === 'suggested' && touch.weightSuggestion
-      ? number(touch.weightSuggestion.weight_kg).toFixed(2).replace('.', ',')
-      : '';
-    if (!touch.weightWeighed) {
-      touch.weightAutoValue = $('#touch-weight').value;
-      touch.weightManuallyEdited = false;
-    }
-    $('#touch-weight').readOnly = !touch.weightWeighed;
+    touch.weightSuggestion = touch.weightMode === 'calculated' ? touch.weightInfo?.suggestion || null : null;
+    $('#touch-weight').value = '';
+    $('#touch-weight-gross').value = '';
+    $('#touch-tube-weight').value = '';
     touch.step = 'weight';
     paintTouch();
-    touchFocusInput($('#touch-weight'));
+    if (touch.weightMode === 'calculated' && touch.weightSuggestion) {
+      $('#touch-weight').value = number(touch.weightSuggestion.weight_kg).toFixed(1).replace('.', ',');
+      touch.weightAutoValue = $('#touch-weight').value;
+      touchFocusInput($('#touch-errors'));
+    } else touchFocusInput($(touch.weightMode === 'gross' ? '#touch-weight-gross' : '#touch-weight'));
     return;
   }
   const articleButton = event.target.closest('[data-touch-article]');
-  if (articleButton) { state.touch.articleId = articleButton.dataset.touchArticle; state.touch.step = 'machine'; paintTouch(); return; }
+  if (articleButton) {
+    const touch = state.touch;
+    touch.articleId = articleButton.dataset.touchArticle;
+    const article = touchArticle();
+    if (article?.machine) {
+      const machine = articleMachine(article);
+      if (!machine) { toast(`Symbol „${article.symbol}” przy maszynie 0 musi zaczynać się od kodu maszyny, np. M6-TDZ 56-24.`, true); return; }
+      touch.machine = machine; touch.step = 'worker';
+    } else touch.step = 'machine';
+    paintTouch(); return;
+  }
   const machineButton = event.target.closest('[data-touch-machine]');
   if (machineButton) { state.touch.machine = machineButton.dataset.touchMachine; state.touch.step = 'worker'; paintTouch(); return; }
   const workerButton = event.target.closest('[data-touch-worker]');

@@ -23,7 +23,7 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
 const startingSchemaVersion = db.prepare('PRAGMA user_version').get().user_version;
-if (startingSchemaVersion > 11) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
+if (startingSchemaVersion > 13) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY,
@@ -41,6 +41,15 @@ db.exec(`
     trial_symbol TEXT NOT NULL DEFAULT '',
     is_trial INTEGER NOT NULL DEFAULT 0 CHECK(is_trial IN (0,1)),
     updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS article_machine_choices (
+    id INTEGER PRIMARY KEY,
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    machine TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(article_id,machine)
   );
   CREATE TABLE IF NOT EXISTS manager_auth (
     id INTEGER PRIMARY KEY CHECK(id=1),
@@ -194,6 +203,21 @@ if (startingSchemaVersion < 11) {
   if (!baleColumns.includes('weight_weighed')) db.exec('ALTER TABLE bales ADD COLUMN weight_weighed INTEGER NOT NULL DEFAULT 1 CHECK(weight_weighed IN (0,1));');
   db.exec('PRAGMA user_version=11;');
 }
+if (startingSchemaVersion < 12) {
+  const settingColumns = db.prepare('PRAGMA table_info(article_settings)').all().map(column => column.name);
+  if (!settingColumns.includes('weight_weigh_interval')) db.exec('ALTER TABLE article_settings ADD COLUMN weight_weigh_interval INTEGER NOT NULL DEFAULT 20;');
+  const baleColumns = db.prepare('PRAGMA table_info(bales)').all().map(column => column.name);
+  if (!baleColumns.includes('weight_source')) db.exec("ALTER TABLE bales ADD COLUMN weight_source TEXT NOT NULL DEFAULT 'weighed';");
+  if (!baleColumns.includes('weight_gross_kg')) db.exec('ALTER TABLE bales ADD COLUMN weight_gross_kg REAL;');
+  if (!baleColumns.includes('tube_weight_kg')) db.exec('ALTER TABLE bales ADD COLUMN tube_weight_kg REAL;');
+  db.exec("UPDATE bales SET weight_source=CASE WHEN weight_weighed=1 THEN 'weighed' ELSE 'suggested' END;");
+  db.exec('PRAGMA user_version=12;');
+}
+if (startingSchemaVersion < 13) {
+  db.prepare(`INSERT OR IGNORE INTO article_machine_choices(article_id,machine,active,created_at,updated_at)
+    SELECT a.id,'',1,?,? FROM articles a WHERE a.active=1`).run(now(), now());
+  db.exec('PRAGMA user_version=13;');
+}
 db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_server_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
   .run(DEFAULT_PRODUCTION_SERVER_URL);
 db.prepare("INSERT INTO local_settings(key,value) VALUES('weight_weigh_interval','20') ON CONFLICT(key) DO NOTHING").run();
@@ -331,9 +355,19 @@ function normalizeBale(input, articleId, allowInactiveWorkers = false, existingT
       FROM articles a LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.id=?`).get(articleId)?.trial_symbol || ''
     : existingTrialSymbol;
   if (input.weightWeighed !== undefined && typeof input.weightWeighed !== 'boolean') fail(400, 'Nieprawidłowa informacja o zważeniu belki.');
+  const weightSource = String(input.weightSource || (input.weightWeighed === false ? 'suggested' : existingWeightWeighed === false ? 'calculated' : 'weighed'));
+  if (!['weighed', 'suggested', 'calculated'].includes(weightSource)) fail(400, 'Nieprawidłowy sposób ustalenia wagi.');
+  const weightGrossKg = input.weightGrossKg === undefined || input.weightGrossKg === null || input.weightGrossKg === '' ? null : positiveNumber(input.weightGrossKg, 'Waga z tuleją', 1000);
+  const tubeWeightKg = input.tubeWeightKg === undefined || input.tubeWeightKg === null || input.tubeWeightKg === '' ? null : positiveNumber(input.tubeWeightKg, 'Waga tulei', 1000);
+  if ((weightGrossKg === null) !== (tubeWeightKg === null)) fail(400, 'Podaj wagę z tuleją i wagę samej tulei.');
+  if (weightGrossKg !== null && weightGrossKg <= tubeWeightKg) fail(400, 'Waga z tuleją musi być większa od wagi tulei.');
+  const weightKg = weightGrossKg === null ? positiveNumber(input.weightKg, 'Kilogramy', 1000) : Math.round((weightGrossKg - tubeWeightKg) * 10) / 10;
   return {
-    weightKg: positiveNumber(input.weightKg, 'Kilogramy', 1000),
-    weightWeighed: input.weightWeighed === undefined ? (existingWeightWeighed ?? true) : input.weightWeighed,
+    weightKg,
+    weightWeighed: weightSource === 'weighed' && (input.weightWeighed === undefined ? (existingWeightWeighed ?? true) : input.weightWeighed),
+    weightSource,
+    weightGrossKg,
+    tubeWeightKg,
     meters,
     errors: nonnegativeInteger(input.errors, 'Błędy'),
     stops: nonnegativeInteger(input.stops, 'Stopy'),
@@ -379,27 +413,32 @@ function touchWeightInfo(articleId, productionDate, meters) {
   const startDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
   const endDate = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
   const monthWhere = 'article_id=? AND production_date>=? AND production_date<?';
-  const lastWeighed = db.prepare(`SELECT id,machine,serial_number,article_id,production_date,weight_kg,meters,created_at
-    FROM bales WHERE ${monthWhere} AND weight_weighed=1 ORDER BY created_at DESC,id DESC LIMIT 1`).get(articleId, startDate, endDate) || null;
+  const weighedRows = db.prepare(`SELECT id,machine,serial_number,article_id,production_date,weight_kg,meters,created_at
+    FROM bales WHERE ${monthWhere} AND weight_weighed=1 ORDER BY created_at DESC,id DESC LIMIT 3`).all(articleId, startDate, endDate);
+  const lastWeighed = weighedRows[0] || null;
   const monthCount = db.prepare(`SELECT count(*) n FROM bales WHERE ${monthWhere}`).get(articleId, startDate, endDate).n;
   const articleCount = db.prepare('SELECT count(*) n FROM bales WHERE article_id=?').get(articleId).n;
   const balesSinceLastWeigh = lastWeighed
     ? db.prepare(`SELECT count(*) n FROM bales WHERE ${monthWhere} AND (created_at>? OR (created_at=? AND id>?))`)
       .get(articleId, startDate, endDate, lastWeighed.created_at, lastWeighed.created_at, lastWeighed.id).n
     : monthCount;
-  const row = db.prepare(`SELECT id,machine,serial_number,article_id,production_date,weight_kg,meters,created_at
-    FROM bales WHERE ${monthWhere} AND weight_weighed=1 AND abs(meters-?)<0.005
-    ORDER BY created_at DESC,id DESC LIMIT 1`).get(articleId, startDate, endDate, meters);
-  const interval = Number(localSetting('weight_weigh_interval', '20')) || 20;
+  const weightRate = weighedRows.length
+    ? weighedRows.reduce((sum, item) => sum + item.weight_kg / item.meters, 0) / weighedRows.length
+    : 0;
+  const matching = weighedRows.find(item => Math.abs(item.meters - meters) < 0.005);
+  const interval = Number(db.prepare('SELECT weight_weigh_interval FROM article_settings WHERE article_id=?').get(articleId)?.weight_weigh_interval) || 20;
+  const reminderIn = Math.max(0, interval - balesSinceLastWeigh);
   const firstBalesRemaining = Math.max(0, 2 - articleCount);
   const dueByInterval = interval > 0 && balesSinceLastWeigh >= interval;
   return {
-    suggestion: row ? { ...row, number: `${row.machine}/${row.serial_number}` } : null,
-    lastWeighed: lastWeighed ? { ...lastWeighed, number: `${lastWeighed.machine}/${lastWeighed.serial_number}` } : null,
+    suggestion: weightRate ? { ...(matching || weighedRows[0]), weight_kg: Math.round(weightRate * meters * 10) / 10, weightRate, referenceCount: weighedRows.length, number: `${(matching || weighedRows[0]).machine}/${(matching || weighedRows[0]).serial_number}` } : null,
+    lastWeighed: lastWeighed ? { ...lastWeighed, symbol: db.prepare('SELECT CASE WHEN trim(trial_symbol)<>\'\' THEN trial_symbol ELSE a.symbol END symbol FROM bales b JOIN articles a ON a.id=b.article_id WHERE b.id=?').get(lastWeighed.id)?.symbol || '', number: `${lastWeighed.machine}/${lastWeighed.serial_number}` } : null,
+    referenceCount: weighedRows.length,
     balesSinceLastWeigh,
     firstBalesRemaining,
     startupWeighNumber: articleCount === 0 ? 'pierwsza' : 'druga',
     weighInterval: interval,
+    reminderIn,
     mustWeigh: firstBalesRemaining > 0 || dueByInterval,
     weighReason: firstBalesRemaining > 0 ? 'startup' : dueByInterval ? 'interval' : '',
   };
@@ -426,8 +465,9 @@ function bootstrap() {
     today,
     productionDay: currentProductionDate(),
     machines: MACHINES,
-    articles: db.prepare(`SELECT a.id,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.is_trial,0) isTrial FROM articles a
-      LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE`).all(),
+    articles: db.prepare(`SELECT a.id,a.id articleId,c.id choiceId,c.machine,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.is_trial,0) isTrial,
+      COALESCE(s.weight_weigh_interval,20) weightWeighInterval FROM articles a JOIN article_machine_choices c ON c.article_id=a.id AND c.active=1
+      LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE,c.machine`).all(),
     workers: db.prepare("SELECT id,employee_uid,name FROM workers WHERE active=1 AND work_status='active' AND central_managed=1 AND central_active=1 ORDER BY name COLLATE NOCASE").all(),
     workerCatalog: workerCatalog(),
     sequences,
@@ -471,7 +511,11 @@ function validateCatalog(body, key) {
       const centralId=item.centralId===undefined||item.centralId===null||item.centralId===''?null:Number(item.centralId);
       if(centralId!==null&&(!Number.isSafeInteger(centralId)||centralId<1)) fail(400,'Identyfikator artykułu z centrali jest nieprawidłowy.');
       const isTrial = item.isTrial === true;
-      return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, isTrial };
+      const machine=String(item.machine??'');
+      if(machine!==''&&machine!=='0'&&!MACHINES.includes(machine)) fail(400,'Wybierz maszynę albo „0 — dziewiarz”.');
+      const weightWeighInterval=Number(item.weightWeighInterval??20);
+      if(!Number.isInteger(weightWeighInterval)||weightWeighInterval<1||weightWeighInterval>500) fail(400,`Dla artykułu ${symbol} ustaw kontrolę wagi od 1 do 500 belek.`);
+      return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, isTrial, machine, weightWeighInterval };
     }
     const name = cleanText(item.name, 100, 'Nazwa dziewiarza');
     const employeeUid = cleanText(item.employeeUid, 36, 'Identyfikator pracownika');
@@ -483,7 +527,7 @@ function validateCatalog(body, key) {
   });
   if (!items.length && key === 'articles') fail(400, 'Dodaj przynajmniej jeden aktywny artykuł.');
   const keys = items.map(item => key === 'articles'
-    ? item.symbol.toLocaleUpperCase('pl-PL')
+    ? `${item.symbol.toLocaleUpperCase('pl-PL')}\u0000${item.machine}`
     : item.nameKey);
   if (new Set(keys).size !== keys.length) fail(400, 'Lista zawiera powtarzający się wpis.');
   return items;
@@ -493,8 +537,6 @@ function saveCatalogs(body) {
   const workers = validateCatalog(body, 'workers');
   const sequenceYear = Number(body.sequenceYear);
   if (!Number.isInteger(sequenceYear) || sequenceYear < 2000 || sequenceYear > new Date().getFullYear() + 1) fail(400, 'Wybierz prawidłowy rok produkcji dla liczników.');
-  const weightWeighInterval = Number(body.weightWeighInterval ?? localSetting('weight_weigh_interval', '20'));
-  if (!Number.isInteger(weightWeighInterval) || weightWeighInterval < 1 || weightWeighInterval > 500) fail(400, 'Ustaw odstęp ważenia kontrolnego od 1 do 500 belek.');
   const sequences = Array.isArray(body.sequences) ? body.sequences : [];
   if (sequences.length > MACHINES.length) fail(400, 'Nieprawidłowa konfiguracja numeracji.');
   const normalizedSequences = [];
@@ -516,15 +558,19 @@ function saveCatalogs(body) {
     if (apiToken && !/^[a-f0-9]{64}$/i.test(apiToken)) fail(400, 'Token serwera ma nieprawidłowy format. Wklej token wygenerowany w programie głównym.');
   } else if (apiToken) fail(400, 'Wpisz adres programu głównego przed tokenem.');
   transaction(() => {
-    db.exec('UPDATE articles SET active=0; UPDATE workers SET active=0;');
+    db.exec('UPDATE articles SET active=0; UPDATE workers SET active=0; UPDATE article_machine_choices SET active=0;');
     const addArticle = db.prepare(`INSERT INTO articles(symbol,active,central_id,central_managed,central_active,created_at) VALUES(?,1,?,?,1,?)
       ON CONFLICT(symbol) DO UPDATE SET active=1,central_id=coalesce(excluded.central_id,articles.central_id),central_managed=CASE WHEN excluded.central_id IS NULL THEN articles.central_managed ELSE 1 END,central_active=1`);
     const findArticle = db.prepare('SELECT id FROM articles WHERE symbol=?');
-    const saveArticleSettings = db.prepare(`INSERT INTO article_settings(article_id,lot,trial_symbol,is_trial,updated_at) VALUES(?,?,'',?,?)
-      ON CONFLICT(article_id) DO UPDATE SET lot=excluded.lot,trial_symbol='',is_trial=excluded.is_trial,updated_at=excluded.updated_at`);
+    const saveArticleSettings = db.prepare(`INSERT INTO article_settings(article_id,lot,trial_symbol,is_trial,updated_at,weight_weigh_interval) VALUES(?,?,'',?,?,?)
+      ON CONFLICT(article_id) DO UPDATE SET lot=excluded.lot,trial_symbol='',is_trial=excluded.is_trial,updated_at=excluded.updated_at,weight_weigh_interval=excluded.weight_weigh_interval`);
+    const saveArticleChoice=db.prepare(`INSERT INTO article_machine_choices(article_id,machine,active,created_at,updated_at) VALUES(?,?,1,?,?)
+      ON CONFLICT(article_id,machine) DO UPDATE SET active=1,updated_at=excluded.updated_at`);
     for (const item of articles) {
       addArticle.run(item.symbol, item.centralId, item.centralId===null?0:1, now());
-      saveArticleSettings.run(findArticle.get(item.symbol).id, item.lot, item.isTrial ? 1 : 0, now());
+      const articleId=findArticle.get(item.symbol).id,stamp=now();
+      saveArticleSettings.run(articleId, item.lot, item.isTrial ? 1 : 0, stamp,item.weightWeighInterval);
+      saveArticleChoice.run(articleId,item.machine,stamp,stamp);
     }
     const saveWorkerStatus = db.prepare(`UPDATE workers SET active=1,work_status=? WHERE employee_uid=?`);
     for (const item of workers) {
@@ -539,8 +585,6 @@ function saveCatalogs(body) {
       if (current && item.lastValue < current.last_value) fail(409, `Licznik ${item.machine}/${sequenceYear} nie może zostać cofnięty z ${current.last_value} do ${item.lastValue}.`);
       writeSequence.run(item.machine, sequenceYear, item.lastValue);
     }
-    db.prepare("INSERT INTO local_settings(key,value) VALUES('weight_weigh_interval',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-      .run(String(weightWeighInterval));
     if (connectionUrl) db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_server_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(connectionUrl.replace(/\/$/, ''));
     if (apiToken) db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_api_token',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(apiToken);
     if (!connectionUrl && !apiToken && body.clearProductionConnection === true) {
@@ -811,7 +855,7 @@ function toRemoteBale(row) {
 }
 async function postBalesToMain(bales) {
   const config = productionCredentials();
-  if (!config.configured) fail(409, 'Wklej token programu głównego w zakładce „Produkcja dzienna”.');
+  if (!config.configured) fail(409, 'Wklej token programu głównego w Ustawieniach i sprawdź połączenie.');
   const target = new URL('/api/production/upload', `${config.serverUrl}/`).toString();
   let response;
   try {
@@ -887,11 +931,11 @@ function createBales(body, reportDate = '') {
     }
     const created = [];
     const insert = db.prepare(`INSERT INTO bales
-      (id,machine,production_year,serial_number,article_id,production_date,weight_kg,weight_weighed,meters,errors,stops,lot,notes,trial_symbol,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      (id,machine,production_year,serial_number,article_id,production_date,weight_kg,weight_weighed,weight_source,weight_gross_kg,tube_weight_kg,meters,errors,stops,lot,notes,trial_symbol,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     const addWorker = db.prepare('INSERT INTO bale_workers(bale_id,worker_id,meters) VALUES(?,?,?)');
     for (const item of entries) {
-      if (!item.weightWeighed) {
+      if (item.weightSource !== 'weighed') {
         const weightInfo = touchWeightInfo(articleId, productionDate, item.meters);
         if (weightInfo.mustWeigh) {
           const reason = weightInfo.weighReason === 'startup'
@@ -899,14 +943,14 @@ function createBales(body, reportDate = '') {
             : `Po ${weightInfo.weighInterval} belkach bez ważenia kolejna belka musi być zważona.`;
           fail(409, reason);
         }
-        if (!weightInfo.suggestion || Math.abs(item.weightKg - weightInfo.suggestion.weight_kg) >= 0.005) {
-          fail(409, 'Przy wadze sugerowanej nie można zmieniać wartości. Wybierz rzeczywiste ważenie, aby wpisać inną wagę.');
+        if (!weightInfo.suggestion || Math.abs(item.weightKg - weightInfo.suggestion.weight_kg) >= 0.051) {
+          fail(409, 'Nie można ustalić wagi bez ważenia. Zważ belkę albo użyj aktualnej wagi wyliczonej z ostatnich ważeń.');
         }
       }
       const id = crypto.randomUUID();
       const serial = allocateSerial(machine, year);
       const stamp = now();
-      insert.run(id,machine,year,serial,articleId,productionDate,item.weightKg,item.weightWeighed ? 1 : 0,item.meters,item.errors,item.stops,item.lot,item.notes,item.trialSymbol,stamp,stamp);
+      insert.run(id,machine,year,serial,articleId,productionDate,item.weightKg,item.weightWeighed ? 1 : 0,item.weightSource,item.weightGrossKg,item.tubeWeightKg,item.meters,item.errors,item.stops,item.lot,item.notes,item.trialSymbol,stamp,stamp);
       for (const worker of item.workers) addWorker.run(id,worker.workerId,worker.meters);
       if (reportDate) db.prepare(`INSERT INTO daily_production_report_bales(report_date,bale_id,state) VALUES(?,?,'included')`).run(reportDate,id);
       created.push({ id, number: `${machine}/${serial}` });
@@ -931,8 +975,8 @@ function updateBale(id, body) {
     const year = Number(productionDate.slice(0,4));
     const serial = machine === current.machine && year === current.production_year ? current.serial_number : allocateSerial(machine, year);
     const stamp = now();
-    db.prepare(`UPDATE bales SET machine=?,production_year=?,serial_number=?,article_id=?,production_date=?,weight_kg=?,weight_weighed=?,meters=?,errors=?,stops=?,lot=?,notes=?,trial_symbol=?,sync_status='pending',synced_at=NULL,updated_at=? WHERE id=?`)
-      .run(machine,year,serial,articleId,productionDate,item.weightKg,item.weightWeighed ? 1 : 0,item.meters,item.errors,item.stops,item.lot,item.notes,item.trialSymbol,stamp,id);
+    db.prepare(`UPDATE bales SET machine=?,production_year=?,serial_number=?,article_id=?,production_date=?,weight_kg=?,weight_weighed=?,weight_source=?,weight_gross_kg=?,tube_weight_kg=?,meters=?,errors=?,stops=?,lot=?,notes=?,trial_symbol=?,sync_status='pending',synced_at=NULL,updated_at=? WHERE id=?`)
+      .run(machine,year,serial,articleId,productionDate,item.weightKg,item.weightWeighed ? 1 : 0,item.weightSource,item.weightGrossKg,item.tubeWeightKg,item.meters,item.errors,item.stops,item.lot,item.notes,item.trialSymbol,stamp,id);
     db.prepare(`UPDATE daily_production_reports SET status='draft',approved_at=NULL,sent_at=NULL,last_error=NULL,approved_payload='{}',updated_at=?
       WHERE report_date IN (SELECT report_date FROM daily_production_report_bales WHERE bale_id=? AND state='included') AND status<>'sent'`)
       .run(stamp,id);

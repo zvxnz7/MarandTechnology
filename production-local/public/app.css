@@ -76,13 +76,14 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-weight-check-step > h2 { text-align: center; font-size: clamp(28px, 3vw, 40px); }
 .touch-weight-check-notice { margin: 14px 0; padding: 14px 18px; border: 2px solid #c93035; border-radius: 12px; background: #fff0f0; color: #9e1f24; font-size: clamp(18px, 2vw, 24px); font-weight: 850; text-align: center; }
 .touch-weight-check-history { margin: 12px 0 20px; padding: 15px 18px; border-radius: 10px; background: #f2f4f6; color: #49545f; font-size: clamp(16px, 1.7vw, 21px); text-align: center; }
-.touch-weight-check-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.touch-weight-check-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .touch-weight-check-options button { min-height: clamp(88px, 13vh, 130px); padding: 14px; border: 2px solid #d1d8de; border-radius: 13px; background: white; font-size: clamp(19px, 2vw, 26px); font-weight: 800; }
 .touch-weight-check-options button.selected { border-color: #b52a30; background: #fff1f1; color: #8f2529; box-shadow: 0 0 0 2px rgb(181 42 48 / 12%); }
 .touch-weight-check-options button:disabled { opacity: .48; }
 .touch-weight-check-step > .muted { min-height: 28px; margin: 14px 0 0; font-size: 16px; text-align: center; }
 .weight-interval-field { max-width: 360px; margin-top: 16px; }
 .weight-interval-field input { max-width: 220px; }
+.weight-calculated-badge { display:block; color:#a3222a; font-size:10px; font-weight:750; white-space:nowrap; }
 .touch-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 13px; max-height: calc(100dvh - 230px); overflow: auto; padding: 2px 5px 6px 1px; }
 .touch-tile { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: clamp(88px, 13vh, 128px); padding: 16px; border: 2px solid #dbe0e5; border-radius: 14px; background: white; font-size: clamp(21px, 2.2vw, 29px); font-weight: 800; text-align: center; touch-action: manipulation; }
 .touch-tile:hover, .touch-tile:focus-visible { border-color: var(--red); background: #fff8f8; }
@@ -317,9 +318,11 @@ tr:last-child td { border-bottom: 0; }
 }
 
 [hidden] { display: none !important; }
-#article-list { display: grid; grid-template-columns: minmax(125px, 1.2fr) minmax(150px, 1.4fr) 80px auto; gap: 8px; }
+#article-list { display: grid; grid-template-columns: minmax(125px, 1.2fr) minmax(130px, 1fr) minmax(145px, 1.3fr) minmax(110px, .8fr) 80px auto; gap: 8px; }
 .catalog-row.article-catalog-row { display: grid; grid-column: 1 / -1; grid-template-columns: inherit; }
 .article-lot-label { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.article-machine-label,.article-weight-interval-label { display:grid; grid-template-columns: auto minmax(65px,1fr); align-items:center; gap:6px; color:var(--muted); font-size:11px; }
+.article-machine-label select,.article-weight-interval-input { box-sizing:border-box; width:100%; min-width:0; min-height:40px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:white; color:var(--ink); font-size:12px; }
 .article-lot-input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); font-size: 14px; }
 .article-trial-toggle { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .article-trial-toggle input { width: 18px; min-height: 18px; height: 18px; margin: 0; }
@@ -327,9 +330,12 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 760px) {
   #article-list { grid-template-columns: minmax(0, 1fr) auto; }
   .article-catalog-row strong { grid-column: 1 / -1; }
-  .article-lot-label { grid-column: 1 / -1; grid-row: 2; }
-  .article-trial-toggle { grid-column: 1; grid-row: 3; }
-  .article-catalog-row .catalog-remove { grid-column: 2; grid-row: 3; }
+  .article-machine-label,.article-lot-label,.article-weight-interval-label { grid-column: 1 / -1; }
+  .article-machine-label { grid-row: 2; }
+  .article-lot-label { grid-row: 3; }
+  .article-weight-interval-label { grid-row: 4; }
+  .article-trial-toggle { grid-column: 1; grid-row: 5; }
+  .article-catalog-row .catalog-remove { grid-column: 2; grid-row: 5; }
 }
 @media (max-width: 430px) {
   .brand { width: 145px; height: 38px; }
