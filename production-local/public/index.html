@@ -101,6 +101,17 @@
             </div>
           </div>
         </section>
+        <section id="touch-step-weight-check" class="touch-step touch-weight-check-step" hidden>
+          <h2>Czy belka została zważona?</h2>
+          <p id="touch-weight-check-notice" class="touch-weight-check-notice" hidden></p>
+          <div id="touch-weight-check-history" class="touch-weight-check-history"></div>
+          <div class="touch-weight-check-options" role="group" aria-label="Sposób ustalenia wagi">
+            <button type="button" data-touch-weight-mode="suggested">Nie — używam wagi sugerowanej</button>
+            <button type="button" data-touch-weight-mode="weighed">Tak — wpisuję wagę rzeczywistą</button>
+          </div>
+          <p id="touch-weight-check-hint" class="muted"></p>
+          <button id="touch-weight-check-continue" type="button" class="touch-next">Dalej</button>
+        </section>
         <section id="touch-step-options" class="touch-step touch-options-step" hidden>
           <h2>Co dodać do belki?</h2>
           <div class="touch-option-grid">
@@ -131,6 +142,7 @@
         <section class="panel padded catalog-panel"><div class="catalog-title"><div><h2>Artykuły</h2><p class="muted">Wybierz artykuły dostępne na maszynach. Kierownik ustawia LOT i oznacza artykuł jako próbę; jego symbol będzie symbolem próby.</p></div><button type="button" id="refresh-articles" class="secondary">Aktualizuj listę</button></div><label class="central-article-search">Szukaj w zatwierdzonych technologiach<input id="central-article-search" type="search" autocomplete="off" placeholder="Nazwa, symbol albo ID artykułu"><span id="central-article-results" class="central-article-results" role="listbox"></span></label><p id="central-catalog-sync" class="muted small" role="status"></p><details class="manual-article-entry"><summary>Przejściowo dodaj artykuł ręcznie</summary><form id="article-add-form" class="catalog-add"><label>Symbol artykułu<input id="article-new" maxlength="150" placeholder="np. WT 56-21 (5)" required></label><label>LOT <span class="field-note">opcjonalny</span><input id="article-new-lot" maxlength="120" placeholder="LOT artykułu"></label><button type="submit" class="primary">＋ Dodaj</button></form></details><div id="article-list" class="catalog-list"></div><div class="settings-panel-save"><button type="button" class="primary" data-save-settings>Zapisz</button></div></section>
         <section class="panel padded catalog-panel"><div class="catalog-title"><div><h2>Pracownicy</h2><p class="muted">Lista pozostaje bez zmian, dopóki jej nie zaktualizujesz. Pracowników pobieramy z programu głównego; ustaw lokalnie status: aktywny, urlop albo choroba.</p></div></div><div id="worker-list" class="catalog-list"></div><p id="worker-catalog-sync" class="muted small" role="status"></p><div class="settings-panel-save worker-panel-actions"><button id="refresh-workers" type="button" class="secondary">Zaktualizuj listę</button><button type="button" class="primary" data-save-settings>Zapisz</button></div></section>
         <section class="panel padded full-row"><h2>Numeracja belek</h2><p class="muted">Wpisz ostatni przydzielony numer na każdej używanej maszynie. Pierwsza nowa belka otrzyma następny numer. Bez ustawionego licznika panel nie rozpocznie numeracji od 1.</p><div class="sequence-year"><label>Rok produkcji<input id="sequence-year" type="number" min="2000" max="2100" inputmode="numeric"></label></div><div id="sequence-list" class="sequence-grid"></div><div class="settings-panel-save"><span class="muted">Maszyny: M1–M8 oraz B1–B3</span><button type="button" class="primary" data-save-settings>Zapisz</button></div></section>
+        <section class="panel padded full-row"><h2>Kontrola wagi</h2><p class="muted">Dwie pierwsze belki każdego nowego artykułu wymagają rzeczywistego ważenia. Później możesz korzystać z sugerowanej wagi; po wskazanej liczbie belek bez ważenia program poprosi o ponowne sprawdzenie wagi.</p><label class="weight-interval-field">Co ile belek bez ważenia przypomnieć o kontroli?<input id="weight-weigh-interval" type="number" min="1" max="500" step="1" inputmode="numeric" value="20"></label><div class="settings-panel-save"><span class="muted">Standardowo: przypomnienie po 20 belkach</span><button type="button" class="primary" data-save-settings>Zapisz</button></div></section>
       </div>
     </section>
   </main>

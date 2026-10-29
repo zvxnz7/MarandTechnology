@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'suggested', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -168,7 +168,7 @@ function touchArticle() { return state.data?.articles.find(item => String(item.i
 function touchWorker() { return state.data?.workers.find(item => String(item.id) === String(state.touch.workerId)); }
 function touchReset() {
   const touch = state.touch;
-  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: touch.weightSuggestionRequestId + 1 });
+  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'suggested', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: touch.weightSuggestionRequestId + 1 });
   $('#touch-date').value = state.data?.today || '';
   for (const id of ['meters', 'weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
   $('#touch-confirm-error').hidden = true;
@@ -220,14 +220,18 @@ function touchRenderTiles() {
   $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
-  for (const key of ['article', 'machine', 'worker', 'data', 'options', 'confirm']) $(`#touch-step-${key}`).hidden = step !== key;
+  for (const key of ['article', 'machine', 'worker', 'data', 'weight-check', 'options', 'confirm']) {
+    const isDataStep = key === 'data' && ['data', 'weight'].includes(step);
+    $(`#touch-step-${key}`).hidden = !(isDataStep || step === key);
+  }
   $('#touch-home').hidden = step !== 'home';
   $('#touch-wizard').hidden = step === 'home';
-  $('#touch-step-name').textContent = ({ article: '1 / 6', machine: '2 / 6', worker: '3 / 6', data: '4 / 6', options: '5 / 6', confirm: '6 / 6' })[step] || '';
+  $('#touch-step-name').textContent = ({ article: '1 / 8', machine: '2 / 8', worker: '3 / 8', data: '4 / 8', 'weight-check': '5 / 8', weight: '6 / 8', options: '7 / 8', confirm: '8 / 8' })[step] || '';
   $('#touch-back').textContent = step === 'article' ? '← Do początku' : '← Cofnij';
   renderTouchSelectionSummary();
   $('#touch-data-title').textContent = `${touchArticle()?.symbol || 'Belka'}${touchArticle()?.isTrial ? ' · Próba' : ''} — wpisz dane`;
   if (step === 'data') renderTouchExtras();
+  if (step === 'weight-check') renderTouchWeightCheck();
   if (step === 'options') renderTouchOptions();
   if (step === 'confirm') renderTouchConfirmation();
 }
@@ -242,6 +246,31 @@ function renderTouchExtras() {
   if (!item) { host.replaceChildren(); return; }
   const worker = state.data.workers.find(entry => String(entry.id) === String(item.workerId));
   host.innerHTML = `<div class="touch-extra-meter-card"><strong>${escapeHtml(worker?.name || 'Dodatkowy dziewiarz')}</strong><label>Ile metrów dla tej osoby?<input type="text" inputmode="none" autocomplete="off" data-touch-numeric="decimal" data-touch-extra-meters="${index}" value="${escapeHtml(item.meters)}" placeholder="metry"></label></div>`;
+}
+function renderTouchWeightCheck() {
+  const touch = state.touch, info = touch.weightInfo || {}, suggestion = info.suggestion || touch.weightSuggestion;
+  const notice = $('#touch-weight-check-notice');
+  notice.hidden = !info.mustWeigh;
+  notice.textContent = info.weighReason === 'startup'
+    ? `${info.startupWeighNumber === 'druga' ? 'Druga' : 'Pierwsza'} belka tego artykułu — sprawdź wagę rzeczywistą.`
+    : info.weighReason === 'interval'
+      ? `Sprawdź wagę rzeczywistą kolejnej belki — od ostatniego ważenia minęło ${info.balesSinceLastWeigh} belek.`
+      : '';
+  const last = info.lastWeighed;
+  $('#touch-weight-check-history').innerHTML = last
+    ? `Ostatnio zważona belka: <strong>${escapeHtml(last.number)}</strong> · ${fmt(last.meters)} m · ${fmt(last.weight_kg)} kg · ${info.balesSinceLastWeigh === 0 ? 'ostatnia zważona belka' : `${info.balesSinceLastWeigh} ${info.balesSinceLastWeigh === 1 ? 'belkę' : 'belek'} temu`}.`
+    : 'Brak zważonej belki w bieżącym miesiącu produkcji tego artykułu.';
+  const suggestedButton = $('[data-touch-weight-mode="suggested"]');
+  const weighedButton = $('[data-touch-weight-mode="weighed"]');
+  suggestedButton.disabled = Boolean(info.mustWeigh || !suggestion);
+  for (const [button, mode] of [[suggestedButton, 'suggested'], [weighedButton, 'weighed']]) {
+    button.classList.toggle('selected', touch.weightMode === mode);
+    button.setAttribute('aria-pressed', String(touch.weightMode === mode));
+  }
+  $('#touch-weight-check-hint').textContent = suggestion
+    ? `Waga sugerowana: ${fmt(suggestion.weight_kg)} kg na podstawie belki ${suggestion.number}.`
+    : 'Brak sugerowanej wagi dla tej liczby metrów — zważ belkę i wpisz jej wagę.';
+  $('#touch-weight-check-continue').disabled = touch.weightMode === 'suggested' && !suggestion;
 }
 function renderTouchOptions() {
   const extras = state.touch.extras;
@@ -344,20 +373,16 @@ function touchPromptLabel(input) {
 async function updateTouchWeightSuggestion() {
   const touch = state.touch, article = touchArticle(), meters = number($('#touch-meters').value), date = $('#touch-date').value;
   const requestId = ++touch.weightSuggestionRequestId;
-  let match = null;
+  let info = null;
   if (touch.weightSuggestionsEnabled && article && meters > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     const query = new URLSearchParams({ articleId: article.id, productionDate: date, meters: String(meters) });
-    try { match = (await api(`/api/bales/weight-suggestion?${query}`)).suggestion; }
-    catch { match = null; }
+    try { info = await api(`/api/bales/weight-suggestion?${query}`); }
+    catch { info = null; }
     if (requestId !== touch.weightSuggestionRequestId) return;
   }
-  const currentWeight = $('#touch-weight').value.trim();
-  touch.weightSuggestion = touch.weightManuallyEdited ? null : match;
-  if (!touch.weightManuallyEdited && (!currentWeight || currentWeight === touch.weightAutoValue)) {
-    $('#touch-weight').value = match ? number(match.weight_kg).toFixed(2).replace('.', ',') : '';
-    touch.weightAutoValue = $('#touch-weight').value;
-  } else if (currentWeight !== touch.weightAutoValue) touch.weightManuallyEdited = true;
-  updateTouchKeyboardPanel();
+  touch.weightInfo = info;
+  touch.weightSuggestion = info?.suggestion || null;
+  touch.weightMode = info?.mustWeigh || !info?.suggestion ? 'weighed' : 'suggested';
 }
 function touchShowConfirmation() {
   state.touch.step = 'confirm';
@@ -380,7 +405,8 @@ function touchBack() {
     return;
   }
   const fromOptions = touch.step === 'options';
-  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker', options: 'data', confirm: 'options' }[touch.step] || 'home';
+  const fromWeightCheck = touch.step === 'weight-check';
+  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker', 'weight-check': 'data', weight: 'weight-check', options: 'data', confirm: 'options' }[touch.step] || 'home';
   touch.activeInput = null;
   touch.currentPrompt = '';
   touch.returnPrompt = '';
@@ -390,6 +416,7 @@ function touchBack() {
     touch.step = prev;
     paintTouch();
     if (fromOptions) touchFocusInput($('#touch-stops'));
+    else if (fromWeightCheck) touchFocusInput($('#touch-meters'));
   }
 }
 function touchFocusInput(input) {
@@ -428,9 +455,17 @@ async function touchAdvancePrompt() {
   if ((active.id === 'touch-errors' || active.id === 'touch-stops') && !/^\d+$/.test(active.value.trim())) return;
   if ((active.id === 'touch-meters' || active.id === 'touch-weight') && (!Number.isFinite(number(active.value)) || number(active.value) <= 0)) return;
   if (active.matches('[data-touch-extra-meters]')) { touchResumeAfterExtra(); return; }
-  if (active.id === 'touch-meters') await updateTouchWeightSuggestion();
+  if (active.id === 'touch-meters') {
+    await updateTouchWeightSuggestion();
+    if (touch.activeInput !== active) return;
+    touch.activeInput = null;
+    touch.currentPrompt = '';
+    touch.step = 'weight-check';
+    paintTouch();
+    return;
+  }
   if (touch.activeInput !== active) return;
-  const sequence = ['touch-meters', 'touch-weight', 'touch-errors', 'touch-stops'];
+  const sequence = ['touch-weight', 'touch-errors', 'touch-stops'];
   const index = sequence.indexOf(active.id);
   if (index >= 0) {
     const next = sequence[index + 1];
@@ -491,7 +526,7 @@ async function saveTouchBale() {
   if (message) { $('#touch-confirm-error').textContent = message; $('#touch-confirm-error').hidden = false; return; }
   touch.saving = true; $('#touch-save').disabled = true; $('#touch-confirm-error').hidden = true;
   try {
-    const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ articleId: article.id, machine, productionDate: date, bales: [{ weightKg, meters, errors: Number(errorsText), stops: Number(stopsText), notes: $('#touch-notes').value.trim(), primaryWorkerId: touch.workerId, trialSymbol: article.isTrial ? article.symbol : '', workers: [{ workerId: Number(touch.workerId), meters: remaining }, ...extras] }] }) });
+    const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ articleId: article.id, machine, productionDate: date, bales: [{ weightKg, weightWeighed: touch.weightWeighed, meters, errors: Number(errorsText), stops: Number(stopsText), notes: $('#touch-notes').value.trim(), primaryWorkerId: touch.workerId, trialSymbol: article.isTrial ? article.symbol : '', workers: [{ workerId: Number(touch.workerId), meters: remaining }, ...extras] }] }) });
     render(await api('/api/bootstrap'));
     touchReset();
     toast(`Zapisano belkę ${result.created[0].number}.`);
@@ -525,6 +560,7 @@ async function loadSettings() {
   const workersSync=settingsData.centralWorkersSyncedAt?new Date(settingsData.centralWorkersSyncedAt).toLocaleString('pl-PL'):'lista nie była jeszcze aktualizowana';
   $('#worker-catalog-sync').textContent=`Ostatnia aktualizacja listy pracowników: ${workersSync}.`;
   $('#sequence-year').value = state.data.today.slice(0, 4);
+  $('#weight-weigh-interval').value = settingsData.weightWeighInterval || 20;
   const yearSequences = state.data.sequences?.[$('#sequence-year').value] || {};
   $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
   renderCatalogs();
@@ -599,13 +635,14 @@ async function saveSettings() {
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
-    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
+    const weightWeighInterval = Number($('#weight-weigh-interval').value);
+    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences, weightWeighInterval }) });
     render(data);
     state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial) }));
     state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     renderCatalogs();
     showView('settings');
-    toast('Zapisano artykuły, pracowników i numerację.');
+    toast('Zapisano artykuły, pracowników, numerację i ustawienia ważenia.');
   } catch (error) { toast(error.message, true); }
   finally { setSettingsActionsDisabled(false); }
 }
@@ -1108,6 +1145,32 @@ $('#touch-home').addEventListener('click', event => {
   if (button) setReviewFlag(button.dataset.touchReview, button.dataset.check === '1');
 });
 $('#touch-wizard').addEventListener('click', event => {
+  const weightModeButton = event.target.closest('[data-touch-weight-mode]');
+  if (weightModeButton) {
+    const info = state.touch.weightInfo || {};
+    if (weightModeButton.dataset.touchWeightMode === 'suggested' && (info.mustWeigh || !info.suggestion)) return;
+    state.touch.weightMode = weightModeButton.dataset.touchWeightMode;
+    renderTouchWeightCheck();
+    return;
+  }
+  if (event.target.closest('#touch-weight-check-continue')) {
+    const touch = state.touch;
+    touch.weightWeighed = touch.weightMode === 'weighed';
+    touch.weightManuallyEdited = touch.weightWeighed;
+    touch.weightAutoValue = '';
+    touch.weightSuggestion = touch.weightWeighed ? null : touch.weightInfo?.suggestion || null;
+    $('#touch-weight').value = touch.weightMode === 'suggested' && touch.weightSuggestion
+      ? number(touch.weightSuggestion.weight_kg).toFixed(2).replace('.', ',')
+      : '';
+    if (!touch.weightWeighed) {
+      touch.weightAutoValue = $('#touch-weight').value;
+      touch.weightManuallyEdited = false;
+    }
+    touch.step = 'weight';
+    paintTouch();
+    touchFocusInput($('#touch-weight'));
+    return;
+  }
   const articleButton = event.target.closest('[data-touch-article]');
   if (articleButton) { state.touch.articleId = articleButton.dataset.touchArticle; state.touch.step = 'machine'; paintTouch(); return; }
   const machineButton = event.target.closest('[data-touch-machine]');
@@ -1200,7 +1263,6 @@ $('#touch-wizard').addEventListener('input', event => {
     const index = Number(input.dataset.touchExtraMeters);
     if (input.id !== 'touch-meters' && state.touch.extras[index]) state.touch.extras[index].meters = input.value;
     updateTouchShare();
-    if (input.id === 'touch-meters') updateTouchWeightSuggestion();
   }
   if (input.id === 'touch-weight' && input.value.trim() !== state.touch.weightAutoValue) {
     state.touch.weightManuallyEdited = true;
@@ -1209,7 +1271,7 @@ $('#touch-wizard').addEventListener('input', event => {
   if (input.id === 'touch-notes') $('#touch-text-preview').textContent = input.value.trim() || 'Wpisany opis pojawi się tutaj';
   if (input.matches('[data-touch-numeric]')) updateTouchKeyboardPanel();
 });
-$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; renderTouchSelectionSummary(); updateTouchWeightSuggestion(); });
+$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; renderTouchSelectionSummary(); });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !$('#numeric-keypad').hidden) hideKeypad();
   if (event.key === 'Enter' && event.target.matches?.('#production-form [data-numeric]')) {
