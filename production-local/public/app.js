@@ -132,8 +132,8 @@ function renderBales() {
     <td>${ordinals.get(row.id)}</td><td class="bale-number">${escapeHtml(row.number)}${row.sync_status === 'pending' ? `<br><button type="button" class="table-action edit-bale edit-bale-primary" data-id="${escapeHtml(row.id)}">Edytuj belkę</button>` : ''}</td><td>${escapeHtml(row.symbol)}${row.trial_symbol ? '<small class="trial-bale-badge">Próba</small>' : ''}</td><td>${dateFmt(row.production_date)}</td>
     <td>${fmt(row.weight_kg)}</td><td>${fmt(row.meters)}</td><td>${row.errors}</td><td>${row.stops}</td>
     <td>${row.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td>
-    <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Do sprawdzenia' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
-    <td class="actions-cell"><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? 'Cofnij flagę' : 'Sprawdź'}</button>${row.sync_status === 'pending' ? `<button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : ''}</td>
+    <td><span class="status ${row.needs_check ? 'flagged' : row.sync_status === 'synced' ? 'synced' : ''}">${row.needs_check ? 'Błędny zapis' : row.sync_status === 'synced' ? 'Wysłano' : 'Do synchronizacji'}</span></td>
+    <td class="actions-cell"><button type="button" class="table-action review-bale" data-id="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}">${row.needs_check ? '✓ Błędny zapis' : 'Błędny zapis / sprawdź'}</button>${row.sync_status === 'pending' ? `<button type="button" class="table-action delete-bale" data-id="${escapeHtml(row.id)}" aria-label="Usuń belkę ${escapeHtml(row.number)}" title="Usuń błędnie wpisaną belkę">×</button>` : ''}</td>
   </tr>`).join('');
   tbody.querySelectorAll('.edit-bale').forEach(button => button.addEventListener('click', () => startEdit(button.dataset.id)));
   tbody.querySelectorAll('.review-bale').forEach(button => button.addEventListener('click', () => setReviewFlag(button.dataset.id, button.dataset.check === '1')));
@@ -1066,7 +1066,7 @@ $('#touch-add-worker').addEventListener('click', () => {
   state.touch.activeInput = null;
   paintTouch();
 });
-$('#touch-latest-bale, #touch-accepted-list').addEventListener('click', event => {
+$('#touch-home').addEventListener('click', event => {
   const button = event.target.closest('[data-touch-review]');
   if (button) setReviewFlag(button.dataset.touchReview, button.dataset.check === '1');
 });
