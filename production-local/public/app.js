@@ -183,7 +183,6 @@ function renderTouchHome() {
   const previous = allRows.filter(row => row.id !== latest?.id);
   const reviewableIds = new Set(allRows.slice(0, 3).map(row => row.id));
   $('#touch-accepted-count').textContent = `${allRows.length} ${allRows.length === 1 ? 'sztuka' : 'sztuk'}`;
-  $('#touch-copy-last').disabled = !state.data?.lastBale;
   $('#touch-latest-bale').innerHTML = latest ? touchBaleCard(latest, true, reviewableIds.has(latest.id)) : '<p class="touch-empty">Nie ma jeszcze przyjętych sztuk.</p>';
   $('#touch-older-heading').hidden = !previous.length;
   $('#touch-accepted-list').innerHTML = previous.length ? previous.slice(0, 80).map(row => touchBaleCard(row, false, reviewableIds.has(row.id))).join('') : '';
@@ -354,27 +353,6 @@ function touchStart() {
   touchReset();
   state.touch.step = 'article';
   paintTouch();
-}
-function touchCopyLast() {
-  const row = state.data.lastBale;
-  if (!row) { toast('Nie ma jeszcze belki do skopiowania.', true); return; }
-  if (!state.data.articles.some(item => Number(item.id) === Number(row.article_id))) { toast('Artykuł z ostatniej belki jest wyłączony. Włącz go w Ustawieniach.', true); return; }
-  if (row.workers.some(item => !state.data.workers.some(worker => Number(worker.id) === Number(item.workerId)))) { toast('Dziewiarz z ostatniej belki jest wyłączony. Włącz go w Ustawieniach.', true); return; }
-  const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
-  touchReset();
-  Object.assign(state.touch, { step: 'data', articleId: String(row.article_id), machine: row.machine, workerId: String(contributions[0]?.workerId || ''), extras: contributions.slice(1).map(item => ({ workerId: String(item.workerId), meters: String(item.meters).replace('.', ',') })) });
-  $('#touch-date').value = row.production_date;
-  $('#touch-meters').value = String(row.meters).replace('.', ',');
-  $('#touch-weight').value = String(row.weight_kg).replace('.', ',');
-  $('#touch-errors').value = '';
-  $('#touch-stops').value = String(row.stops);
-  $('#touch-notes').value = row.notes || '';
-  state.touch.weightManuallyEdited = true;
-  state.touch.weightSuggestionsEnabled = false;
-  $('#touch-data-title').textContent = `Kopia belki ${row.number} — wpisz dane`;
-  paintTouch();
-  touchFocusInput($('#touch-meters'));
-  toast(`Skopiowano dane belki ${row.number}; błędy wyzerowano.`);
 }
 function touchBack() {
   const touch = state.touch;
@@ -1092,7 +1070,6 @@ $('#keypad-close').addEventListener('click', hideKeypad);
 $('#keypad-enter').addEventListener('click', moveToNextField);
 $('#touch-exit').addEventListener('click', () => showView('production'));
 $('#touch-choose-article').addEventListener('click', touchStart);
-$('#touch-copy-last').addEventListener('click', touchCopyLast);
 $('#touch-back').addEventListener('click', touchBack);
 $('#touch-save').addEventListener('click', saveTouchBale);
 $('#touch-confirm-back').addEventListener('click', () => { $('#touch-confirm-error').hidden = true; state.touch.step = 'options'; state.touch.activeInput = null; paintTouch(); });
