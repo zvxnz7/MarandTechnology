@@ -292,7 +292,8 @@ test('categories are removed; article dates and SQL pagination with 500 articles
 test('GB auto numbering, finished parameters optional, approvals and immutable cards',async()=>{
  const s=await session();const aid=await createArticle(s,'READY-ARTICLE');let r=await post(s,`/articles/${aid}/new`);assert.equal(r.status,303,r.text());
  const rid=Number(r.headers.location.split('/')[2]);
- const values={revision:1,symbol:'READY-ARTICLE',tech_machine_type:'HKS',tech_gauge:'E24',tech_density:'15',tech_working_width:'130',tech_panels:'1',gb_0_yarn:'PES',gb_0_threads:'100',gb_0_run_in:'1200',gb_0_threading:'pełne',gb_0_pattern:'10/23',gb_0_number:'31'};
+ const values={revision:1,symbol:'READY-ARTICLE',tech_machine_type:'HKS',tech_gauge:'E24',tech_density:'15',tech_working_width:'130',tech_panels:'1',gb_0_yarn:'PES',gb_0_threads:'100',gb_0_run_in:'1200',gb_0_threading:'|||..',gb_0_pattern:'10/23',gb_0_number:'31'};
+ r=await post(s,`/records/${rid}/edit`,{...values,gb_0_threading:'pełne'});assert.equal(r.status,400,r.text());assert.match(r.text(),/pozycje pełne/);
  r=await post(s,`/records/${rid}/edit`,values);assert.equal(r.status,303,r.text());
  const db=new DatabaseSync(path.join(DATA,'marand.sqlite3'));assert.equal(JSON.parse(db.prepare('SELECT payload FROM records WHERE id=?').get(rid).payload).gb[0].number,'1');
  r=await post(s,`/records/${rid}/submit`,{revision:2});assert.equal(r.status,303,r.text());
@@ -330,7 +331,7 @@ test('photo upload is optional, authenticated, append-only and validates the for
 });
 test('editor has two initial GB rows and retains historical sparse GB numbers',()=>{
  const v={symbol:'X',gb:[],finished:[],sources:[]};const r={id:1,kind:'trial',revision:1};const user={name:'x',role:'admin'};
- let html=V.editPage({user,csrf:'x',r,v});assert.equal((html.match(/data-gb-index=/g)||[]).length,2);assert.match(html,/data-add-gb/);assert.doesNotMatch(html,/<textarea name="gb_0_(threading|pattern)"/);
+ let html=V.editPage({user,csrf:'x',r,v});assert.equal((html.match(/data-gb-index=/g)||[]).length,2);assert.match(html,/data-add-gb/);assert.match(html,/data-threading-editor/);assert.match(html,/data-add-threading-cell/);assert.match(html,/data-threading-value/);assert.doesNotMatch(html,/<textarea name="gb_0_(threading|pattern)"/);
  html=V.editPage({user,csrf:'x',r,v:{...v,gb:[{number:'6',yarn:'PES'}]}});assert.match(html,/GB6/);assert.match(html,/GB7/);
 });
 test('backup captures photo files belonging to the database snapshot',async()=>{

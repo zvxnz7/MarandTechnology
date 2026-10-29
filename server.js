@@ -216,6 +216,10 @@ function parseForm(form, old) {
       if (!/^\d+$/.test(row.number) || Number(row.number) < 1 || Number(row.number) > 32) fail(400, 'Numer GB musi być liczbą od 1 do 32.');
       if (numbers.has(row.number)) fail(400, 'Numer GB nie może się powtarzać.');
       numbers.add(row.number);
+      const oldThreading = old.gb?.find(g => String(g.number) === row.number)?.threading || '';
+      if (row.threading && !/^[|.]+$/.test(row.threading) && row.threading !== oldThreading) {
+        fail(400, 'Nawleczenie może zawierać wyłącznie pozycje pełne (|) i puste (.).');
+      }
       v.gb.push(row);
     }
   }
@@ -231,7 +235,7 @@ function validateReady(row) {
   const v = parsePayload(row);
   if (!row.symbol || !v.gb.length) fail(400, 'Uzupełnij symbol i przynajmniej jedną GB.');
   if (['machine_type', 'gauge', 'density', 'working_width'].some(k => !v.tech[k])) fail(400, 'Uzupełnij typ i podział maszyny, ścisłość oraz szerokość roboczą.');
-  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]))) fail(400, 'Uzupełnij przędzę, liczbę nici, wrobienie, nawleczenie i raport dla każdej używanej GB.');
+  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !/^[|.]+$/.test(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici, wrobienie, nawleczenie złożone z pozycji pełnych (|) i pustych (.) oraz raport dla każdej używanej GB.');
 }
 function signedCookie(session) {
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url');

@@ -272,6 +272,20 @@ document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',
 }));
 const gbList=document.querySelector('[data-gb-list]');
 const gbRows=()=>gbList?[...gbList.querySelectorAll('[data-gb-index]')]:[];
+const threadingMarkup=(index,full)=>{
+ const position=index+1,state=full?'full':'empty',label=full?'pełna':'pusta',wrap=document.createElement('span'),toggle=document.createElement('button'),remove=document.createElement('button');
+ wrap.className='threading-position';
+ toggle.type='button';toggle.className=`threading-cell ${state}`;toggle.dataset.threadingCell='';toggle.dataset.threadingState=state;toggle.setAttribute('aria-pressed',String(full));toggle.setAttribute('aria-label',`Pozycja ${position} — nitka ${label}`);toggle.title=`Kliknij, aby zmienić na nitkę ${full?'pustą':'pełną'}`;toggle.textContent=full?'✓':'·';
+ remove.type='button';remove.className='threading-remove-cell';remove.dataset.removeThreadingCell='';remove.setAttribute('aria-label',`Usuń pozycję ${position}`);remove.title='Usuń pozycję';remove.textContent='×';
+ wrap.append(toggle,remove);return wrap;
+};
+const syncThreading=editor=>{
+ const cells=[...editor.querySelectorAll('[data-threading-cell]')],sequence=cells.map(cell=>cell.dataset.threadingState==='full'?'|':'.').join('');
+ editor.querySelector('[data-threading-value]').value=sequence;
+ editor.querySelector('[data-threading-display]').textContent=sequence||'—';
+ const legacy=editor.querySelector('[data-threading-legacy]');if(legacy){legacy.hidden=true;legacy.textContent='';}
+ cells.forEach((cell,index)=>{const full=cell.dataset.threadingState==='full';cell.setAttribute('aria-label',`Pozycja ${index+1} — nitka ${full?'pełna':'pusta'}`);cell.title=`Kliknij, aby zmienić na nitkę ${full?'pustą':'pełną'}`;cell.nextElementSibling.setAttribute('aria-label',`Usuń pozycję ${index+1}`);});
+};
 const updateGbRows=()=>{
   const rows=gbRows();
   rows.forEach((row,index)=>{
@@ -282,6 +296,12 @@ const updateGbRows=()=>{
   });
 };
 if(gbList)gbList.addEventListener('click',event=>{
+  const addThreading=event.target.closest('[data-add-threading-cell]');
+  if(addThreading){const editor=addThreading.closest('[data-threading-editor]'),positions=editor.querySelector('[data-threading-positions]');positions.append(threadingMarkup(positions.children.length,false));syncThreading(editor);dirty=true;return;}
+  const removeThreading=event.target.closest('[data-remove-threading-cell]');
+  if(removeThreading){const editor=removeThreading.closest('[data-threading-editor]');removeThreading.closest('.threading-position').remove();syncThreading(editor);dirty=true;return;}
+  const toggleThreading=event.target.closest('[data-threading-cell]');
+  if(toggleThreading){const full=toggleThreading.dataset.threadingState!=='full';toggleThreading.dataset.threadingState=full?'full':'empty';toggleThreading.classList.toggle('full',full);toggleThreading.classList.toggle('empty',!full);toggleThreading.setAttribute('aria-pressed',String(full));toggleThreading.textContent=full?'✓':'·';syncThreading(toggleThreading.closest('[data-threading-editor]'));dirty=true;return;}
   const remove=event.target.closest('[data-remove-gb]');
   if(!remove)return;
   const row=remove.closest('[data-gb-index]');
@@ -295,7 +315,8 @@ if(addGB)addGB.addEventListener('click',()=>{
   const number=Math.max(0,...rows.map(r=>Number(r.dataset.gbNumber)))+1;
   if(number>32){alert('Osiągnięto maksymalne oznaczenie GB32.');return;}
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
-  next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'?String(number):'';c.classList.remove('inherited-value');});
+  next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'&&c.name.endsWith('_number')?String(number):'';c.classList.remove('inherited-value');});
+  next.querySelector('[data-threading-positions]').replaceChildren();next.querySelector('[data-threading-display]').textContent='—';const legacy=next.querySelector('[data-threading-legacy]');if(legacy){legacy.hidden=true;legacy.textContent='';}
   list.appendChild(next);updateGbRows();dirty=true;next.querySelector('input:not([type=hidden])').focus();
 });
 document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('submit',async event=>{
