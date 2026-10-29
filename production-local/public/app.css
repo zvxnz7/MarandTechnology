@@ -37,7 +37,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-header h1 { margin-top: 3px; font-size: clamp(30px, 3vw, 42px); }
 .touch-header button { min-height: 58px; font-size: 16px; }
 .touch-home { min-height: calc(100dvh - 150px); display: flex; flex-direction: column; }
-.touch-home-actions { display: grid; grid-template-columns: minmax(0, 1fr); width: min(100%, 1100px); margin-inline: auto; gap: clamp(12px, 2vw, 22px); }
+.touch-home-actions { display: grid; grid-template-columns: minmax(0, 1fr); width: min(100%, 1300px); margin-inline: auto; gap: clamp(12px, 2vw, 22px); }
 .touch-home-actions button { min-height: clamp(104px, 17vh, 168px); border-radius: 16px; font-size: clamp(24px, 3vw, 36px); font-weight: 800; touch-action: manipulation; }
 .touch-action-primary { border-color: var(--red); background: var(--red); color: white; }
 .touch-action-primary:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
