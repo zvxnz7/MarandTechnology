@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false } };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -168,11 +168,11 @@ function touchArticle() { return state.data?.articles.find(item => String(item.i
 function touchWorker() { return state.data?.workers.find(item => String(item.id) === String(state.touch.workerId)); }
 function touchReset() {
   const touch = state.touch;
-  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false });
+  Object.assign(touch, { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: touch.weightSuggestionRequestId + 1 });
   $('#touch-date').value = state.data?.today || '';
   for (const id of ['meters', 'weight', 'errors', 'stops', 'notes']) $(`#touch-${id}`).value = '';
-  $('#touch-data-error').hidden = true;
-  $('#touch-data-error').textContent = '';
+  $('#touch-confirm-error').hidden = true;
+  $('#touch-confirm-error').textContent = '';
   paintTouch();
 }
 function renderTouchHome() {
@@ -181,18 +181,21 @@ function renderTouchHome() {
   const allRows = [...new Map([...bales, ...(latest ? [latest] : [])].map(row => [row.id, row])).values()]
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(b.id).localeCompare(String(a.id)));
   const previous = allRows.filter(row => row.id !== latest?.id);
+  const reviewableIds = new Set(allRows.slice(0, 3).map(row => row.id));
   $('#touch-accepted-count').textContent = `${allRows.length} ${allRows.length === 1 ? 'sztuka' : 'sztuk'}`;
   $('#touch-copy-last').disabled = !state.data?.lastBale;
-  $('#touch-latest-bale').innerHTML = latest ? touchBaleCard(latest, true) : '<p class="touch-empty">Nie ma jeszcze przyjętych sztuk.</p>';
+  $('#touch-latest-bale').innerHTML = latest ? touchBaleCard(latest, true, reviewableIds.has(latest.id)) : '<p class="touch-empty">Nie ma jeszcze przyjętych sztuk.</p>';
   $('#touch-older-heading').hidden = !previous.length;
-  $('#touch-accepted-list').innerHTML = previous.length ? previous.slice(0, 80).map(row => touchBaleCard(row)).join('') : '';
+  $('#touch-accepted-list').innerHTML = previous.length ? previous.slice(0, 80).map(row => touchBaleCard(row, false, reviewableIds.has(row.id))).join('') : '';
 }
 function touchTimeFmt(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'godzina niedostępna' : date.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-function touchBaleCard(row, latest = false) {
-  const review = `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Do sprawdzenia przez kierownika' : 'Oznacz do sprawdzenia'}</button>`;
+function touchBaleCard(row, latest = false, reviewable = false) {
+  const review = reviewable || row.needs_check
+    ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Zgłoszono błędny zapis' : 'Błędny zapis / sprawdź'}</button>`
+    : '<span class="touch-review-locked">Oznaczanie dostępne dla 3 ostatnich belek</span>';
   return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
 function touchRenderTiles() {
@@ -200,10 +203,10 @@ function touchRenderTiles() {
   $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}</button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
-  for (const key of ['article', 'machine', 'worker', 'data']) $(`#touch-step-${key}`).hidden = step !== key;
+  for (const key of ['article', 'machine', 'worker', 'data', 'confirm']) $(`#touch-step-${key}`).hidden = step !== key;
   $('#touch-home').hidden = step !== 'home';
   $('#touch-wizard').hidden = step === 'home';
-  $('#touch-step-name').textContent = ({ article: '1 / 4', machine: '2 / 4', worker: '3 / 4', data: '4 / 4' })[step] || '';
+  $('#touch-step-name').textContent = ({ article: '1 / 5', machine: '2 / 5', worker: '3 / 5', data: '4 / 5', confirm: '5 / 5' })[step] || '';
   $('#touch-back').textContent = step === 'article' ? '← Do początku' : '← Cofnij';
   const selections = [];
   if (articleId) selections.push(`Artykuł: ${touchArticle()?.symbol || '—'}`);
@@ -212,6 +215,7 @@ function touchRenderTiles() {
   $('#touch-selection-summary').innerHTML = selections.map((text, index) => `<span class="touch-selection-chip ${index === selections.length - 1 ? 'current' : ''}">${escapeHtml(text)}</span>`).join('');
   $('#touch-data-title').textContent = `${touchArticle()?.symbol || 'Belka'}${touchArticle()?.isTrial ? ' · Próba' : ''} — wpisz dane`;
   if (step === 'data') renderTouchExtras();
+  if (step === 'confirm') renderTouchConfirmation();
 }
 function renderTouchExtras() {
   const primaryId = String(state.touch.workerId);
@@ -252,6 +256,23 @@ function paintTouch() {
   updateTouchKeyboardPanel();
   $('#touch-save').disabled = state.touch.saving;
 }
+function renderTouchConfirmation() {
+  const touch = state.touch, article = touchArticle(), primary = touchWorker();
+  const meters = number($('#touch-meters').value), extraTotal = touch.extras.reduce((sum, item) => sum + number(item.meters), 0);
+  const primaryMeters = Math.round((meters - extraTotal) * 100) / 100;
+  const workerLines = [`${primary?.name || '—'} · ${fmt(primaryMeters)} m`, ...touch.extras.map(item => {
+    const worker = state.data.workers.find(entry => String(entry.id) === String(item.workerId));
+    return `${worker?.name || 'Nie wybrano'} · ${fmt(number(item.meters))} m`;
+  })];
+  const rows = [
+    ['Artykuł', article?.symbol || '—'], ['Maszyna', touch.machine || '—'],
+    ['Data produkcji', dateFmt($('#touch-date').value)], ['Dziewiarze', workerLines.join('<br>')],
+    ['Metry', `${fmt(meters)} m`], ['Waga', `${fmt(number($('#touch-weight').value))} kg`],
+    ['Błędy', $('#touch-errors').value.trim() || '—'], ['Stopy', $('#touch-stops').value.trim() || '—'],
+    ['Opis / uwagi', $('#touch-notes').value.trim() || '—'],
+  ];
+  $('#touch-confirm-summary').innerHTML = rows.map(([label, value]) => `<div class="touch-confirm-row"><strong>${escapeHtml(label)}</strong><span>${label === 'Dziewiarze' ? value.split('<br>').map(escapeHtml).join('<br>') : escapeHtml(value)}</span></div>`).join('');
+}
 function updateTouchKeyboardPanel() {
   const touch = state.touch, active = touch.activeInput;
   const choosingWorker = !$('#touch-extra-worker-picker').hidden;
@@ -262,6 +283,12 @@ function updateTouchKeyboardPanel() {
   $('#touch-text-keyboard-overlay').hidden = choosingWorker || !textEntry;
   $('#touch-keyboard-prompt').hidden = choosingWorker || !active || textEntry;
   $('#touch-keyboard-prompt').textContent = choosingWorker ? 'Wybierz dodatkowego dziewiarza' : touchPromptLabel(active);
+  const activeValue = active?.value?.trim() || '';
+  $('#touch-keyboard-value').hidden = choosingWorker || !numeric;
+  $('#touch-keyboard-value').textContent = activeValue || '—';
+  $('#touch-weight-suggestion').hidden = choosingWorker || active?.id !== 'touch-weight' || !touch.weightSuggestion;
+  $('#touch-weight-suggestion').textContent = touch.weightSuggestion ? `Podpowiedź na podstawie belki ${touch.weightSuggestion.number} z ${dateFmt(touch.weightSuggestion.production_date)}.` : '';
+  $('#touch-text-preview').textContent = $('#touch-notes').value.trim() || 'Wpisany opis pojawi się tutaj';
   $('#touch-next').hidden = choosingWorker || !numeric;
   $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
   $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
@@ -280,6 +307,33 @@ function touchPromptLabel(input) {
     return `Ile metrów dla ${worker?.name || 'dodatkowego dziewiarza'}?`;
   }
   return 'Wpisz wartość';
+}
+async function updateTouchWeightSuggestion() {
+  const touch = state.touch, article = touchArticle(), meters = number($('#touch-meters').value), date = $('#touch-date').value;
+  const requestId = ++touch.weightSuggestionRequestId;
+  let match = null;
+  if (touch.weightSuggestionsEnabled && article && meters > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const query = new URLSearchParams({ articleId: article.id, productionDate: date, meters: String(meters) });
+    try { match = (await api(`/api/bales/weight-suggestion?${query}`)).suggestion; }
+    catch { match = null; }
+    if (requestId !== touch.weightSuggestionRequestId) return;
+  }
+  const currentWeight = $('#touch-weight').value.trim();
+  if (match) touch.weightSuggestion = match;
+  else touch.weightSuggestion = null;
+  if (!touch.weightManuallyEdited && (!currentWeight || currentWeight === touch.weightAutoValue)) {
+    $('#touch-weight').value = match ? number(match.weight_kg).toFixed(2).replace('.', ',') : '';
+    touch.weightAutoValue = $('#touch-weight').value;
+  } else if (currentWeight !== touch.weightAutoValue) touch.weightManuallyEdited = true;
+  updateTouchKeyboardPanel();
+}
+function touchShowConfirmation() {
+  state.touch.step = 'confirm';
+  state.touch.activeInput = null;
+  state.touch.workerPickerIndex = null;
+  state.touch.returnPrompt = '';
+  paintTouch();
+  $('#touch-step-confirm').scrollIntoView({ block: 'nearest' });
 }
 function touchStart() {
   if (!state.data.articles.length || !state.data.workers.length) { toast('Najpierw wybierz artykuły i pracowników w Ustawieniach.', true); return; }
@@ -301,13 +355,15 @@ function touchCopyLast() {
   $('#touch-errors').value = '';
   $('#touch-stops').value = String(row.stops);
   $('#touch-notes').value = row.notes || '';
+  state.touch.weightManuallyEdited = true;
+  state.touch.weightSuggestionsEnabled = false;
   $('#touch-data-title').textContent = `Kopia belki ${row.number} — wpisz dane`;
   paintTouch();
   touchFocusInput($('#touch-meters'));
   toast(`Skopiowano dane belki ${row.number}; błędy wyzerowano.`);
 }
 function touchBack() {
-  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker' }[state.touch.step] || 'home';
+  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker', confirm: 'data' }[state.touch.step] || 'home';
   state.touch.activeInput = null;
   state.touch.currentPrompt = '';
   state.touch.returnPrompt = '';
@@ -336,10 +392,12 @@ function touchResumeAfterExtra() {
     : $(`#${prompt}`);
   touchFocusInput(input || $('#touch-notes'));
 }
-function touchAdvancePrompt() {
+async function touchAdvancePrompt() {
   const touch = state.touch, active = touch.activeInput;
   if (!active) return;
   if (active.matches('[data-touch-extra-meters]')) { touchResumeAfterExtra(); return; }
+  if (active.id === 'touch-meters') await updateTouchWeightSuggestion();
+  if (touch.activeInput !== active) return;
   const sequence = ['touch-meters', 'touch-weight', 'touch-errors', 'touch-stops'];
   const index = sequence.indexOf(active.id);
   if (index >= 0) {
@@ -365,10 +423,7 @@ function touchTextAction(action) {
   if (action === 'clear') { input.value = ''; start = end = 0; }
   else if (action === 'backspace') { if (start === end && start > 0) start--; input.value = value.slice(0, start) + value.slice(end); end = start; }
   else if (action === 'done') {
-    state.touch.activeInput = null;
-    paintTouch();
-    $('#touch-save').focus({ preventScroll: true });
-    $('#touch-save').scrollIntoView({ block: 'nearest' });
+    touchShowConfirmation();
     return;
   }
   input.setSelectionRange(start, end); input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -388,15 +443,15 @@ async function saveTouchBale() {
   else if (extras.some(item => item.workerId === Number(touch.workerId)) || new Set(extras.map(item => item.workerId)).size !== extras.length) message = 'Każdego dziewiarza wybierz tylko raz.';
   const remaining = Math.round((meters - extras.reduce((sum, item) => sum + item.meters, 0)) * 100) / 100;
   if (!message && remaining <= 0) message = 'Metry dodatkowych osób muszą zostawić część dla głównego dziewiarza.';
-  if (message) { $('#touch-data-error').textContent = message; $('#touch-data-error').hidden = false; return; }
-  touch.saving = true; $('#touch-save').disabled = true; $('#touch-data-error').hidden = true;
+  if (message) { $('#touch-confirm-error').textContent = message; $('#touch-confirm-error').hidden = false; return; }
+  touch.saving = true; $('#touch-save').disabled = true; $('#touch-confirm-error').hidden = true;
   try {
     const result = await api('/api/bales', { method: 'POST', body: JSON.stringify({ articleId: article.id, machine, productionDate: date, bales: [{ weightKg, meters, errors: Number(errorsText), stops: Number(stopsText), notes: $('#touch-notes').value.trim(), primaryWorkerId: touch.workerId, trialSymbol: article.isTrial ? article.symbol : '', workers: [{ workerId: Number(touch.workerId), meters: remaining }, ...extras] }] }) });
     render(await api('/api/bootstrap'));
     touchReset();
     toast(`Zapisano belkę ${result.created[0].number}.`);
     await loadDailyReports();
-  } catch (error) { $('#touch-data-error').textContent = error.message; $('#touch-data-error').hidden = false; }
+  } catch (error) { $('#touch-confirm-error').textContent = error.message; $('#touch-confirm-error').hidden = false; }
   finally { touch.saving = false; $('#touch-save').disabled = false; }
 }
 function showView(name) {
@@ -884,7 +939,7 @@ async function setReviewFlag(id, needsCheck) {
   const wasSynced = [...(state.data?.recentBales || []), ...(state.data?.bales || [])].find(row => row.id === id)?.sync_status === 'synced' || state.data?.lastBale?.id === id && state.data.lastBale.sync_status === 'synced';
   try {
     render(await api(`/api/bales/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ needsCheck }) }));
-    const action = needsCheck ? 'Oznaczono belkę do sprawdzenia przez kierownika.' : 'Cofnięto oznaczenie do sprawdzenia.';
+    const action = needsCheck ? 'Oznaczono błędny zapis do sprawdzenia.' : 'Cofnięto oznaczenie błędnego zapisu.';
     toast(wasSynced ? `${action} Zmiana została wysłana do programu głównego.` : action);
   }
   catch (error) { toast(error.message, true); }
@@ -1002,6 +1057,7 @@ $('#touch-choose-article').addEventListener('click', touchStart);
 $('#touch-copy-last').addEventListener('click', touchCopyLast);
 $('#touch-back').addEventListener('click', touchBack);
 $('#touch-save').addEventListener('click', saveTouchBale);
+$('#touch-confirm-back').addEventListener('click', () => { $('#touch-confirm-error').hidden = true; state.touch.step = 'data'; state.touch.activeInput = null; paintTouch(); });
 $('#touch-add-worker').addEventListener('click', () => {
   state.touch.extras.push({ workerId: '', meters: '' });
   state.touch.returnPrompt = state.touch.currentPrompt || 'touch-meters';
@@ -1089,9 +1145,13 @@ $('#touch-wizard').addEventListener('input', event => {
     const index = Number(input.dataset.touchExtraMeters);
     if (input.id !== 'touch-meters' && state.touch.extras[index]) state.touch.extras[index].meters = input.value;
     updateTouchShare();
+    if (input.id === 'touch-meters') updateTouchWeightSuggestion();
   }
+  if (input.id === 'touch-weight' && input.value.trim() !== state.touch.weightAutoValue) state.touch.weightManuallyEdited = true;
+  if (input.id === 'touch-notes') $('#touch-text-preview').textContent = input.value.trim() || 'Wpisany opis pojawi się tutaj';
+  if (input.matches('[data-touch-numeric]')) updateTouchKeyboardPanel();
 });
-$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; });
+$('#touch-date').addEventListener('change', event => { state.touch.date = event.target.value; updateTouchWeightSuggestion(); });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !$('#numeric-keypad').hidden) hideKeypad();
   if (event.key === 'Enter' && event.target.matches?.('#production-form [data-numeric]')) {

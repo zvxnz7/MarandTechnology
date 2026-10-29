@@ -87,10 +87,8 @@
               </div>
               <div class="touch-extra-workers"><div class="touch-extra-heading"><strong>Dodatkowi dziewiarze</strong><button id="touch-add-worker" type="button" class="touch-add-person">＋ Dodaj dziewiarza przy zmianie</button></div><div id="touch-extra-worker-list"></div><p id="touch-share-summary" class="touch-share-summary"></p></div>
               <label>Opis / uwagi<textarea id="touch-notes" inputmode="none" autocomplete="off" maxlength="1000" placeholder="Dotknij, aby wpisać opis"></textarea></label>
-              <p id="touch-data-error" class="touch-error" role="alert" hidden></p>
-              <button id="touch-save" type="button" class="touch-save">Zapisz belkę</button>
             </div>
-            <div class="touch-keyboard-panel"><p id="touch-keyboard-hint" class="touch-keyboard-hint">Wybierz pole, aby otworzyć klawiaturę.</p><div id="touch-keyboard-prompt" class="touch-keyboard-prompt" hidden></div><div id="touch-extra-worker-picker" class="touch-extra-worker-picker" hidden></div><div id="touch-numeric-keyboard" class="touch-numeric-keyboard" hidden>
+            <div class="touch-keyboard-panel"><p id="touch-keyboard-hint" class="touch-keyboard-hint">Wybierz pole, aby otworzyć klawiaturę.</p><div id="touch-keyboard-prompt" class="touch-keyboard-prompt" hidden></div><output id="touch-keyboard-value" class="touch-keyboard-value" hidden></output><p id="touch-weight-suggestion" class="touch-weight-suggestion" hidden></p><div id="touch-extra-worker-picker" class="touch-extra-worker-picker" hidden></div><div id="touch-numeric-keyboard" class="touch-numeric-keyboard" hidden>
               <button type="button" data-touch-num="1">1</button><button type="button" data-touch-num="2">2</button><button type="button" data-touch-num="3">3</button>
               <button type="button" data-touch-num="4">4</button><button type="button" data-touch-num="5">5</button><button type="button" data-touch-num="6">6</button>
               <button type="button" data-touch-num="7">7</button><button type="button" data-touch-num="8">8</button><button type="button" data-touch-num="9">9</button>
@@ -100,7 +98,8 @@
           </div>
           <div id="touch-text-keyboard-overlay" class="touch-text-keyboard-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="touch-text-keyboard-title">
             <div class="touch-text-keyboard-dialog">
-              <div class="touch-text-keyboard-heading"><div><h2 id="touch-text-keyboard-title">Opis / uwagi</h2><p>Wpisz treść na klawiaturze ekranowej.</p></div><button type="button" class="touch-text-keyboard-close" data-touch-text-action="done">Gotowe</button></div>
+              <div class="touch-text-keyboard-heading"><div><h2 id="touch-text-keyboard-title">Opis / uwagi</h2><p>Wpisz treść na klawiaturze ekranowej.</p></div><button type="button" class="touch-text-keyboard-close" data-touch-text-action="done">Pomiń / gotowe</button></div>
+              <output id="touch-text-preview" class="touch-text-preview" aria-live="polite">Wpisany opis pojawi się tutaj</output>
               <div id="touch-text-keyboard" class="touch-text-keyboard">
               <div class="touch-letter-row touch-digit-row"><button data-touch-text="1">1</button><button data-touch-text="2">2</button><button data-touch-text="3">3</button><button data-touch-text="4">4</button><button data-touch-text="5">5</button><button data-touch-text="6">6</button><button data-touch-text="7">7</button><button data-touch-text="8">8</button><button data-touch-text="9">9</button><button data-touch-text="0">0</button></div>
               <div class="touch-letter-row"><button data-touch-text="q">q</button><button data-touch-text="w">w</button><button data-touch-text="e">e</button><button data-touch-text="r">r</button><button data-touch-text="t">t</button><button data-touch-text="y">y</button><button data-touch-text="u">u</button><button data-touch-text="i">i</button><button data-touch-text="o">o</button><button data-touch-text="p">p</button></div>
@@ -110,6 +109,12 @@
               </div>
             </div>
           </div>
+        </section>
+        <section id="touch-step-confirm" class="touch-step touch-confirm-step" hidden>
+          <h2>Sprawdź dane belki</h2>
+          <div id="touch-confirm-summary" class="touch-confirm-summary"></div>
+          <p id="touch-confirm-error" class="touch-error" role="alert" hidden></p>
+          <div class="touch-confirm-actions"><button id="touch-confirm-back" type="button" class="secondary">Wróć do edycji</button><button id="touch-save" type="button" class="touch-save">Potwierdź dodanie belki</button></div>
         </section>
       </section>
     </section>

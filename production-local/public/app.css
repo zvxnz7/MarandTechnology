@@ -59,7 +59,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-latest-label { color: #a8252a; font-size: 13px; font-weight: 850; letter-spacing: .08em; }
 .touch-accepted-card.needs-check { border-color: #c02d32; background: #fff0f0; }
 .touch-review-action { display: flex; justify-content: flex-end; }
-.touch-review-button { min-height: 54px; max-width: 280px; color: #8e292c; font-size: 14px; }
+.touch-review-button { min-height: 54px; max-width: 350px; color: #8e292c; font-size: 14px; }
 .touch-review-button.marked { border-color: #b52a30; background: #b52a30; color: white; }
 .touch-review-locked { color: var(--muted); font-size: 12px; text-align: right; }
 .touch-older-heading[hidden] { display: none; }
@@ -96,6 +96,13 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-data-step { height: calc(100dvh - 174px); display: flex; flex-direction: column; }
 .touch-data-step[hidden] { display: none; }
 .touch-data-step > h2 { flex: 0 0 auto; margin: 0 0 10px; }
+.touch-confirm-step { height: calc(100dvh - 250px); min-height: 500px; display: flex; flex-direction: column; }
+.touch-confirm-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px 5px 8px 1px; }
+.touch-confirm-row { display: grid; grid-template-columns: minmax(100px, .5fr) minmax(0, 1fr); align-items: start; gap: 10px; min-height: 54px; padding: 12px 14px; border: 1px solid #dfe3e7; border-radius: 10px; background: white; }
+.touch-confirm-row strong { color: #59636d; }
+.touch-confirm-row span { font-size: 17px; font-weight: 750; overflow-wrap: anywhere; }
+.touch-confirm-actions { position: sticky; bottom: 0; z-index: 5; display: grid; grid-template-columns: minmax(160px, .7fr) minmax(260px, 1.3fr); gap: 12px; flex: 0 0 auto; margin-top: 12px; padding: 9px 0 2px; background: #eef1f4; }
+.touch-confirm-actions > button { min-height: 68px; font-size: 20px; font-weight: 800; }
 .touch-data-layout { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(340px, .92fr); gap: clamp(12px, 2vw, 22px); flex: 1 1 auto; min-height: 0; }
 .touch-data-fields { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; padding: 2px 5px 4px 1px; }
 .touch-data-fields label { font-size: 15px; }
@@ -110,6 +117,8 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-small-action { min-height: 43px; padding: 6px 10px; font-size: 13px; }
 .touch-add-person { min-height: 56px; max-width: 285px; padding: 10px 16px; border-color: #b8c4ce; font-size: 16px; font-weight: 800; line-height: 1.2; }
 .touch-keyboard-prompt { flex: 0 0 auto; margin: 0 0 clamp(20px, 3vh, 34px); padding: clamp(16px, 2.2vh, 24px) 14px; border: 2px solid #e6cc8c; border-radius: 14px; background: #fff6df; color: #302b20; font-size: clamp(25px, 2.8vw, 36px); font-weight: 850; line-height: 1.2; text-align: center; }
+.touch-keyboard-value { display: block; flex: 0 0 auto; min-height: clamp(70px, 11vh, 112px); margin: calc(clamp(20px, 3vh, 34px) * -1) 0 14px; padding: 8px 12px; border: 2px solid #cbd2d9; border-radius: 12px; background: #fff; color: #1e2b39; font-size: clamp(38px, 4.3vw, 58px); font-weight: 850; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+.touch-weight-suggestion { flex: 0 0 auto; margin: -7px 0 14px; color: #49606b; font-size: 14px; font-weight: 650; text-align: center; }
 .touch-next { flex: 0 0 auto; width: 100%; min-height: 68px; margin-top: 12px; border-color: var(--red); background: var(--red); color: white; font-size: 23px; font-weight: 850; }
 .touch-next:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
 .touch-extra-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, .6fr) 48px; gap: 8px; align-items: end; margin-top: 7px; }
@@ -125,7 +134,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-picker-cancel { width: 100%; min-height: 50px; margin-top: 9px; }
 .touch-share-summary { margin: 5px 0 0; color: var(--muted); font-size: 13px; font-weight: 650; }
 .touch-error { margin: 0; color: #aa242a; font-size: 15px; font-weight: 750; }
-.touch-save { position: sticky; bottom: 0; z-index: 2; flex: 0 0 auto; min-height: 65px; margin-top: auto; border-color: var(--red); background: var(--red); color: white; font-size: 22px; font-weight: 800; box-shadow: 0 -8px 18px rgb(238 241 244 / 90%); }
+.touch-save { flex: 0 0 auto; border-color: var(--red); background: var(--red); color: white; font-size: 22px; font-weight: 800; }
 .touch-save:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
 .touch-keyboard-panel { display: flex; flex-direction: column; justify-content: center; min-height: 0; padding: clamp(10px, 1.6vw, 18px); border: 1px solid #d8dde2; border-radius: 14px; background: white; }
 .touch-keyboard-hint { margin: auto; color: var(--muted); font-size: 19px; text-align: center; }
@@ -139,6 +148,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-text-keyboard-heading h2 { font-size: clamp(25px, 3vw, 38px); }
 .touch-text-keyboard-heading p { margin: 4px 0 0; color: var(--muted); font-size: clamp(15px, 1.5vw, 19px); }
 .touch-text-keyboard-close { min-width: 150px; min-height: 58px; border-color: var(--red); background: var(--red); color: white; font-size: 19px; font-weight: 800; }
+.touch-text-preview { display: block; min-height: clamp(64px, 10vh, 110px); max-height: 22vh; overflow: auto; padding: 12px 16px; border: 2px solid #cbd2d9; border-radius: 12px; background: white; color: #20252b; font-size: clamp(20px, 2.4vw, 30px); font-weight: 650; white-space: pre-wrap; overflow-wrap: anywhere; }
 .touch-text-keyboard { display: flex; flex-direction: column; gap: clamp(8px, 1.5vh, 14px); }
 .touch-letter-row { display: flex; justify-content: center; gap: 5px; }
 .touch-letter-row button { flex: 1 1 0; min-width: 0; min-height: clamp(62px, 10.5vh, 104px); padding: 5px; border: 1px solid #d6dce1; border-radius: 11px; font-size: clamp(24px, 3vw, 38px); font-weight: 750; touch-action: manipulation; }
@@ -527,6 +537,8 @@ body.keypad-open .top-nav { display: none; }
 }
 @media (max-width: 900px) {
   .touch-data-step { height: auto; min-height: calc(100dvh - 160px); }
+  .touch-confirm-step { height: calc(100dvh - 190px); min-height: 480px; }
+  .touch-confirm-summary { grid-template-columns: 1fr; }
   .touch-data-layout { grid-template-columns: 1fr; }
   .touch-keyboard-panel { min-height: 320px; }
   .touch-numeric-keyboard { max-width: 700px; width: 100%; margin: auto; }
@@ -567,10 +579,12 @@ body.keypad-open .top-nav { display: none; }
   .touch-text-keyboard-overlay { padding: 8px; }
   .touch-text-keyboard-dialog { gap: 12px; padding: 12px; border-radius: 14px; }
   .touch-text-keyboard-heading { gap: 8px; }
-  .touch-text-keyboard-close { min-width: 90px; min-height: 48px; padding: 6px 10px; }
+  .touch-text-keyboard-close { min-width: 125px; min-height: 48px; padding: 6px 10px; font-size: 15px; }
   .touch-letter-row { gap: 4px; }
   .touch-letter-row button { min-height: clamp(48px, 8vh, 68px); padding: 2px; font-size: clamp(20px, 5vw, 28px); }
   .touch-key-actions button { font-size: 13px; }
+  .touch-confirm-actions { grid-template-columns: 1fr; }
+  .touch-confirm-actions > button { min-height: 56px; font-size: 17px; }
 }
 @media (max-height: 980px) and (min-width: 901px) {
   .touch-view { padding: clamp(12px, 2.45vw, 30px); }

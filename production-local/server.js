@@ -98,6 +98,7 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS bales_production_date ON bales(production_date, created_at);
   CREATE INDEX IF NOT EXISTS bales_sync_status ON bales(sync_status, production_date);
+  CREATE INDEX IF NOT EXISTS bales_article_date_meters ON bales(article_id,production_date,meters,created_at);
   CREATE INDEX IF NOT EXISTS bale_workers_worker ON bale_workers(worker_id, bale_id);
 `);
 if (startingSchemaVersion === 0) db.exec('PRAGMA user_version=1;');
@@ -363,6 +364,15 @@ function lastBaleRow() {
     workers: db.prepare(`SELECT bw.worker_id workerId,w.employee_uid employeeUid,w.name,bw.meters FROM bale_workers bw
       JOIN workers w ON w.id=bw.worker_id WHERE bw.bale_id=? ORDER BY w.name COLLATE NOCASE`).all(row.id),
   };
+}
+function touchWeightSuggestion(articleId, productionDate, meters) {
+  const [year, month] = productionDate.slice(0, 7).split('-').map(Number);
+  const startDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+  const endDate = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  const row = db.prepare(`SELECT id,machine,serial_number,article_id,production_date,weight_kg,meters,created_at
+    FROM bales WHERE article_id=? AND production_date>=? AND production_date<? AND abs(meters-?)<0.005
+    ORDER BY created_at DESC,id DESC LIMIT 1`).get(articleId, startDate, endDate, meters);
+  return row ? { ...row, number: `${row.machine}/${row.serial_number}` } : null;
 }
 function bootstrap() {
   const today = todayWarsaw();
@@ -902,6 +912,15 @@ function route(req, res) {
   if (req.method === 'GET' && url.pathname === '/marand-logo.jpg') return sendFile(res, 'marand-logo.jpg', 'image/jpeg');
   if (req.method === 'GET' && url.pathname === '/api/bootstrap') {
     return centralCatalogStartupSyncPromise.then(()=>json(res, 200, bootstrap()));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/bales/weight-suggestion') {
+    const articleId = Number(url.searchParams.get('articleId'));
+    const productionDate = String(url.searchParams.get('productionDate') || '');
+    const meters = Number(String(url.searchParams.get('meters') || '').replace(',', '.'));
+    if (!Number.isInteger(articleId) || articleId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(productionDate)
+      || !Number.isFinite(meters) || meters <= 0 || meters > 100000) return json(res, 400, { error: 'Nieprawidłowe dane do podpowiedzi wagi.' });
+    try { return json(res, 200, { suggestion: touchWeightSuggestion(articleId, productionDate, meters) }); }
+    catch (error) { return json(res, error.status || 500, { error: error.message }); }
   }
   if (req.method === 'GET' && url.pathname === '/api/daily-production') {
     try {
