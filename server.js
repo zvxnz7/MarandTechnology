@@ -1183,7 +1183,7 @@ async function handle(req, res) {
       const contextProjectId=contextProjectRaw?Number(contextProjectRaw):0,contextStageId=contextStageRaw?Number(contextStageRaw):0;
       const issueStage=stageIssueContext(contextProjectId,contextStageId,r.article_id);
       if (!machine || token.length < 20) fail(400, 'Podaj maszynę, na którą ma zostać wydana karta.');
-      if (machine.length > 100 || instructions.length > 6000 || productionNotes.length > 6000) fail(400, 'Skróć nazwę maszyny, polecenia lub specjalne informacje do produkcji.');
+      if (machine.length > 100 || instructions.length > 30000 || V.instructionsText(instructions).length > 6000 || productionNotes.length > 6000) fail(400, 'Skróć nazwę maszyny, polecenia lub specjalne informacje do produkcji.');
       if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
       if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');
       if (r.state !== 'approved' || r.active_spec !== id) fail(409, 'Można wydać wyłącznie aktualną zatwierdzoną wersję. Otwórz aktualną kartę artykułu.');
@@ -1209,7 +1209,7 @@ async function handle(req, res) {
         const result = db.prepare('INSERT INTO cards(record_id,machine,instructions,created_at,created_by,token,snapshot,html,production_notes) VALUES(?,?,?,?,?,?,?,?,?)').run(id, machine, instructions, stamp, req.user.id, token, dump({ record: r, data: v, author: req.user.name, production_notes:productionNotes }), html, productionNotes);
         const newId = Number(result.lastInsertRowid);
         if(productionNotes)db.prepare("UPDATE articles SET pending_production_notes='',updated_at=? WHERE id=?").run(stamp,r.article_id);
-        audit(req.user, 'Wydano kartę na maszynę', id, `Karta ${newId} / ${machine} / ${instructions}${productionNotes?` / ${productionNotes}`:''}`);
+        audit(req.user, 'Wydano kartę na maszynę', id, `Karta ${newId} / ${machine} / ${V.instructionsText(instructions)}${productionNotes?` / ${productionNotes}`:''}`);
         if(issueStage) {
           const currentStage=stageIssueContext(contextProjectId,contextStageId,r.article_id);
           setProjectStatus(contextProjectId,'to_knitter',stamp);
