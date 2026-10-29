@@ -93,7 +93,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-machine-color-5, .touch-worker-color-5 { border-color: #9fc9cc; background: #edf8f8; }
 .touch-worker-color-6 { border-color: #c0c994; background: #f5f7e9; }
 .touch-worker-color-7 { border-color: #c8b49c; background: #f8f3ed; }
-.touch-data-step { height: calc(100dvh - 174px); display: flex; flex-direction: column; }
+.touch-data-step { height: calc(100dvh - 230px); display: flex; flex-direction: column; }
 .touch-data-step[hidden] { display: none; }
 .touch-data-step > h2 { flex: 0 0 auto; margin: 0 0 10px; }
 .touch-confirm-step { height: calc(100dvh - 250px); min-height: 500px; display: flex; flex-direction: column; }
@@ -600,7 +600,7 @@ body.keypad-open .top-nav { display: none; }
   .touch-tile { min-height: clamp(76px, 11.5vh, 112px); padding: 12px; font-size: clamp(19px, 2vw, 26px); }
   .touch-machine-tiles .touch-tile { min-height: clamp(88px, 14.2vh, 132px); font-size: clamp(25px, 2.75vw, 36px); }
   #touch-article-tiles .touch-tile { min-height: clamp(108px, 14.3vh, 160px); font-size: clamp(22px, 2.5vw, 32px); }
-  .touch-data-step { height: calc(100dvh - 145px); }
+  .touch-data-step { height: calc(100dvh - 230px); }
   .touch-data-layout { grid-template-columns: minmax(0, 1.1fr) minmax(340px, .85fr); gap: clamp(9px, 1.5vw, 16px); }
   .touch-data-fields { gap: 7px; }
   .touch-data-fields input, .touch-data-fields textarea { min-height: 48px; font-size: 21px; }
