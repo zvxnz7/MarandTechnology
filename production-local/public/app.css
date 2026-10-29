@@ -265,8 +265,8 @@ tr:last-child td { border-bottom: 0; }
 .notice { margin: 0 0 18px; padding: 14px 17px; border-left: 4px solid #d49a39; border-radius: 6px; background: var(--warning); }
 .footnote { margin: 20px 2px; color: var(--muted); font-size: 12px; }
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.settings-grid > .catalog-panel:first-child { order: 2; }
-.settings-grid > .catalog-panel:nth-child(2) { order: 1; }
+.settings-grid > .catalog-panel:first-child { order: 1; }
+.settings-grid > .catalog-panel:nth-child(2) { order: 2; }
 .settings-grid > .full-row:nth-child(3) { order: 3; }
 .settings-grid > .full-row:nth-child(4) { order: 4; }
 .connection-settings { margin: 0 0 16px; }
