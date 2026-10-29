@@ -512,7 +512,7 @@ function validateCatalog(body, key) {
       if(centralId!==null&&(!Number.isSafeInteger(centralId)||centralId<1)) fail(400,'Identyfikator artykułu z centrali jest nieprawidłowy.');
       const isTrial = item.isTrial === true;
       const machine=String(item.machine??'');
-      if(machine!==''&&machine!=='0'&&!MACHINES.includes(machine)) fail(400,'Wybierz maszynę albo „0 — dziewiarz”.');
+      if(!MACHINES.includes(machine)) fail(400,`Dla artykułu ${symbol} wybierz konkretną maszynę w Ustawieniach.`);
       const weightWeighInterval=Number(item.weightWeighInterval??20);
       if(!Number.isInteger(weightWeighInterval)||weightWeighInterval<1||weightWeighInterval>500) fail(400,`Dla artykułu ${symbol} ustaw kontrolę wagi od 1 do 500 belek.`);
       return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, isTrial, machine, weightWeighInterval };

@@ -38,8 +38,7 @@ function options(items, valueKey, labelFn, selected) {
 function articleLabel(item) { const label = item.isTrial ? `${item.symbol} · Próba` : item.symbol; return item.machine ? `${label} · ${item.machine === '0' ? 'dziewiarz' : item.machine}` : label; }
 function selectedArticleChoice() { return state.data?.articles.find(item => String(item.choiceId ?? item.id) === String($('#article')?.value)); }
 function articleMachine(item) {
-  if (!item?.machine) return '';
-  return item.machine === '0' ? '' : item.machine;
+  return item?.machine || '';
 }
 function workerLabel(worker) { return worker.name; }
 function fillCommonControls() {
@@ -51,8 +50,8 @@ function fillCommonControls() {
   else if (articles.length === 1) $('#article').value = String(articles[0].choiceId ?? articles[0].id);
   $('#machine').innerHTML = `<option value="">Wybierz maszynę</option>${state.data.machines.map(machine => `<option value="${machine}" ${machine === oldMachine ? 'selected' : ''}>${machine}</option>`).join('')}`;
   const selected = selectedArticleChoice();
-  $('#machine').value = selected?.machine ? articleMachine(selected) : oldMachine;
-  $('#machine').disabled = Boolean(selected?.machine);
+  $('#machine').value = selected?.machine ? articleMachine(selected) : '';
+  $('#machine').disabled = true;
   if (!$('#production-date').value) $('#production-date').value = state.data.today;
   $('#setup-notice').hidden = articles.length > 0 && state.data.workers.length > 0;
   fillWorkerControls($('#worker-primary').value);
@@ -226,7 +225,7 @@ function renderTouchSelectionSummary() {
 }
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
-  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}${item.machine ? `<small>${item.machine === '0' ? '0 — dziewiarz' : `Maszyna ${escapeHtml(item.machine)}`}</small>` : ''}</button>`).join('');
+  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba · symbol artykułu</small>' : ''}<small>${item.machine ? `Maszyna ${escapeHtml(item.machine)}` : 'Przypisz maszynę w Ustawieniach'}</small></button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
   for (const key of ['article', 'machine', 'worker', 'data', 'weight-check', 'options', 'confirm']) {
@@ -235,7 +234,7 @@ function touchRenderTiles() {
   }
   $('#touch-home').hidden = step !== 'home';
   $('#touch-wizard').hidden = step === 'home';
-  $('#touch-step-name').textContent = ({ article: '1 / 8', machine: '2 / 8', worker: '3 / 8', data: '4 / 8', 'weight-check': '5 / 8', weight: '6 / 8', options: '7 / 8', confirm: '8 / 8' })[step] || '';
+  $('#touch-step-name').textContent = ({ article: '1 / 7', worker: '2 / 7', data: '3 / 7', 'weight-check': '4 / 7', weight: '5 / 7', options: '6 / 7', confirm: '7 / 7' })[step] || '';
   $('#touch-back').textContent = step === 'article' ? '← Do początku' : '← Cofnij';
   renderTouchSelectionSummary();
   $('#touch-data-title').textContent = `${touchArticle()?.symbol || 'Belka'}${touchArticle()?.isTrial ? ' · Próba' : ''} — wpisz dane`;
@@ -420,7 +419,7 @@ function touchBack() {
   }
   const fromOptions = touch.step === 'options';
   const fromWeightCheck = touch.step === 'weight-check';
-  const prev = { article: 'home', machine: 'article', worker: 'machine', data: 'worker', 'weight-check': 'data', weight: 'weight-check', options: 'data', confirm: 'options' }[touch.step] || 'home';
+  const prev = { article: 'home', machine: 'article', worker: 'article', data: 'worker', 'weight-check': 'data', weight: 'weight-check', options: 'data', confirm: 'options' }[touch.step] || 'home';
   touch.activeInput = null;
   touch.currentPrompt = '';
   touch.returnPrompt = '';
@@ -593,7 +592,7 @@ async function loadSettings() {
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}"><option value="">Wybierana przy belce</option><option value="0" ${item.machine === '0' ? 'selected' : ''}>0 — dziewiarz</option>${state.data.machines.map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${machine}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label">Ważenie co<input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="500" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"> belek</label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}" required><option value="">Wybierz maszynę</option>${state.data.machines.map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${machine}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label">Ważenie co<input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="500" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"> belek</label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
   articleList.querySelectorAll('.article-machine-input').forEach(input => input.addEventListener('change', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(item)item.machine=input.value; }));
   articleList.querySelectorAll('.article-weight-interval-input').forEach(input => input.addEventListener('input', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(!item)return; for(const row of state.catalogArticles) if(row.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL')) row.weightWeighInterval=Number(input.value); articleList.querySelectorAll('.article-weight-interval-input').forEach(control=>{if(state.catalogArticles[Number(control.dataset.index)]?.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL'))control.value=input.value;}); }));
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
@@ -657,6 +656,8 @@ function setSettingsActionsDisabled(disabled) {
 async function saveSettings() {
   setSettingsActionsDisabled(true);
   try {
+    const unassigned = state.catalogArticles.find(item => !state.data.machines.includes(item.machine));
+    if (unassigned) throw new Error(`Wybierz maszynę dla artykułu ${unassigned.symbol}.`);
     const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: Number(item.weightWeighInterval || 20) }));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     const sequenceYear = Number($('#sequence-year').value);
@@ -950,7 +951,7 @@ async function saveProduction(event) {
   if (!state.data.articles.length || !state.data.workers.length) { toast('Najpierw dodaj artykuły i pracowników w Ustawieniach.', true); return; }
   const selectedChoice = selectedArticleChoice();
   const common = { articleId: selectedChoice?.articleId || selectedChoice?.id, machine: articleMachine(selectedChoice) || $('#machine').value, productionDate: $('#production-date').value };
-  if (selectedChoice?.machine === '0') { toast(`Dla artykułu „${selectedChoice.symbol}” ustaw konkretny numer maszyny w Ustawieniach kierownika.`, true); return; }
+  if (!state.data.machines.includes(selectedChoice?.machine)) { toast(`W Ustawieniach kierownika wybierz maszynę dla artykułu „${selectedChoice?.symbol || '—'}”.`, true); return; }
   const year = String(common.productionDate).slice(0, 4);
   if (state.data.sequences?.[year]?.[common.machine] === undefined) { toast('Najpierw ustaw ostatni użyty numer tej maszyny i roku w Ustawieniach.', true); return; }
   let bale;
@@ -997,7 +998,7 @@ function startEdit(id) {
   }
   const editChoice=state.data.articles.find(item=>Number(item.articleId||item.id)===Number(row.article_id)&&(!item.machine||item.machine===row.machine));
   $('#article').value = String(editChoice?.choiceId ?? editChoice?.id ?? row.article_id);
-  $('#machine').disabled = false;
+  $('#machine').disabled = true;
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -1028,7 +1029,7 @@ function startCopy(id) {
   showView('production');
   const copyChoice=state.data.articles.find(item=>Number(item.articleId||item.id)===Number(row.article_id)&&(!item.machine||item.machine===row.machine));
   $('#article').value = String(copyChoice?.choiceId ?? copyChoice?.id ?? row.article_id);
-  $('#machine').disabled = false;
+  $('#machine').disabled = true;
   $('#machine').value = row.machine;
   $('#production-date').value = row.production_date;
   const contributions = [...row.workers].sort((a, b) => b.meters - a.meters);
@@ -1123,7 +1124,7 @@ function moveToNextField() {
 }
 
 $('#production-form').addEventListener('submit', saveProduction);
-$('#article').addEventListener('change', () => { const choice=selectedArticleChoice(); $('#machine').disabled=Boolean(choice?.machine); $('#machine').value=articleMachine(choice); });
+$('#article').addEventListener('change', () => { const choice=selectedArticleChoice(); $('#machine').disabled=true; $('#machine').value=articleMachine(choice); });
 $('#article-add-form').addEventListener('submit', addArticle);
 $('#central-article-search').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(searchCentralArticles,180);});
 $('#central-article-results').addEventListener('click',addCentralArticleFromSearch);
@@ -1210,9 +1211,8 @@ $('#touch-wizard').addEventListener('click', event => {
     const touch = state.touch;
     touch.articleId = articleButton.dataset.touchArticle;
     const article = touchArticle();
-    if (article?.machine === '0') { toast(`Dla artykułu „${article.symbol}” ustaw konkretny numer maszyny w Ustawieniach kierownika.`, true); return; }
-    if (article?.machine) { touch.machine = article.machine; touch.step = 'worker'; }
-    else touch.step = 'machine';
+    if (!state.data.machines.includes(article?.machine)) { toast(`W Ustawieniach kierownika wybierz maszynę dla artykułu „${article?.symbol || '—'}”.`, true); return; }
+    touch.machine = article.machine; touch.step = 'worker';
     paintTouch(); return;
   }
   const machineButton = event.target.closest('[data-touch-machine]');
