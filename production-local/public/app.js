@@ -279,6 +279,7 @@ function updateTouchKeyboardPanel() {
   const numeric = Boolean(active?.matches('[data-touch-numeric]'));
   const textEntry = Boolean(active && active.id === 'touch-notes');
   $('.touch-keyboard-panel').classList.toggle('worker-picker-open', choosingWorker);
+  $('.touch-keyboard-panel').classList.toggle('numeric-keyboard-open', numeric && !choosingWorker);
   $('#touch-numeric-keyboard').hidden = choosingWorker || !numeric;
   $('#touch-text-keyboard-overlay').hidden = choosingWorker || !textEntry;
   $('#touch-keyboard-prompt').hidden = choosingWorker || !active || textEntry;
