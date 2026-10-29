@@ -318,7 +318,11 @@ function updateTouchKeyboardPanel() {
   $('#touch-text-preview').textContent = $('#touch-notes').value.trim() || 'Wpisany opis pojawi się tutaj';
   $('#touch-next').hidden = choosingWorker || !numeric;
   const countRequired = active?.id === 'touch-errors' || active?.id === 'touch-stops';
-  $('#touch-next').disabled = Boolean(countRequired && !/^\d+$/.test(active.value.trim()));
+  const positiveRequired = active?.id === 'touch-meters' || active?.id === 'touch-weight';
+  const countInvalid = countRequired && !/^\d+$/.test(active.value.trim());
+  const positiveValue = number(activeValue);
+  const positiveInvalid = positiveRequired && (!Number.isFinite(positiveValue) || positiveValue <= 0);
+  $('#touch-next').disabled = Boolean(countInvalid || positiveInvalid);
   $('#touch-keyboard-hint').hidden = Boolean(active) || choosingWorker;
   $('.touch-decimal-key').hidden = active?.dataset.touchNumeric === 'integer';
 }
@@ -423,6 +427,7 @@ async function touchAdvancePrompt() {
   const touch = state.touch, active = touch.activeInput;
   if (!active) return;
   if ((active.id === 'touch-errors' || active.id === 'touch-stops') && !/^\d+$/.test(active.value.trim())) return;
+  if ((active.id === 'touch-meters' || active.id === 'touch-weight') && (!Number.isFinite(number(active.value)) || number(active.value) <= 0)) return;
   if (active.matches('[data-touch-extra-meters]')) { touchResumeAfterExtra(); return; }
   if (active.id === 'touch-meters') await updateTouchWeightSuggestion();
   if (touch.activeInput !== active) return;

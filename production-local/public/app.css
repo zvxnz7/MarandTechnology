@@ -166,8 +166,9 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard button { min-height: 54px; padding: 6px; line-height: 1.1; }
 .touch-keyboard-panel.numeric-keyboard-open .touch-next { position: sticky; bottom: 0; z-index: 2; flex: 0 0 auto; min-height: 56px; margin-top: 8px; box-shadow: 0 -5px 12px rgb(255 255 255 / 88%); }
 .touch-keyboard-hint { margin: auto; color: var(--muted); font-size: 19px; text-align: center; }
-.touch-numeric-keyboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(7px, 1vw, 12px); }
-.touch-numeric-keyboard button { min-height: clamp(70px, 10vh, 104px); border: 1px solid #d6dce1; border-radius: 12px; font-size: clamp(30px, 3.2vw, 42px); font-weight: 800; touch-action: manipulation; }
+.touch-numeric-keyboard { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: clamp(7px, 1vw, 12px); }
+.touch-numeric-keyboard button { grid-column: span 4; min-height: clamp(70px, 10vh, 104px); border: 1px solid #d6dce1; border-radius: 12px; font-size: clamp(30px, 3.2vw, 42px); font-weight: 800; touch-action: manipulation; }
+.touch-numeric-keyboard button[data-touch-num="clear"], .touch-numeric-keyboard button[data-touch-num="0"], .touch-numeric-keyboard button[data-touch-num="backspace"], .touch-numeric-keyboard button[data-touch-num=","] { grid-column: span 3; }
 .touch-numeric-keyboard .touch-key-alt { background: #f0f2f4; font-size: clamp(16px, 1.5vw, 20px); }
 .touch-numeric-keyboard .touch-key-done { grid-column: span 2; background: #e8f0f5; font-size: 20px; }
 .touch-text-keyboard-overlay { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: clamp(10px, 2.5vh, 28px); background: rgb(25 31 39 / 76%); }
@@ -645,4 +646,14 @@ body.keypad-open .top-nav { display: none; }
   .touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard { grid-auto-rows: minmax(48px, auto); }
   .touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard button { min-height: 48px; font-size: clamp(25px, 2.4vw, 31px); }
   .touch-next { min-height: 56px; margin-top: 8px; font-size: 20px; }
+}
+@media (max-height: 650px) {
+  .touch-keyboard-panel.numeric-keyboard-open { max-height: calc(100dvh - 24px); padding: 6px; }
+  .touch-keyboard-prompt { margin: 0 0 5px; padding: 7px 8px; font-size: clamp(17px, 4vh, 24px); }
+  .touch-keyboard-value { min-height: 42px; margin: -5px 0 6px; padding: 2px 8px; font-size: clamp(28px, 8vh, 40px); }
+  .touch-numeric-keyboard { gap: 4px; }
+  .touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard { grid-auto-rows: minmax(38px, auto); }
+  .touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard button { min-height: 38px; padding: 3px; font-size: clamp(20px, 5.5vh, 28px); }
+  .touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard .touch-key-alt { font-size: clamp(13px, 3.4vh, 17px); }
+  .touch-keyboard-panel.numeric-keyboard-open .touch-next { min-height: 44px; margin-top: 5px; }
 }
