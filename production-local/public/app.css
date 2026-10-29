@@ -118,7 +118,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-add-person { min-height: 56px; max-width: 285px; padding: 10px 16px; border-color: #b8c4ce; font-size: 16px; font-weight: 800; line-height: 1.2; }
 .touch-keyboard-prompt { flex: 0 0 auto; margin: 0 0 clamp(20px, 3vh, 34px); padding: clamp(16px, 2.2vh, 24px) 14px; border: 2px solid #e6cc8c; border-radius: 14px; background: #fff6df; color: #302b20; font-size: clamp(25px, 2.8vw, 36px); font-weight: 850; line-height: 1.2; text-align: center; }
 .touch-keyboard-value { display: block; flex: 0 0 auto; min-height: clamp(70px, 11vh, 112px); margin: calc(clamp(20px, 3vh, 34px) * -1) 0 14px; padding: 8px 12px; border: 2px solid #cbd2d9; border-radius: 12px; background: #fff; color: #1e2b39; font-size: clamp(38px, 4.3vw, 58px); font-weight: 850; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
-.touch-weight-suggestion { flex: 0 0 auto; margin: -7px 0 14px; color: #49606b; font-size: 14px; font-weight: 650; text-align: center; }
+.touch-weight-suggestion { flex: 0 0 auto; margin: -7px 0 14px; color: var(--red-dark); font-size: 14px; font-weight: 800; text-align: center; }
 .touch-next { flex: 0 0 auto; width: 100%; min-height: 68px; margin-top: 12px; border-color: var(--red); background: var(--red); color: white; font-size: 23px; font-weight: 850; }
 .touch-next:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
 .touch-extra-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, .6fr) 48px; gap: 8px; align-items: end; margin-top: 7px; }
