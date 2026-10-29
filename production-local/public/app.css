@@ -93,7 +93,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-machine-color-5, .touch-worker-color-5 { border-color: #9fc9cc; background: #edf8f8; }
 .touch-worker-color-6 { border-color: #c0c994; background: #f5f7e9; }
 .touch-worker-color-7 { border-color: #c8b49c; background: #f8f3ed; }
-.touch-data-step { height: calc(100dvh - 230px); display: flex; flex-direction: column; }
+.touch-data-step { min-height: calc(100dvh - 230px); display: flex; flex-direction: column; }
 .touch-data-step[hidden] { display: none; }
 .touch-data-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto; margin-bottom: 12px; }
 .touch-data-heading h2 { min-width: 0; margin: 0; font-size: clamp(23px, 2.2vw, 30px); }
@@ -160,9 +160,9 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-save { flex: 0 0 auto; border-color: var(--red); background: var(--red); color: white; font-size: 22px; font-weight: 800; }
 .touch-save:hover { border-color: var(--red-dark); background: var(--red-dark); color: white; }
 .touch-keyboard-panel { display: flex; flex-direction: column; justify-content: center; width: min(100%, 1050px); justify-self: center; min-height: 0; padding: clamp(10px, 1.6vw, 18px); border: 1px solid #d8dde2; border-radius: 14px; background: white; }
-.touch-keyboard-panel.numeric-keyboard-open { justify-content: flex-start; overflow: hidden; }
-.touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard { flex: 1 1 0; min-height: 0; grid-auto-rows: minmax(0, 1fr); align-content: stretch; }
-.touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard button { min-height: 0; padding: 2px; }
+.touch-keyboard-panel.numeric-keyboard-open { justify-content: flex-start; overflow: visible; }
+.touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard { flex: 0 0 auto; min-height: 0; grid-auto-rows: minmax(58px, auto); align-content: start; }
+.touch-keyboard-panel.numeric-keyboard-open .touch-numeric-keyboard button { min-height: 58px; padding: 6px; line-height: 1.1; }
 .touch-keyboard-panel.numeric-keyboard-open .touch-next { flex: 0 0 auto; min-height: 54px; margin-top: 8px; }
 .touch-keyboard-hint { margin: auto; color: var(--muted); font-size: 19px; text-align: center; }
 .touch-numeric-keyboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(7px, 1vw, 12px); }
@@ -632,7 +632,7 @@ body.keypad-open .top-nav { display: none; }
   .touch-tile { min-height: clamp(76px, 11.5vh, 112px); padding: 12px; font-size: clamp(19px, 2vw, 26px); }
   .touch-machine-tiles .touch-tile { min-height: clamp(88px, 14.2vh, 132px); font-size: clamp(25px, 2.75vw, 36px); }
   #touch-article-tiles .touch-tile { min-height: clamp(108px, 14.3vh, 160px); font-size: clamp(22px, 2.5vw, 32px); }
-  .touch-data-step { height: calc(100dvh - 230px); }
+  .touch-data-step { min-height: calc(100dvh - 230px); }
   .touch-data-layout { grid-template-columns: minmax(0, 1fr); gap: clamp(9px, 1.5vw, 16px); }
   .touch-data-fields { gap: 7px; }
   .touch-data-fields input, .touch-data-fields textarea { min-height: 48px; font-size: 21px; }
