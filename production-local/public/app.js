@@ -267,7 +267,7 @@ function renderTouchWeightCheck() {
       : reminderDue ? `Uwaga: za ${info.reminderIn} ${info.reminderIn === 1 ? 'sztukę' : 'sztuki'} kontrola wagi — zważ tuleję.` : '';
   const last = info.lastWeighed;
   $('#touch-weight-check-history').innerHTML = last
-    ? `Ostatnio zważona belka: <strong>${escapeHtml(last.symbol)} · ${escapeHtml(last.number)}</strong> · ${fmt(last.meters)} m · ${fmt(last.weight_kg)} kg · ${info.balesSinceLastWeigh === 0 ? 'ostatnia zważona belka' : `${info.balesSinceLastWeigh} ${info.balesSinceLastWeigh === 1 ? 'belkę' : 'belek'} temu`}.`
+    ? `Ostatnio zważona belka: <strong>${escapeHtml(last.symbol)} · ${escapeHtml(last.number)}</strong> · ${fmt(last.meters)} m · ${fmt(last.weight_kg)} kg${info.balesSinceLastWeigh > 0 ? ` · ${info.balesSinceLastWeigh} ${info.balesSinceLastWeigh === 1 ? 'belkę' : 'belek'} temu` : ''}.`
     : 'Brak zważonej belki w bieżącym miesiącu produkcji tego artykułu.';
   const calculateButton = $('[data-touch-weight-mode="calculated"]');
   calculateButton.disabled = Boolean(info.mustWeigh || !suggestion);
