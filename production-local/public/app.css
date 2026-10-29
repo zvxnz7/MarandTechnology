@@ -76,7 +76,7 @@ body.touch-mode main { width: 100%; max-width: none; height: 100dvh; margin: 0; 
 .touch-weight-check-step > h2 { text-align: center; font-size: clamp(28px, 3vw, 40px); }
 .touch-weight-check-notice { margin: 14px 0; padding: 14px 18px; border: 2px solid #c93035; border-radius: 12px; background: #fff0f0; color: #9e1f24; font-size: clamp(18px, 2vw, 24px); font-weight: 850; text-align: center; }
 .touch-weight-check-history { margin: 12px 0 20px; padding: 15px 18px; border-radius: 10px; background: #f2f4f6; color: #49545f; font-size: clamp(16px, 1.7vw, 21px); text-align: center; }
-.touch-weight-check-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.touch-weight-check-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: min(100%, 1000px); margin: 0 auto; }
 .touch-weight-check-options button { min-height: clamp(88px, 13vh, 130px); padding: 14px; border: 2px solid #d1d8de; border-radius: 13px; background: white; font-size: clamp(19px, 2vw, 26px); font-weight: 800; }
 .touch-weight-check-options button.selected { border-color: #b52a30; background: #fff1f1; color: #8f2529; box-shadow: 0 0 0 2px rgb(181 42 48 / 12%); }
 .touch-weight-check-options button:disabled { opacity: .48; }
