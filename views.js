@@ -152,7 +152,7 @@ function metricInputs(v, group, metrics) {
 function threadingPosition(index, full) {
   const state = full ? 'full' : 'empty';
   const label = full ? 'pełna' : 'pusta';
-  return `<span class="threading-position"><button type="button" class="threading-cell ${state}" data-threading-cell data-threading-state="${state}" aria-pressed="${full}" aria-label="Pozycja ${index + 1} — nitka ${label}" title="Kliknij, aby zmienić na nitkę ${full ? 'pustą' : 'pełną'}">${full ? '✓' : '·'}</button><button type="button" class="threading-remove-cell" data-remove-threading-cell aria-label="Usuń pozycję ${index + 1}" title="Usuń pozycję">×</button></span>`;
+  return `<span class="threading-position"><button type="button" class="threading-cell ${state}" data-threading-cell data-threading-state="${state}" aria-pressed="${full}" aria-label="Pozycja ${index + 1} — nitka ${label}" title="Kliknij, aby zmienić na nitkę ${full ? 'pustą' : 'pełną'}">${full ? '|' : '○'}</button><button type="button" class="threading-remove-cell" data-remove-threading-cell aria-label="Usuń pozycję ${index + 1}" title="Usuń pozycję">×</button></span>`;
 }
 function threadingEditor(index, value) {
   const raw = String(value || '');
@@ -162,7 +162,7 @@ function threadingEditor(index, value) {
   const legacy = !canonical && raw
     ? `<small class="threading-legacy" data-threading-legacy>Poprzedni zapis: „${esc(raw)}”. Dodaj pozycje, aby zastąpić go nowym formatem.</small>`
     : '<small class="threading-legacy" data-threading-legacy hidden></small>';
-  return `<div class="threading-field" data-threading-editor><span class="threading-field-label">Nawleczenie</span><input type="hidden" name="gb_${index}_threading" value="${esc(raw)}" data-threading-value><div class="threading-sequence" data-threading-positions aria-label="Pozycje nawleczenia">${positions}</div><div class="threading-actions"><button type="button" class="threading-add" data-add-threading-cell>＋ Dodaj kółko</button><code data-threading-display>${canonical ? esc(sequence || '—') : '—'}</code></div>${legacy}</div>`;
+  return `<div class="threading-field" data-threading-editor><span class="threading-field-label">Nawleczenie</span><input type="hidden" name="gb_${index}_threading" value="${esc(raw)}" data-threading-value><div class="threading-line"><div class="threading-sequence" data-threading-positions aria-label="Pozycje nawleczenia">${positions}</div><button type="button" class="threading-add" data-add-threading-cell aria-label="Dodaj pozycję nawleczenia" title="Dodaj pozycję">+</button><code data-threading-display>${canonical ? esc(sequence || '—') : '—'}</code></div>${legacy}</div>`;
 }
 function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const tech = TECH.map(([k, label]) => field(label, `tech_${k}`, (v.tech || {})[k] || '')).join('');

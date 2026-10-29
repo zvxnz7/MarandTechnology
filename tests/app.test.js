@@ -333,6 +333,7 @@ test('editor has two initial GB rows and retains historical sparse GB numbers',(
  const v={symbol:'X',gb:[],finished:[],sources:[]};const r={id:1,kind:'trial',revision:1};const user={name:'x',role:'admin'};
  let html=V.editPage({user,csrf:'x',r,v});assert.equal((html.match(/data-gb-index=/g)||[]).length,2);assert.match(html,/data-add-gb/);assert.match(html,/data-threading-editor/);assert.match(html,/data-add-threading-cell/);assert.match(html,/data-threading-value/);assert.doesNotMatch(html,/<textarea name="gb_0_(threading|pattern)"/);
  html=V.editPage({user,csrf:'x',r,v:{...v,gb:[{number:'6',yarn:'PES'}]}});assert.match(html,/GB6/);assert.match(html,/GB7/);
+ html=V.editPage({user,csrf:'x',r,v:{...v,gb:[{number:'6',yarn:'PES',threading:'||.'}]}});assert.match(html,/data-threading-state="full"[^>]*>\|<\/button>/);assert.match(html,/data-threading-state="empty"[^>]*>○<\/button>/);assert.match(html,/>\+<\/button>/);assert.doesNotMatch(html,/Dodaj kółko/);
 });
 test('backup captures photo files belonging to the database snapshot',async()=>{
  const output=path.join(DATA,'snapshot.sqlite3');

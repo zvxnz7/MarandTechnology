@@ -275,7 +275,7 @@ const gbRows=()=>gbList?[...gbList.querySelectorAll('[data-gb-index]')]:[];
 const threadingMarkup=(index,full)=>{
  const position=index+1,state=full?'full':'empty',label=full?'pełna':'pusta',wrap=document.createElement('span'),toggle=document.createElement('button'),remove=document.createElement('button');
  wrap.className='threading-position';
- toggle.type='button';toggle.className=`threading-cell ${state}`;toggle.dataset.threadingCell='';toggle.dataset.threadingState=state;toggle.setAttribute('aria-pressed',String(full));toggle.setAttribute('aria-label',`Pozycja ${position} — nitka ${label}`);toggle.title=`Kliknij, aby zmienić na nitkę ${full?'pustą':'pełną'}`;toggle.textContent=full?'✓':'·';
+ toggle.type='button';toggle.className=`threading-cell ${state}`;toggle.dataset.threadingCell='';toggle.dataset.threadingState=state;toggle.setAttribute('aria-pressed',String(full));toggle.setAttribute('aria-label',`Pozycja ${position} — nitka ${label}`);toggle.title=`Kliknij, aby zmienić na nitkę ${full?'pustą':'pełną'}`;toggle.textContent=full?'|':'○';
  remove.type='button';remove.className='threading-remove-cell';remove.dataset.removeThreadingCell='';remove.setAttribute('aria-label',`Usuń pozycję ${position}`);remove.title='Usuń pozycję';remove.textContent='×';
  wrap.append(toggle,remove);return wrap;
 };
@@ -301,7 +301,7 @@ if(gbList)gbList.addEventListener('click',event=>{
   const removeThreading=event.target.closest('[data-remove-threading-cell]');
   if(removeThreading){const editor=removeThreading.closest('[data-threading-editor]');removeThreading.closest('.threading-position').remove();syncThreading(editor);dirty=true;return;}
   const toggleThreading=event.target.closest('[data-threading-cell]');
-  if(toggleThreading){const full=toggleThreading.dataset.threadingState!=='full';toggleThreading.dataset.threadingState=full?'full':'empty';toggleThreading.classList.toggle('full',full);toggleThreading.classList.toggle('empty',!full);toggleThreading.setAttribute('aria-pressed',String(full));toggleThreading.textContent=full?'✓':'·';syncThreading(toggleThreading.closest('[data-threading-editor]'));dirty=true;return;}
+  if(toggleThreading){const full=toggleThreading.dataset.threadingState!=='full';toggleThreading.dataset.threadingState=full?'full':'empty';toggleThreading.classList.toggle('full',full);toggleThreading.classList.toggle('empty',!full);toggleThreading.setAttribute('aria-pressed',String(full));toggleThreading.textContent=full?'|':'○';syncThreading(toggleThreading.closest('[data-threading-editor]'));dirty=true;return;}
   const remove=event.target.closest('[data-remove-gb]');
   if(!remove)return;
   const row=remove.closest('[data-gb-index]');
