@@ -342,14 +342,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-section label small{display:block;margin:4px 0}
 .finishing-recipe-section textarea{resize:vertical}
 .finishing-measurement-row{display:flex;align-items:flex-end;gap:30px;flex-wrap:wrap}
-.finishing-measurement-value{width:11ch;max-width:100%;margin:0}
+.finishing-measurement-value{width:170px;max-width:100%;margin:0}
+.finishing-measurement-value>span{display:block;white-space:nowrap}
+.finishing-measurement-value input{width:11ch;max-width:100%}
 .finishing-tolerance{display:flex;align-items:flex-end;gap:10px;margin:0;padding:0;border:0}
 .finishing-tolerance legend{padding:0;margin-bottom:4px;color:var(--muted);font-size:12px;font-weight:600}
 .finishing-tolerance label{display:flex;align-items:center;gap:5px;margin:0}
 .finishing-tolerance label span{font-size:13px;font-weight:800}
 .finishing-tolerance input{width:8ch;max-width:100%;padding:10px 8px}
-.finishing-width-mode{width:min(320px,100%)}
-.finishing-width-alternatives{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px}
+.finishing-width-needles{align-self:flex-end}
 .finishing-process-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
 .finishing-check-option{display:flex;align-items:center;gap:10px;min-height:46px;margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:7px;background:#fafbfc;font-size:14px}
 .finishing-check-option input[type=checkbox]{width:20px;height:20px;min-width:20px;margin:0;accent-color:var(--red)}
@@ -384,8 +385,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe summary{display:flex;justify-content:space-between;gap:12px;padding:12px;cursor:pointer}
 .finishing-recipe summary span{color:var(--muted);font-size:12px}.finishing-recipe-detail{padding:0 12px 12px}
 .finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
-@media(max-width:800px){.finishing-recipe-identity-grid,.finishing-width-alternatives{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-described{grid-template-columns:1fr;gap:4px}}
-@media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry,.finishing-recipe-identity-grid,.finishing-width-alternatives,.finishing-process-grid{grid-template-columns:1fr}.finishing-recipe-primary{padding:14px}.finishing-recipe-primary input{font-size:20px}.finishing-recipe-section{padding:16px}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
+@media(max-width:800px){.finishing-recipe-identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-described{grid-template-columns:1fr;gap:4px}}
+@media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry,.finishing-recipe-identity-grid,.finishing-process-grid{grid-template-columns:1fr}.finishing-recipe-primary{padding:14px}.finishing-recipe-primary input{font-size:20px}.finishing-recipe-section{padding:16px}.finishing-measurement-row{gap:14px}.finishing-width-needles{width:100%}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
 .shipment-print-report thead th{background:#e1e3e5;color:#222;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .instruction-editor-label{display:block;font-weight:600;margin:18px 0}
 .instruction-editor{margin-top:7px;border:1px solid #cfd4da;border-radius:6px;background:#fff;overflow:hidden}
