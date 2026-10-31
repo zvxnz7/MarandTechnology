@@ -428,6 +428,7 @@ h1 { margin: 3px 0; font-size: clamp(25px, 2.6vw, 32px); }
 .catalog-list { display: grid; gap: 7px; max-height: 330px; overflow: auto; }
 #worker-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); max-height: none; overflow: visible; }
 .catalog-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 6px 9px 6px 12px; border: 1px solid #eceef0; border-radius: 7px; background: #fafbfc; }
+.catalog-row-new { border-color: #e5a323; background: #fff4d8; box-shadow: inset 4px 0 #e5a323; }
 .catalog-row strong { font-size: 13px; }
 .catalog-row small { display: block; color: var(--muted); font-size: 10px; }
 .worker-catalog-row > strong { min-width: 0; flex: 1; }
