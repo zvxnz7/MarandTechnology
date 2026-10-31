@@ -138,6 +138,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .stock-table tbody td{font-size:12px;line-height:1.25;text-align:center}
 .stock-table tbody td:first-child{text-align:center}.stock-table tbody td:nth-child(2){text-align:left}
 .stock-table .item-title{font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+.stock-title-row{display:flex;align-items:center;gap:14px}.stock-title-row h1{margin-bottom:0}.production-stock-print{width:40px;height:40px;padding:8px}.production-stock-print svg{width:22px;height:22px}.stock-table tbody tr.stock-shipped .item-title,.stock-table tbody td.stock-shipped-quantity,.stock-table tbody td.stock-shipment-day{color:#c62828!important;font-weight:700}
 .stock-table .stock-day-header,.stock-table .stock-day-start{border-left:2px solid #cbd1d6}
 .stock-table .stock-day-subheader{border-bottom:1px solid var(--line)}
 .stock-table .stock-date{font-size:11px;letter-spacing:0;text-transform:none}

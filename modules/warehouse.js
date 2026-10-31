@@ -180,10 +180,11 @@ function activeStockSql() {
     )`;
 }
 
-function articleBalances(db, q = '') {
+function articleBalances(db, q = '', options = {}) {
   const clauses = ["a.archived_at IS NULL", "a.purged_at IS NULL",
     `NOT EXISTS (SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed')`,
     "coalesce(f.status,'available')!='shipped_out'"];
+  if (!options.includeTrials) clauses.push("trim(coalesce(b.trial_symbol,''))=''");
   const params = [];
   for (const word of String(q || '').trim().split(/\s+/).map(normalizeSearch).filter(Boolean)) {
     clauses.push("search_text(a.symbol || ' ' || coalesce(a.description,'')) LIKE ? ESCAPE '\\'");
@@ -209,10 +210,37 @@ function registeredBales(db, articleId) {
         JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed' LIMIT 1) closed_shipment
     FROM production_bales b JOIN articles a ON a.id=b.article_id
     LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
-    WHERE b.article_id=? AND coalesce(f.status,'available')!='shipped_out' AND NOT EXISTS (
+    WHERE b.article_id=? AND trim(coalesce(b.trial_symbol,''))='' AND coalesce(f.status,'available')!='shipped_out' AND NOT EXISTS (
       SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
       JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed'
     ) ORDER BY b.production_date,b.local_created_at,b.uploaded_at,b.bale_number COLLATE NOCASE`).all(articleId);
+}
+
+function registeredTrialBales(db) {
+  return db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,coalesce(f.status,'available') inventory_status,
+      coalesce((SELECT group_concat(tag,',') FROM warehouse_bale_tags bt WHERE bt.bale_local_id=b.local_id),'') quality_tags,
+      (SELECT status FROM warehouse_bale_custom_statuses cs WHERE cs.bale_local_id=b.local_id) custom_status,
+      (SELECT sh.status FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
+        JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL LIMIT 1) reserved_status,
+      (SELECT sh.id FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
+        JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed' LIMIT 1) closed_shipment
+    FROM production_bales b JOIN articles a ON a.id=b.article_id
+    LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
+    WHERE trim(coalesce(b.trial_symbol,''))<>'' AND coalesce(f.status,'available')!='shipped_out' AND NOT EXISTS (
+      SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
+      JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed'
+    ) ORDER BY b.production_date,b.local_created_at,b.uploaded_at,b.bale_number COLLATE NOCASE`).all();
+}
+
+function trialBalance(db) {
+  return db.prepare(`SELECT count(*) visible_pieces,
+      sum(CASE WHEN coalesce(f.status,'available')='available' THEN 1 ELSE 0 END) stock_pieces,
+      round(sum(CASE WHEN coalesce(f.status,'available')='available' THEN b.weight_kg ELSE 0 END),2) stock_weight,
+      sum(CASE WHEN f.status='lost' THEN 1 ELSE 0 END) lost_pieces
+    FROM production_bales b LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
+    WHERE trim(coalesce(b.trial_symbol,''))<>'' AND coalesce(f.status,'available')!='shipped_out'
+      AND NOT EXISTS (SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
+        JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed')`).get();
 }
 
 function baleAvailableForNewShipment(db, localId) {
@@ -266,7 +294,7 @@ function warehouseExcelStatus(row) {
 function warehouseExcel(ctx, article) {
   const articleId=article.id;
   if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
-  const rows=registeredBales(ctx.db,articleId).map((row,index)=>[
+  const rows=(article.isTrialGroup?registeredTrialBales(ctx.db):registeredBales(ctx.db,articleId)).map((row,index)=>[
     index+1,row.symbol,row.bale_number,Number(row.weight_kg),Number(row.meters),Number(row.errors),Number(row.stops),row.lot||'',row.notes||'',date(row.production_date),warehouseExcelStatus(row),
   ]);
   return Xlsx.workbook(['LP','Symbol','Nr szt.','Masa kg','Metry','Błędy','Stopy','LOT','Uwagi','Data produkcji','Status'],rows,article.symbol);
@@ -274,9 +302,17 @@ function warehouseExcel(ctx, article) {
 
 function articleSearchResults(ctx, q) {
   if (!q) return '';
-  const matches = articleBalances(ctx.db, q).filter(article => article.stock_pieces > 0);
+  const matches = articleBalances(ctx.db, q, {includeTrials:false}).filter(article => article.stock_pieces > 0);
+  const trialQuery=normalizeSearch(q);
+  const trials=trialBalance(ctx.db);
+  const trialMatches=trials.stock_pieces>0&&(
+    'proby'.startsWith(trialQuery)||trialQuery.includes('proby')||
+    Boolean(ctx.db.prepare(`SELECT 1 FROM production_bales b JOIN articles a ON a.id=b.article_id
+      WHERE trim(coalesce(b.trial_symbol,''))<>'' AND search_text(coalesce(b.trial_symbol,'')||' '||a.symbol||' '||coalesce(a.description,'')) LIKE ? LIMIT 1`).get(`%${trialQuery}%`))
+  );
+  if(trialMatches) matches.unshift({id:'trials',symbol:'Próby',stock_pieces:trials.stock_pieces,stock_weight:trials.stock_weight||0,isTrialGroup:true});
   if (!matches.length) return '<p class="warehouse-search-empty">Brak artykułów z dostępnymi belkami.</p>';
-  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article => `<a id="warehouse-article-option-${article.id}" role="option" aria-selected="false" href="/warehouse?article_id=${article.id}" class="warehouse-article-option"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
+  return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące artykuły">${matches.map(article => `<a id="warehouse-article-option-${article.id}" role="option" aria-selected="false" href="/warehouse?${article.isTrialGroup?'trials=1':`article_id=${article.id}`}" class="warehouse-article-option"><strong>${V.esc(article.symbol)}</strong><span>${article.stock_pieces} szt · ${money(article.stock_weight)} kg</span></a>`).join('')}</div>`;
 }
 
 function articleFilenamePart(article) {
@@ -287,18 +323,22 @@ function catalogPage(ctx) {
   const q = String(ctx.url.searchParams.get('q') || '').trim();
   const rawArticleId = Number(ctx.url.searchParams.get('article_id') || 0);
   if (ctx.url.searchParams.get('partial') === 'search') return articleSearchResults(ctx, q);
-  const current = Number.isSafeInteger(rawArticleId) && rawArticleId > 0 ? articleBalances(ctx.db).find(a => a.id === rawArticleId) : null;
+  const trialGroupSelected=ctx.url.searchParams.get('trials')==='1';
+  const trialGroupBalance=trialGroupSelected?trialBalance(ctx.db):null;
+  const current = trialGroupSelected
+    ? (trialGroupBalance.visible_pieces>0?{id:'trials',symbol:'Próby',...trialGroupBalance,isTrialGroup:true}:null)
+    : Number.isSafeInteger(rawArticleId) && rawArticleId > 0 ? articleBalances(ctx.db,'',{includeTrials:false}).find(a => a.id === rawArticleId) : null;
   const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Symbol lub opis artykułu" aria-label="Szukaj artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="warehouse-search-results"></label><p class="muted small">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia. Przy kilku słowach każde musi pasować.</p><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
   let selectedView = '';
   if (current) {
-    const bales = registeredBales(ctx.db, current.id);
+    const bales = current.isTrialGroup ? registeredTrialBales(ctx.db) : registeredBales(ctx.db, current.id);
     const availableCount = bales.filter(b => b.inventory_status === 'available').length;
     const currentWeight = bales.filter(b => b.inventory_status === 'available').reduce((sum, b) => sum + b.weight_kg, 0);
     const lostCount = bales.filter(b => b.inventory_status === 'lost').length;
     const canManageStatuses = managerRoles.includes(ctx.req.user.role);
     const lostForm = canManageStatuses ? `<form method="post" action="/warehouse/bales/status" id="warehouse-bulk-status" class="warehouse-bulk-status">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="article_id" value="${current.id}"><input type="hidden" name="bale_ids" value="" data-warehouse-selected><input name="reason" placeholder="Powód zagubienia (opcjonalnie)" maxlength="500"><button name="status" value="lost" class="button danger">Oznacz jako zagubione</button><button name="status" value="second_grade" class="button warehouse-action-second-grade">Oznacz jako drugi gatunek</button><button name="status" value="stripe_risk" class="button warehouse-action-stripe-risk">Oznacz jako ryzyko pasiastości</button><input name="custom_status" maxlength="120" placeholder="Własny status"><button name="status" value="custom" class="button warehouse-action-custom-status">Dodaj status</button>${lostCount||bales.some(b=>b.quality_tags||b.custom_status) ? '<button name="status" value="available" class="button">Usuń oznaczenia / przywróć dostępność</button>' : ''}</form>` : '';
     const cols = canManageStatuses ? 11 : 10;
-    const exportIcons=`<span class="warehouse-export-icons no-print"><button type="button" class="warehouse-icon-button" data-print-page title="Drukuj wykaz" aria-label="Drukuj wykaz sztuk artykułu ${V.esc(current.symbol)}">${printerSvg}</button><a class="warehouse-icon-button" href="/warehouse/export.xlsx?article_id=${current.id}" title="Eksportuj do Excela" aria-label="Eksportuj wykaz sztuk artykułu ${V.esc(current.symbol)} do Excela">${excelSvg}</a></span>`;
+    const exportIcons=`<span class="warehouse-export-icons no-print"><button type="button" class="warehouse-icon-button" data-print-page title="Drukuj wykaz" aria-label="Drukuj wykaz sztuk ${V.esc(current.symbol)}">${printerSvg}</button><a class="warehouse-icon-button" href="/warehouse/export.xlsx?${current.isTrialGroup?'trials=1':`article_id=${current.id}`}" title="Eksportuj do Excela" aria-label="Eksportuj wykaz sztuk ${V.esc(current.symbol)} do Excela">${excelSvg}</a></span>`;
     const baleTableRows=baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`;
     const listedWeight=bales.reduce((sum,b)=>sum+Number(b.weight_kg||0),0);
     selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
@@ -340,9 +380,9 @@ function baleDetailPage(ctx, localId) {
   const shipment=bale.shipment_id?`<a href="/shipments/${bale.shipment_id}#specification-${bale.shipment_article_id}">${shipmentNo({sequence:bale.shipment_sequence,shipment_year:bale.shipment_year})} · ${shipmentStatus}</a>${bale.correction_reason||bale.shipment_removal_reason?`<div class="muted small">${V.esc(bale.correction_reason||bale.shipment_removal_reason)}</div>`:''}`:'—';
   const canEditNote=editableRoles.includes(ctx.req.user.role)&&bale.shipment_status!=='closed'&&bale.inventory_status!=='shipped_out';
   const noteForm=canEditNote?`<form method="post" action="/warehouse/bales/${encodeURIComponent(bale.local_id)}/notes" class="warehouse-detail-note" data-warehouse-note-form>${hidden('csrf',ctx.req.session.csrf)}<input name="notes" value="${V.esc(bale.notes)}" aria-label="Uwagi do belki" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>`:V.esc(bale.notes||'—');
-  const entries=[['Symbol artykułu',`<a href="/warehouse?article_id=${bale.article_id}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',noteForm],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
+  const entries=[['Symbol artykułu',`<a href="${bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',noteForm],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
   if(bale.trial_symbol)entries.splice(1,0,['Symbol próby',V.esc(bale.trial_symbol)]);
-  const body=`<a class="breadcrumb" href="/warehouse?article_id=${bale.article_id}">← Wykaz sztuk · ${V.esc(bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
+  const body=`<a class="breadcrumb" href="${bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`}">← Wykaz sztuk · ${V.esc(bale.trial_symbol?'Próby':bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Belka ${bale.bale_number} · Wykaz sztuk · Marand`,body});
 }
 
@@ -805,9 +845,10 @@ function handle(ctx) {
     return redirect(req,res,'/settings/libraries','Zmieniono status rodzaju wykończenia.');
   }
   if(p==='/warehouse/export.xlsx'&&req.method==='GET') {
+    const trialGroup=ctx.url.searchParams.get('trials')==='1';
     const articleId=Number(ctx.url.searchParams.get('article_id')||0);
-    if(!Number.isSafeInteger(articleId)||articleId<1) throw Object.assign(new Error('Wybierz artykuł przed eksportem.'),{status:400});
-    const article=articleBalances(db).find(row=>row.id===articleId);
+    if(!trialGroup&&(!Number.isSafeInteger(articleId)||articleId<1)) throw Object.assign(new Error('Wybierz artykuł przed eksportem.'),{status:400});
+    const article=trialGroup?{id:'trials',symbol:'Próby',isTrialGroup:true}:articleBalances(db,'',{includeTrials:false}).find(row=>row.id===articleId);
     if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
     const symbolPart=articleFilenamePart(article);
     const filename=`wykaz-${symbolPart}-${ctx.todayWarsaw()}.xlsx`;
@@ -817,13 +858,13 @@ function handle(ctx) {
   if(p==='/warehouse/bales/status'&&req.method==='POST') {
     role(req.user,...managerRoles);
     const ids=String(ctx.form.bale_ids||'').split(',').filter(Boolean);
-    const status=String(ctx.form.status||''), reason=String(ctx.form.reason||'').trim().slice(0,500), articleId=Number(ctx.form.article_id);
+    const status=String(ctx.form.status||''), reason=String(ctx.form.reason||'').trim().slice(0,500), trialGroup=ctx.form.article_id==='trials',articleId=Number(ctx.form.article_id);
     const customStatus=String(ctx.form.custom_status||'').trim().replace(/\s+/g,' ').slice(0,120);
     if(!ids.length||!['lost','available','second_grade','stripe_risk','custom'].includes(status)) throw Object.assign(new Error('Zaznacz prawidłowe belki.'),{status:400});
     if(status==='custom'&&!customStatus) throw Object.assign(new Error('Wpisz własny status dla zaznaczonych belek.'),{status:400});
     transaction(()=>{
       for(const id of ids){
-        const bale=db.prepare(`SELECT b.local_id FROM production_bales b WHERE b.local_id=? AND b.article_id=? AND NOT EXISTS(SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND (sh.status='closed' OR sh.status='draft'))`).get(id,articleId);
+        const bale=db.prepare(`SELECT b.local_id FROM production_bales b WHERE b.local_id=? AND ${trialGroup?"trim(coalesce(b.trial_symbol,''))<>''":"b.article_id=?"} AND NOT EXISTS(SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND (sh.status='closed' OR sh.status='draft'))`).get(...(trialGroup?[id]:[id,articleId]));
         if(!bale) throw Object.assign(new Error('Niektóre zaznaczone belki są już przypisane do wysyłki lub ich stan się zmienił.'),{status:409});
         if(status==='lost') db.prepare(`INSERT INTO warehouse_bale_flags(bale_local_id,status,reason,updated_at,updated_by) VALUES(?,'lost',?,?,?) ON CONFLICT(bale_local_id) DO UPDATE SET status='lost',reason=excluded.reason,updated_at=excluded.updated_at,updated_by=excluded.updated_by`).run(id,reason,ctx.now(),req.user.id);
         else if(status==='available'){
@@ -836,10 +877,10 @@ function handle(ctx) {
         }else db.prepare('INSERT OR IGNORE INTO warehouse_bale_tags(bale_local_id,tag,created_at,created_by) VALUES(?,?,?,?)').run(id,status,ctx.now(),req.user.id);
       }
       const action={lost:'Oznaczono belki jako zagubione',available:'Usunięto oznaczenia belek / przywrócono dostępność',second_grade:'Oznaczono belki jako drugi gatunek',stripe_risk:'Oznaczono ryzyko pasiastości belek',custom:'Dodano własny status belek'}[status];
-      ctx.audit(req.user,action,null,JSON.stringify({articleId,ids,reason}),articleId);
+      ctx.audit(req.user,action,null,JSON.stringify({articleId:trialGroup?'trials':articleId,ids,reason}),trialGroup?null:articleId);
     });
     const message={lost:'Belki oznaczono jako zagubione.',available:'Usunięto oznaczenia i przywrócono dostępność.',second_grade:'Oznaczono belki jako drugi gatunek.',stripe_risk:'Oznaczono ryzyko pasiastości belek.',custom:'Dodano własny status do zaznaczonych belek.'}[status];
-    return redirect(req,res,`/warehouse?article_id=${articleId}`,message);
+    return redirect(req,res,trialGroup?'/warehouse?trials=1':`/warehouse?article_id=${articleId}`,message);
   }
   const noteMatch=p.match(/^\/warehouse\/bales\/([^/]+)\/notes$/);
   if(noteMatch&&req.method==='POST'){
@@ -850,7 +891,8 @@ function handle(ctx) {
     db.prepare('UPDATE production_bales SET notes=? WHERE local_id=?').run(note,baleId);
     ctx.audit(req.user,'Zmieniono uwagi do belki',null,JSON.stringify({baleId,notes:note}),bale.article_id);
     if(req.headers['x-requested-with']==='fetch') return send(req,res,200,JSON.stringify({ok:true}), 'application/json; charset=utf-8');
-    return redirect(req,res,`/warehouse?article_id=${bale.article_id}`,'Uwagi do belki zapisano.');
+    const isTrial=Boolean(db.prepare("SELECT 1 FROM production_bales WHERE local_id=? AND trim(coalesce(trial_symbol,''))<>''").get(baleId));
+    return redirect(req,res,isTrial?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`,'Uwagi do belki zapisano.');
   }
   const baleDetailMatch=p.match(/^\/warehouse\/bales\/([^/]+)$/);
   if(baleDetailMatch&&req.method==='GET') return send(req,res,200,baleDetailPage(ctx,decodeURIComponent(baleDetailMatch[1])));

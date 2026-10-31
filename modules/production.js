@@ -205,11 +205,17 @@ function overviewPage(ctx) {
     FROM articles a JOIN production_bales b ON b.article_id=a.id
     LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
     LEFT JOIN production_article_status st ON st.article_id=a.id
-    WHERE a.archived_at IS NULL AND a.purged_at IS NULL AND ${Warehouse.activeStockSql()}
+    WHERE a.archived_at IS NULL AND a.purged_at IS NULL AND trim(coalesce(b.trial_symbol,''))='' AND ${Warehouse.activeStockSql()}
     GROUP BY a.id
     ORDER BY CASE coalesce(st.status,'standard') WHEN 'in_production' THEN 0 WHEN 'standard' THEN 1 WHEN 'three_d' THEN 2 WHEN 'aging' THEN 3 WHEN 'baltex' THEN 4 WHEN 'second_grade' THEN 5 ELSE 6 END,
       a.symbol_key,a.id`).all();
+  const trialStock=ctx.db.prepare(`SELECT count(b.local_id) pieces,round(coalesce(sum(b.weight_kg),0),2) weight_kg,max(b.uploaded_at) uploaded_at
+    FROM production_bales b JOIN articles a ON a.id=b.article_id LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
+    WHERE trim(coalesce(b.trial_symbol,''))<>'' AND a.archived_at IS NULL AND a.purged_at IS NULL AND ${Warehouse.activeStockSql()}`).get();
+  if(trialStock.pieces) latest.push({id:'trials',symbol:'Próby',status:'standard',pieces:trialStock.pieces,weight_kg:trialStock.weight_kg,uploaded_at:trialStock.uploaded_at,isTrialGroup:true});
   const balances = new Map();
+  const shippedArticles=new Set();
+  const shippedDates=new Map();
   const addMovement = (articleId, date, pieces, weight) => {
     if (!date || date > latestDate) return;
     if (!balances.has(articleId)) balances.set(articleId, new Map());
@@ -218,19 +224,23 @@ function overviewPage(ctx) {
     movement.weight += weight;
     balances.get(articleId).set(date, movement);
   };
-  for (const bale of ctx.db.prepare('SELECT article_id,production_date,weight_kg FROM production_bales WHERE production_date<=?').all(latestDate)) {
-    addMovement(bale.article_id, bale.production_date, 1, Number(bale.weight_kg) || 0);
+  for (const bale of ctx.db.prepare('SELECT article_id,trial_symbol,production_date,weight_kg FROM production_bales WHERE production_date<=?').all(latestDate)) {
+    addMovement(bale.trial_symbol?'trials':bale.article_id, bale.production_date, 1, Number(bale.weight_kg) || 0);
   }
-  for (const bale of ctx.db.prepare(`SELECT b.article_id,b.weight_kg,sh.shipment_date
+  for (const bale of ctx.db.prepare(`SELECT b.article_id,b.trial_symbol,b.weight_kg,sh.shipment_date
       FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
       JOIN shipments sh ON sh.id=sa.shipment_id JOIN production_bales b ON b.local_id=sb.bale_local_id
-      WHERE sh.status='closed' AND sh.shipment_date<=?`).all(latestDate)) {
-    addMovement(bale.article_id, bale.shipment_date, -1, -(Number(bale.weight_kg) || 0));
+      WHERE sh.status='closed'`).all()) {
+    const groupId=bale.trial_symbol?'trials':bale.article_id;
+    shippedArticles.add(groupId);
+    if(!shippedDates.has(groupId)) shippedDates.set(groupId,new Set());
+    shippedDates.get(groupId).add(bale.shipment_date);
+    addMovement(groupId, bale.shipment_date, -1, -(Number(bale.weight_kg) || 0));
   }
-  for (const correction of ctx.db.prepare(`SELECT b.article_id,b.weight_kg,c.created_at
+  for (const correction of ctx.db.prepare(`SELECT b.article_id,b.trial_symbol,b.weight_kg,c.created_at
       FROM shipment_corrections c JOIN production_bales b ON b.local_id=c.removed_bale_local_id
       WHERE c.disposition='returned'`).all()) {
-    addMovement(correction.article_id, productionBusinessDate(correction.created_at), 1, Number(correction.weight_kg) || 0);
+    addMovement(correction.trial_symbol?'trials':correction.article_id, productionBusinessDate(correction.created_at), 1, Number(correction.weight_kg) || 0);
   }
   const statusOptions = Object.entries(STOCK_STATES);
   const formatWeight = value => Number(value).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -240,7 +250,7 @@ function overviewPage(ctx) {
   }).join('');
   const daySubheaders = days.map(() => '<th class="stock-day-subheader stock-day-start">Szt.</th><th class="stock-day-subheader stock-day-end">Kg</th>').join('');
   const rows = latest.map(article => {
-    const state = `<form method="post" action="/production/article-status" class="stock-state-form"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><input type="hidden" name="article_id" value="${article.id}"><select name="status" aria-label="Stan artykułu ${V.esc(article.symbol)}" class="stock-state stock-state-${V.esc(article.status)}"${ctx.req.user.role === 'viewer' ? ' disabled' : ' data-auto-submit'}>${statusOptions.map(([key,label]) => `<option value="${key}" ${article.status === key ? 'selected' : ''}>${V.esc(label)}</option>`).join('')}</select></form>`;
+    const state = article.isTrialGroup ? '<span class="badge submitted">Grupa prób</span>' : `<form method="post" action="/production/article-status" class="stock-state-form"><input type="hidden" name="csrf" value="${V.esc(ctx.req.session.csrf)}"><input type="hidden" name="article_id" value="${article.id}"><select name="status" aria-label="Stan artykułu ${V.esc(article.symbol)}" class="stock-state stock-state-${V.esc(article.status)}"${ctx.req.user.role === 'viewer' ? ' disabled' : ' data-auto-submit'}>${statusOptions.map(([key,label]) => `<option value="${key}" ${article.status === key ? 'selected' : ''}>${V.esc(label)}</option>`).join('')}</select></form>`;
     let piecesBalance = 0, weightBalance = 0;
     const events = [...(balances.get(article.id) || new Map())].sort(([a], [b]) => a.localeCompare(b));
     let eventIndex = 0;
@@ -250,15 +260,18 @@ function overviewPage(ctx) {
         weightBalance += events[eventIndex][1].weight;
         eventIndex++;
       }
-      return `<td class="stock-day-start" data-stock-date="${date}" data-pieces="${piecesBalance}">${piecesBalance}</td><td class="stock-day-end" data-stock-date="${date}" data-weight-kg="${weightBalance}">${formatWeight(weightBalance)}</td>`;
+      const shipmentDay=shippedDates.get(article.id)?.has(date);
+      return `<td class="stock-day-start${date===latestDate&&shippedArticles.has(article.id)?' stock-shipped-quantity':''}${shipmentDay?' stock-shipment-day':''}" data-stock-date="${date}" data-pieces="${piecesBalance}">${piecesBalance}</td><td class="stock-day-end" data-stock-date="${date}" data-weight-kg="${weightBalance}">${formatWeight(weightBalance)}</td>`;
     }).join('');
-    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="/warehouse?article_id=${article.id}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
+    const stockLink=article.isTrialGroup?'/warehouse?trials=1':`/warehouse?article_id=${article.id}`;
+    return `<tr class="stock-row stock-row-${V.esc(article.status)}${shippedArticles.has(article.id)?' stock-shipped':''}"><td>${state}</td><td><a class="item-title" href="${stockLink}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
   }).join('');
   const pieces = latest.reduce((sum, row) => sum + row.pieces, 0);
   const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);
   const updatedAt = latest.map(row => row.uploaded_at).sort().at(-1);
   const summary = `<p class="stock-summary"><strong>Liczba sztuk: ${pieces}</strong><strong>Łączna waga: ${Number(weight).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</strong></p><p class="muted">Stan zaktualizowano: ${updatedAt ? V.datepl(updatedAt) : 'brak danych'}</p>`;
-  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><h1>Stan bieżący</h1>${summary}</div></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column">${days.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('')}</colgroup><thead><tr><th class="stock-fixed-header" rowspan="2">Stan</th><th class="stock-fixed-header" rowspan="2">Artykuł</th>${dayHeaders}</tr><tr>${daySubheaders}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + days.length * 2}">Brak artykułów z niezerowym stanem.</td></tr>`}</tbody></table></div><p class="muted small">Pokazano zawsze pięć ostatnich dni roboczych. Stan z każdego dnia obejmuje narastająco przyjęcia z programu lokalnego oraz wyjścia z zamkniętych wysyłek.</p>`;
+  const printIcon='<button type="button" class="warehouse-icon-button production-stock-print no-print" data-print-page title="Drukuj stan bieżący" aria-label="Drukuj stan bieżący"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+  const body = `<div class="pagehead"><div><span class="eyebrow">PRODUKCJA</span><div class="stock-title-row"><h1>Stan bieżący</h1>${printIcon}</div>${summary}</div></div><div class="panel scroll production-stock"><table class="listing stock-table"><colgroup><col class="stock-state-column"><col class="stock-symbol-column">${days.map(() => '<col class="stock-day-pieces"><col class="stock-day-weight">').join('')}</colgroup><thead><tr><th class="stock-fixed-header" rowspan="2">Stan</th><th class="stock-fixed-header" rowspan="2">Artykuł</th>${dayHeaders}</tr><tr>${daySubheaders}</tr></thead><tbody>${rows || `<tr><td colspan="${2 + days.length * 2}">Brak artykułów z niezerowym stanem.</td></tr>`}</tbody></table></div><p class="muted small">Pokazano zawsze pięć ostatnich dni roboczych. Stan z każdego dnia obejmuje narastająco przyjęcia z programu lokalnego oraz wyjścia z zamkniętych wysyłek.</p>`;
   return V.layout({ user: ctx.req.user, csrf: ctx.req.session.csrf, flashes: ctx.getFlashes(ctx.req), title: 'Stan bieżący · Marand', body });
 }
 
