@@ -400,7 +400,7 @@ function shipmentConfirmPage(ctx, shipment, kind) {
   const action=`/shipments/${shipment.id}/${kind}`;
   const title=isCancel?'Anuluj wysyłkę':'Usuń wysyłkę';
   const text=isCancel?'Anulowanie całkowicie usunie roboczą wysyłkę.':'Usunięcie całkowicie usunie roboczą wysyłkę.';
-  const details=`<p>${text} Belki zostaną zwolnione i ponownie pojawią się jako dostępne. Numer WZ pozostanie zarezerwowany i nie zostanie użyty ponownie.</p>`;
+  const details=`<p>${text}</p><div class="shipment-cancel-details"><div class="shipment-cancel-detail-row"><strong>Belki</strong><span>Wrócą do bieżącego stanu.</span></div><div class="shipment-cancel-detail-row"><strong>Numer wysyłki</strong><span>Zostanie zwolniony i będzie mógł zostać użyty ponownie.</span></div></div>`;
   const body=`<a class="breadcrumb" href="${cancelUrl}">← Wróć do wysyłki</a><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>${title} ${shipmentNo(shipment)}?</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><h2 class="delete-confirm-object">Wysyłka ${shipmentNo(shipment)}</h2>${details}<form method="post" action="${action}" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden(isCancel?'confirm_cancel':'confirm_delete','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">${isCancel?'Potwierdź anulowanie':'Potwierdź całkowite usunięcie'}</button></form></div></dialog>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Potwierdź ${title.toLocaleLowerCase('pl-PL')} · Marand`,body});
 }
