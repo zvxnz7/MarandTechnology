@@ -7,7 +7,7 @@ document.querySelectorAll('[data-print-page]').forEach(button=>button.addEventLi
 }));
 document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  const sale=form.querySelector('[data-finishing-raw-sale]'),plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]');
- const applyRecipe=()=>{const option=recipe.selectedOptions[0];for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage']]){const input=form.elements[field];if(input&&option?.dataset[key])input.value=option.dataset[key];}if(option?.dataset.plant)plant.value=option.dataset.plant;};
+ const applyRecipe=()=>{const option=recipe.selectedOptions[0];for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage'],['trade_symbol','tradeSymbol']]){const input=form.elements[field];if(input&&option?.dataset[key])input.value=option.dataset[key];}if(option?.dataset.plant)plant.value=option.dataset.plant;};
  const sync=()=>{const raw=sale.checked;plant.required=!raw;recipe.required=!raw;};
  recipe.addEventListener('change',applyRecipe);sale.addEventListener('change',sync);sync();
 });

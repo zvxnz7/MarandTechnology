@@ -75,7 +75,62 @@ function recipes(db,plantId=0) {
 }
 function snapshotRecipe(recipe) {
   if(!recipe)return {};
-  return {name:recipe.name,finishingPlant:recipe.finishing_plant_name||'',rawSymbol:recipe.raw_symbol||'',recipeText:recipe.recipe_text||'',targetColor:recipe.target_color||'',targetStiffening:recipe.target_stiffening||'',targetWidthCm:recipe.target_width_cm??'',targetGrammage:recipe.target_grammage??'',notes:recipe.notes||''};
+  return {name:recipe.name,finishingPlant:recipe.finishing_plant_name||'',rawSymbol:recipe.raw_symbol||'',recipeText:recipe.recipe_text||'',details:readRecipeDetails(recipe),targetColor:recipe.target_color||'',targetStiffening:recipe.target_stiffening||'',targetWidthCm:recipe.target_width_cm??'',targetGrammage:recipe.target_grammage??'',notes:recipe.notes||''};
+}
+function readRecipeDetails(recipe) {
+  try{return JSON.parse(recipe?.recipe_details||'{}')||{};}catch{return {};}
+}
+function recipeDetailsFromForm(form) {
+  const choice=(key,values)=>values.includes(form[key])?form[key]:'';
+  return {
+    tradeSymbol:text(form,'trade_symbol',200),rawMaterial:text(form,'raw_material',1000),
+    grammagePlus:number(form.target_grammage_plus),grammageMinus:number(form.target_grammage_minus),
+    widthMode:choice('width_mode',['exact','minimum','needles','range']),widthPlus:number(form.target_width_plus),widthMinus:number(form.target_width_minus),
+    widthMinimum:number(form.target_width_minimum),widthMaximum:number(form.target_width_maximum),
+    widthNeedles:text(form,'target_width_needles',100),
+    stiffeningEnabled:choice('stiffening_enabled',['yes','no']),stiffeningDescription:text(form,'stiffening_description',2000),
+    softeningEnabled:choice('softening_enabled',['yes','no']),softeningDescription:text(form,'softening_description',2000),
+    trimEdges:choice('trim_edges',['yes','no']),bondEdges:choice('bond_edges',['yes','no']),trimSygnits:choice('trim_sygnits',['yes','no']),
+    winding:[text(form,'winding_1',1000),text(form,'winding_2',1000),text(form,'winding_3',1000)],
+    shrinkage:text(form,'shrinkage',2000),
+  };
+}
+function recipeSummary(details,base={}) {
+  const lines=[];
+  if(details.tradeSymbol)lines.push(`Symbol handlowy: ${details.tradeSymbol}`);
+  if(details.rawMaterial)lines.push(`Surowiec: ${details.rawMaterial}`);
+  if(base.targetColor)lines.push(`Kolor: ${base.targetColor}`);
+  if(base.targetGrammage!==null&&base.targetGrammage!==undefined)lines.push(`Gramatura: ${base.targetGrammage} g/m²${details.grammagePlus!==null||details.grammageMinus!==null?` (+${details.grammagePlus??'—'} / −${details.grammageMinus??'—'})`:''}`);
+  if(details.widthMode==='range')lines.push(`Szerokość: ${details.widthMinimum??'—'}–${details.widthMaximum??'—'} cm`);
+  else if(details.widthMode==='minimum')lines.push(`Szerokość: nie mniej niż ${details.widthMinimum??'—'} cm`);
+  else if(details.widthMode==='needles')lines.push(`Szerokość między igłami: ${details.widthNeedles||'—'}`);
+  else if(base.targetWidthCm!==null&&base.targetWidthCm!==undefined)lines.push(`Szerokość: ${base.targetWidthCm} cm${details.widthPlus!==null||details.widthMinus!==null?` (+${details.widthPlus??'—'} / −${details.widthMinus??'—'})`:''}`);
+  if(details.stiffeningEnabled)lines.push(`Usztywnienie: ${details.stiffeningEnabled==='yes'?'tak':'nie'}${details.stiffeningDescription?` — ${details.stiffeningDescription}`:''}`);
+  else if(base.targetStiffening)lines.push(`Usztywnienie: ${base.targetStiffening}`);
+  if(details.softeningEnabled)lines.push(`Zmiękczenie: ${details.softeningEnabled==='yes'?'tak':'nie'}${details.softeningDescription?` — ${details.softeningDescription}`:''}`);
+  if(details.trimEdges)lines.push(`Obcinanie brzegów: ${details.trimEdges==='yes'?'tak':'nie'}`);
+  if(details.bondEdges)lines.push(`Podklejanie brzegów: ${details.bondEdges==='yes'?'tak':'nie'}`);
+  if(details.trimSygnits)lines.push(`Obcinanie sygnitów: ${details.trimSygnits==='yes'?'tak':'nie'}`);
+  for(const instruction of details.winding||[])if(instruction)lines.push(`Nawijanie: ${instruction}`);
+  if(details.shrinkage)lines.push(`Kurczliwości: ${details.shrinkage}`);
+  return lines.join('\n');
+}
+function prepareRecipe(form,fail) {
+  const details=recipeDetailsFromForm(form),name=text(form,'name',200),rawSymbol=text(form,'raw_symbol',200),plantId=Number(form.finishing_plant_id)||null;
+  const grammage=number(form.target_grammage),widthInput=number(form.target_width_cm);
+  if(!name)fail(400,'Wpisz nazwę receptury.');
+  if(!rawSymbol)fail(400,'Wpisz symbol dzianiny surowej.');
+  for(const [label,value] of [['Gramatura',grammage],['Szerokość',widthInput]])if(value!==null&&value<=0)fail(400,`${label} musi być większa od zera.`);
+  for(const [label,value] of [['Tolerancja gramatury +',details.grammagePlus],['Tolerancja gramatury −',details.grammageMinus],['Tolerancja szerokości +',details.widthPlus],['Tolerancja szerokości −',details.widthMinus]])if(value!==null&&value<0)fail(400,`${label} nie może być ujemna.`);
+  for(const [label,value] of [['Szerokość minimalna',details.widthMinimum],['Szerokość maksymalna',details.widthMaximum]])if(value!==null&&value<=0)fail(400,`${label} musi być większa od zera.`);
+  if(details.widthMode==='minimum'&&details.widthMinimum===null)fail(400,'Podaj minimalną szerokość.');
+  if(details.widthMode==='range'&&(details.widthMinimum===null||details.widthMaximum===null||details.widthMinimum>details.widthMaximum))fail(400,'Podaj prawidłowy zakres szerokości.');
+  if(details.widthMode==='needles'&&!details.widthNeedles)fail(400,'Podaj szerokość między igłami.');
+  const width=widthInput??(details.widthMode==='minimum'?details.widthMinimum:null);
+  const color=text(form,'target_color',160);
+  const stiffening=details.stiffeningEnabled==='yes'?`Tak${details.stiffeningDescription?` — ${details.stiffeningDescription}`:''}`:details.stiffeningEnabled==='no'?'Nie':'';
+  const notes=text(form,'notes',5000),summary=recipeSummary(details,{targetColor:color,targetWidthCm:width,targetGrammage:grammage});
+  return {name,rawSymbol,details,plantId,width,grammage,color,stiffening,notes,recipeText:summary};
 }
 function orderStatus(db,orderId) {
   const order=db.prepare('SELECT status FROM finishing_orders WHERE id=?').get(orderId);
@@ -109,7 +164,7 @@ function shipmentOptions(db,selectedId=0) {
 function orderForm(ctx, selectedSource=0) {
   const db=ctx.db,source=selectedSource?sourceSpec(db,selectedSource):null,plantList=plants(db);
   const clientOptions=clientNames(db).map(name=>`<option value="${V.esc(name)}"></option>`).join('');
-  const recipeOptions=recipes(db).map(recipe=>`<option value="${recipe.id}" data-plant="${recipe.finishing_plant_id||''}" data-color="${V.esc(recipe.target_color)}" data-stiffening="${V.esc(recipe.target_stiffening)}" data-width="${recipe.target_width_cm??''}" data-grammage="${recipe.target_grammage??''}">${V.esc(recipe.name)}${recipe.raw_symbol?` · ${V.esc(recipe.raw_symbol)}`:''}</option>`).join('');
+  const recipeOptions=recipes(db).map(recipe=>`<option value="${recipe.id}" data-plant="${recipe.finishing_plant_id||''}" data-color="${V.esc(recipe.target_color)}" data-stiffening="${V.esc(recipe.target_stiffening)}" data-width="${recipe.target_width_cm??''}" data-grammage="${recipe.target_grammage??''}" data-trade-symbol="${V.esc(readRecipeDetails(recipe).tradeSymbol||'')}">${V.esc(recipe.name)}${recipe.raw_symbol?` · ${V.esc(recipe.raw_symbol)}`:''}</option>`).join('');
   const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Nowe zlecenie wykańczania</h1><p class="muted">Wybierz zamkniętą specyfikację wysyłkową i recepturę. Receptura zostanie zapisana przy zleceniu jako historyczna kopia.</p></div></div>
     <form method="post" action="/finishing/orders" class="panel padded finishing-form" data-finishing-order-form>${hidden('csrf',ctx.req.session.csrf)}
     <label>Specyfikacja wysyłkowa / WZ<select name="shipment_article_id" required><option value="">Wybierz specyfikację</option>${shipmentOptions(db,selectedSource)}</select></label>
@@ -193,14 +248,28 @@ function receiptsPage(ctx) {
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Przyjęcie towaru',body});
 }
 function recipeForm(ctx,recipe=null) {
-  const plantList=plants(ctx.db),r=recipe||{};
-  return `<form method="post" action="${recipe?`/finishing/recipes/${recipe.id}`:'/finishing/recipes'}" class="panel padded finishing-recipe-form">${hidden('csrf',ctx.req.session.csrf)}<div class="form-grid"><label>Nazwa receptury<input name="name" value="${V.esc(r.name||'')}" maxlength="200" required></label><label>Domyślna wykończalnia<select name="finishing_plant_id"><option value="">Dowolna</option>${plantList.map(plant=>`<option value="${plant.id}"${Number(r.finishing_plant_id)===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label><label>Symbol dzianiny surowej<input name="raw_symbol" value="${V.esc(r.raw_symbol||'')}" maxlength="200"></label><label>Kolor<input name="target_color" value="${V.esc(r.target_color||'')}" maxlength="160"></label><label>Usztywnienie<input name="target_stiffening" value="${V.esc(r.target_stiffening||'')}" maxlength="160"></label><label>Szerokość cm<input name="target_width_cm" value="${V.esc(r.target_width_cm??'')}" inputmode="decimal"></label><label>Gramatura g/m²<input name="target_grammage" value="${V.esc(r.target_grammage??'')}" inputmode="decimal"></label></div><label>Treść receptury<textarea name="recipe_text" rows="8" maxlength="12000" required>${V.esc(r.recipe_text||'')}</textarea></label><label>Uwagi<textarea name="notes" maxlength="3000">${V.esc(r.notes||'')}</textarea></label><button class="primary">${recipe?'Zapisz zmiany':'Dodaj recepturę'}</button></form>`;
+  const plantList=plants(ctx.db),rawArticles=ctx.db.prepare("SELECT DISTINCT symbol FROM articles WHERE trim(symbol)<>'' ORDER BY symbol COLLATE NOCASE").all(),r=recipe||{},d=readRecipeDetails(recipe);
+  if(recipe&&!Object.keys(d).length&&r.target_stiffening){d.stiffeningEnabled='yes';d.stiffeningDescription=r.target_stiffening;}
+  const yesNo=(name,label,selected='')=>`<label>${label}<select name="${name}"><option value=""${selected?'':' selected'}>Nie określono</option><option value="yes"${selected==='yes'?' selected':''}>Tak</option><option value="no"${selected==='no'?' selected':''}>Nie</option></select></label>`;
+  const input=(label,name,val='',attrs='')=>`<label>${label}<input name="${name}" value="${V.esc(val??'')}" ${attrs}></label>`;
+  const area=(label,name,val='',rows=3,hint='')=>`<label>${label}${hint?`<small class="muted">${hint}</small>`:''}<textarea name="${name}" rows="${rows}">${V.esc(val||'')}</textarea></label>`;
+  const legacyNotes=Object.keys(d).length?(r.notes||''):[r.recipe_text,r.notes].filter(Boolean).join('\n');
+  return `<form method="post" action="${recipe?`/finishing/recipes/${recipe.id}`:'/finishing/recipes'}" class="panel padded finishing-recipe-form">${hidden('csrf',ctx.req.session.csrf)}
+    <section class="finishing-recipe-primary"><label for="recipe-name">Nazwa receptury</label><input id="recipe-name" name="name" value="${V.esc(r.name||'')}" maxlength="200" placeholder="Wpisz nazwę receptury" required autofocus></section>
+    <section class="finishing-recipe-section"><h2>Identyfikacja receptury</h2><div class="form-grid"><label>Symbol dzianiny surowej<input name="raw_symbol" value="${V.esc(r.raw_symbol||'')}" list="finishing-recipe-articles" maxlength="200" required><datalist id="finishing-recipe-articles">${rawArticles.map(article=>`<option value="${V.esc(article.symbol)}"></option>`).join('')}</datalist></label>${input('Symbol handlowy z magazynu','trade_symbol',d.tradeSymbol,'maxlength="200"')}${input('Surowiec / skład procentowy','raw_material',d.rawMaterial,'maxlength="1000"')}${input('Kolor / oznaczenie z farbiarni','target_color',r.target_color,'maxlength="160"')}<label>Domyślna wykończalnia<select name="finishing_plant_id"><option value="">Dowolna</option>${plantList.map(plant=>`<option value="${plant.id}"${Number(r.finishing_plant_id)===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label></div></section>
+    <section class="finishing-recipe-section"><h2>Gramatura oczekiwana</h2><div class="form-grid">${input('Gramatura g/m²','target_grammage',r.target_grammage,'type="number" inputmode="decimal" step="0.1" min="0"')}${input('Tolerancja + g/m²','target_grammage_plus',d.grammagePlus,'type="number" inputmode="decimal" step="0.1" min="0"')}${input('Tolerancja − g/m²','target_grammage_minus',d.grammageMinus,'type="number" inputmode="decimal" step="0.1" min="0"')}</div></section>
+    <section class="finishing-recipe-section"><h2>Szerokość oczekiwana</h2><div class="form-grid"><label>Sposób określenia szerokości<select name="width_mode"><option value=""${d.widthMode?'':' selected'}>Wybierz</option><option value="exact"${d.widthMode==='exact'?' selected':''}>Wartość z tolerancją</option><option value="minimum"${d.widthMode==='minimum'?' selected':''}>Nie mniej niż</option><option value="needles"${d.widthMode==='needles'?' selected':''}>Między igłami</option><option value="range"${d.widthMode==='range'?' selected':''}>Zakres</option></select></label>${input('Szerokość cm','target_width_cm',r.target_width_cm,'type="number" inputmode="decimal" step="0.1" min="0"')}${input('Szerokość minimalna cm','target_width_minimum',d.widthMinimum,'type="number" inputmode="decimal" step="0.1" min="0"')}${input('Szerokość maksymalna cm','target_width_maximum',d.widthMaximum,'type="number" inputmode="decimal" step="0.1" min="0"')}${input('Wartość między igłami','target_width_needles',d.widthNeedles,'maxlength="100"')}${input('Tolerancja + cm','target_width_plus',d.widthPlus,'type="number" inputmode="decimal" step="0.1" min="0"')}${input('Tolerancja − cm','target_width_minus',d.widthMinus,'type="number" inputmode="decimal" step="0.1" min="0"')}</div></section>
+    <section class="finishing-recipe-section"><h2>Uszlachetnianie i obróbka</h2><div class="form-grid">${yesNo('stiffening_enabled','Usztywnienie',d.stiffeningEnabled)}${area('Opis usztywnienia','stiffening_description',d.stiffeningDescription,2)}${yesNo('softening_enabled','Zmiękczenie',d.softeningEnabled)}${area('Opis zmiękczenia','softening_description',d.softeningDescription,2)}${yesNo('trim_edges','Obcinanie brzegów',d.trimEdges)}${yesNo('bond_edges','Podklejanie brzegów',d.bondEdges)}${yesNo('trim_sygnits','Obcinanie sygnitów',d.trimSygnits)}</div></section>
+    <section class="finishing-recipe-section"><h2>Charakterystyka nawijania</h2><div class="form-grid">${area('Linia 1','winding_1',d.winding?.[0],2)}${area('Linia 2','winding_2',d.winding?.[1],2)}${area('Linia 3','winding_3',d.winding?.[2],2)}</div></section>
+    <section class="finishing-recipe-section"><h2>Kurczliwości</h2>${area('Opis kurczliwości','shrinkage',d.shrinkage,3)}</section>
+    <section class="finishing-recipe-section"><h2>Uwagi dodatkowe</h2>${area('Dodatkowe informacje — każda w osobnym wierszu','notes',legacyNotes,5,'Każda linia zostanie zachowana osobno na wydruku.')}</section>
+    <div class="finishing-form-actions"><button class="primary">${recipe?'Zapisz zmiany':'Dodaj recepturę'}</button></div></form>`;
 }
 function recipesPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim(),plantId=Number(ctx.url.searchParams.get('plant_id')||0),allRecipes=recipes(ctx.db);
   const qNorm=q.toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const matches=allRecipes.filter(recipe=>(!plantId||recipe.finishing_plant_id===plantId)&&(!qNorm||[recipe.name,recipe.raw_symbol,recipe.recipe_text,recipe.target_color].some(value=>String(value||'').toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(qNorm))));
-  const rows=matches.map(recipe=>`<details class="finishing-recipe"><summary><strong>${V.esc(recipe.name)}</strong><span>${V.esc(recipe.raw_symbol||'Dowolny artykuł')} · ${V.esc(recipe.finishing_plant_name||'Dowolna wykończalnia')}</span></summary><div class="finishing-recipe-detail"><p>${V.esc(recipe.target_color||'—')} · usztywnienie ${V.esc(recipe.target_stiffening||'—')} · ${V.esc(recipe.target_width_cm??'—')} cm · ${V.esc(recipe.target_grammage??'—')} g/m²</p><pre class="preline finishing-recipe-text">${V.esc(recipe.recipe_text)}</pre>${recipe.notes?`<p class="preline">${V.esc(recipe.notes)}</p>`:''}${editableRoles.includes(ctx.req.user.role)?`<a class="button" href="/finishing/recipes/${recipe.id}/edit">Edytuj</a>`:''}</div></details>`).join('');
+  const rows=matches.map(recipe=>{const d=readRecipeDetails(recipe),detailsText=recipeSummary(d,{targetColor:recipe.target_color,targetStiffening:recipe.target_stiffening,targetWidthCm:recipe.target_width_cm,targetGrammage:recipe.target_grammage}),structured=Object.keys(d).length>0;return `<details class="finishing-recipe"><summary><strong>${V.esc(recipe.name)}</strong><span>${V.esc(recipe.raw_symbol||'Bez symbolu artykułu')}${d.tradeSymbol?` · ${V.esc(d.tradeSymbol)}`:''} · ${V.esc(recipe.finishing_plant_name||'Dowolna wykończalnia')}</span></summary><div class="finishing-recipe-detail">${detailsText?`<pre class="preline finishing-recipe-text">${V.esc(detailsText)}</pre>`:''}${recipe.recipe_text&&!structured?`<pre class="preline finishing-recipe-text">${V.esc(recipe.recipe_text)}</pre>`:''}${recipe.notes?`<pre class="preline finishing-recipe-text">${V.esc(recipe.notes)}</pre>`:''}${editableRoles.includes(ctx.req.user.role)?`<a class="button" href="/finishing/recipes/${recipe.id}/edit">Edytuj</a>`:''}</div></details>`;}).join('');
   const body=`${navTabs('recipes')}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Biblioteka receptur wykańczania</h1><p class="muted">Receptury są przechowywane w bazie danych. Zlecenie zapisuje własną kopię wybranej receptury.</p></div>${editableRoles.includes(ctx.req.user.role)?'<a class="button primary" href="/finishing/recipes/new">+ Dodaj recepturę</a>':''}</div><form method="get" action="/finishing/recipes" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input name="q" value="${V.esc(q)}" placeholder="Nazwa receptury lub symbol dzianiny"></label><label>Wykończalnia<select name="plant_id"><option value="0">Wszystkie</option>${plants(ctx.db).map(plant=>`<option value="${plant.id}"${plantId===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label><button class="primary">Szukaj</button><a class="button" href="/finishing/recipes">Wyczyść</a></form><section>${rows||'<div class="panel padded">Brak aktywnych receptur. Dodaj je ręcznie lub zaimportuj dane testowe.</div>'}</section>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Biblioteka receptur wykańczania',body});
 }
@@ -324,10 +393,9 @@ function handle(ctx) {
   if(p==='/finishing/recipes'&&req.method==='GET')return send(req,res,200,recipesPage(ctx));
   if(p==='/finishing/recipes/new'&&req.method==='GET')return send(req,res,200,header({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),title:'Nowa receptura',body:`${navTabs('recipes')}<a class="breadcrumb" href="/finishing/recipes">← Biblioteka receptur wykańczania</a><h1>Dodaj recepturę</h1>${recipeForm(ctx)}`}));
   if(p==='/finishing/recipes'&&req.method==='POST'){
-    role(req.user,...editableRoles);const name=text(form,'name',200),recipeText=text(form,'recipe_text',12000),plantId=Number(form.finishing_plant_id)||null,width=number(form.target_width_cm),grammage=number(form.target_grammage);
-    if(!name||!recipeText)fail(400,'Nazwa i treść receptury są wymagane.');if(width!==null&&width<=0||grammage!==null&&grammage<=0)fail(400,'Szerokość i gramatura muszą być większe od zera.');
-    if(plantId&&!db.prepare('SELECT id FROM finishing_plants WHERE id=? AND active=1').get(plantId))fail(400,'Wybierz aktywną wykończalnię.');
-    transaction(()=>{const row=db.prepare('INSERT INTO finishing_recipes(name,finishing_plant_id,raw_symbol,recipe_text,target_color,target_stiffening,target_width_cm,target_grammage,notes,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(name,plantId,text(form,'raw_symbol',200),recipeText,text(form,'target_color',160),text(form,'target_stiffening',160),width,grammage,text(form,'notes',3000),now(),req.user.id,now(),req.user.id);audit(req.user,'Dodano recepturę wykańczania',null,JSON.stringify({recipeId:Number(row.lastInsertRowid)}),null);});
+    role(req.user,...editableRoles);const value=prepareRecipe(form,fail);
+    if(value.plantId&&!db.prepare('SELECT id FROM finishing_plants WHERE id=? AND active=1').get(value.plantId))fail(400,'Wybierz aktywną wykończalnię.');
+    transaction(()=>{const row=db.prepare('INSERT INTO finishing_recipes(name,finishing_plant_id,raw_symbol,recipe_text,target_color,target_stiffening,target_width_cm,target_grammage,recipe_details,notes,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(value.name,value.plantId,value.rawSymbol,value.recipeText,value.color,value.stiffening,value.width,value.grammage,JSON.stringify(value.details),value.notes,now(),req.user.id,now(),req.user.id);audit(req.user,'Dodano recepturę wykańczania',null,JSON.stringify({recipeId:Number(row.lastInsertRowid)}),null);});
     return redirect(req,res,'/finishing/recipes','Dodano recepturę do biblioteki.');
   }
   const recipeEdit=p.match(/^\/finishing\/recipes\/(\d+)\/edit$/);
@@ -338,9 +406,10 @@ function handle(ctx) {
   }
   const recipeUpdate=p.match(/^\/finishing\/recipes\/(\d+)$/);
   if(recipeUpdate&&req.method==='POST'){
-    role(req.user,...editableRoles);const id=Number(recipeUpdate[1]),name=text(form,'name',200),recipeText=text(form,'recipe_text',12000),plantId=Number(form.finishing_plant_id)||null,width=number(form.target_width_cm),grammage=number(form.target_grammage);
-    if(!recipeRecord(db,id))fail(404,'Nie znaleziono receptury.');if(!name||!recipeText)fail(400,'Nazwa i treść receptury są wymagane.');if(width!==null&&width<=0||grammage!==null&&grammage<=0)fail(400,'Szerokość i gramatura muszą być większe od zera.');
-    transaction(()=>{db.prepare('UPDATE finishing_recipes SET name=?,finishing_plant_id=?,raw_symbol=?,recipe_text=?,target_color=?,target_stiffening=?,target_width_cm=?,target_grammage=?,notes=?,updated_at=?,updated_by=? WHERE id=?').run(name,plantId,text(form,'raw_symbol',200),recipeText,text(form,'target_color',160),text(form,'target_stiffening',160),width,grammage,text(form,'notes',3000),now(),req.user.id,id);audit(req.user,'Zmieniono recepturę wykańczania',null,JSON.stringify({recipeId:id}),null);});
+    role(req.user,...editableRoles);const id=Number(recipeUpdate[1]),value=prepareRecipe(form,fail);
+    if(!recipeRecord(db,id))fail(404,'Nie znaleziono receptury.');
+    if(value.plantId&&!db.prepare('SELECT id FROM finishing_plants WHERE id=? AND active=1').get(value.plantId))fail(400,'Wybierz aktywną wykończalnię.');
+    transaction(()=>{db.prepare('UPDATE finishing_recipes SET name=?,finishing_plant_id=?,raw_symbol=?,recipe_text=?,target_color=?,target_stiffening=?,target_width_cm=?,target_grammage=?,recipe_details=?,notes=?,updated_at=?,updated_by=? WHERE id=?').run(value.name,value.plantId,value.rawSymbol,value.recipeText,value.color,value.stiffening,value.width,value.grammage,JSON.stringify(value.details),value.notes,now(),req.user.id,id);audit(req.user,'Zmieniono recepturę wykańczania',null,JSON.stringify({recipeId:id}),null);});
     return redirect(req,res,'/finishing/recipes','Zapisano zmiany receptury. Zlecenia historyczne zachowały poprzednią kopię.');
   }
   return false;
