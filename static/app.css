@@ -339,17 +339,17 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-identity-grid label,.finishing-recipe-section>label{margin:0}
 .finishing-recipe-section{display:grid;gap:14px;padding:20px 22px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .finishing-recipe-section h2{margin:0}
-.finishing-recipe-technical-row{display:grid;grid-template-columns:minmax(560px,1.05fr) minmax(520px,1fr);gap:18px;align-items:stretch}
+.finishing-recipe-technical-row{display:grid;grid-template-columns:minmax(520px,.7fr) minmax(650px,1.3fr);gap:18px;align-items:stretch}
 .finishing-recipe-technical-row>.finishing-recipe-section{min-width:0}
-.finishing-recipe-processing{background:#34434d;border-color:#34434d;color:#fff}
-.finishing-recipe-processing h2{color:#fff}
-.finishing-recipe-processing .finishing-check-option{border-color:#586771;background:#46545e;color:#fff}
-.finishing-recipe-processing .finishing-process-described{border-color:#586771;background:#46545e}
+.finishing-recipe-processing{background:#fff;border-color:var(--line);color:var(--ink)}
+.finishing-recipe-processing h2{color:inherit}
+.finishing-recipe-processing .finishing-check-option{border-color:var(--line);background:#fafbfc;color:var(--ink)}
+.finishing-recipe-processing .finishing-process-described{border-color:var(--line);background:#fafbfc}
 .finishing-recipe-processing .finishing-process-described>.finishing-check-option{border:0;background:transparent}
-.finishing-recipe-processing .finishing-process-described>label:not(.finishing-check-option){color:#fff}
+.finishing-recipe-processing .finishing-process-described>label:not(.finishing-check-option){color:inherit}
 .finishing-recipe-section label small{display:block;margin:4px 0}
 .finishing-recipe-section textarea{resize:vertical}
-.finishing-measurement-row{display:grid;grid-template-columns:140px 180px minmax(200px,1fr);gap:0 8px;align-items:end}
+.finishing-measurement-row{display:grid;grid-template-columns:120px 160px minmax(180px,1fr);gap:0 6px;align-items:end}
 .finishing-measurement-value{width:170px;max-width:100%;margin:0}
 .finishing-measurement-value>span{display:block;white-space:nowrap}
 .finishing-measurement-value input{width:11ch;max-width:100%}
@@ -400,7 +400,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
 @media(max-width:800px){.finishing-recipe-identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid>.finishing-check-option{grid-column:span 1}.finishing-process-described{grid-column:span 2;grid-template-columns:minmax(140px,.7fr) minmax(0,1.3fr)}}
 @media(max-width:1400px){.finishing-recipe-technical-row{grid-template-columns:1fr}}
-@media(max-width:800px){.finishing-measurement-row{grid-template-columns:140px 180px minmax(180px,1fr);gap:0 8px}}
+@media(max-width:800px){.finishing-measurement-row{grid-template-columns:130px 170px minmax(0,1fr);gap:0 6px}}
 @media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry,.finishing-recipe-identity-grid,.finishing-process-grid{grid-template-columns:1fr}.finishing-recipe-primary{padding:14px}.finishing-recipe-primary input{font-size:20px}.finishing-recipe-section{padding:16px}.finishing-measurement-row{grid-template-columns:1fr;gap:10px}.finishing-width-needles{grid-column:1}.finishing-process-described{grid-column:span 1;grid-template-columns:minmax(120px,.7fr) minmax(0,1.3fr);gap:8px}.finishing-process-grid>.finishing-check-option{grid-column:span 1}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
 .shipment-print-report thead th{background:#e1e3e5;color:#222;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .instruction-editor-label{display:block;font-weight:600;margin:18px 0}
