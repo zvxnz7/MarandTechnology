@@ -166,7 +166,7 @@ function initialize(db) {
 const money = value => Number(value || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = value => String(value || '').split('-').reverse().join('.');
 const shipmentNo = row => `${String(row.sequence).padStart(2, '0')}/${row.shipment_year}`;
-const articleNo = (shipment, item) => `${String(shipment.sequence).padStart(2, '0')}-${String(item.sequence).padStart(2, '0')}`;
+const articleNo = (shipment, item) => `PM ${String(shipment.sequence).padStart(2, '0')}-${String(item.sequence).padStart(2, '0')}`;
 const plantColors=['plant-color-orange','plant-color-blue','plant-color-green','plant-color-purple','plant-color-teal','plant-color-red'];
 const plantColor = id => plantColors[(Math.max(1,Number(id)||1)-1)%plantColors.length];
 
@@ -935,7 +935,7 @@ function handle(ctx) {
         for(const baleId of verified) db.prepare('INSERT INTO shipment_bales(shipment_article_id,bale_local_id,added_at) VALUES(?,?,?)').run(itemId,baleId,ctx.now());
       });
       ctx.audit(req.user,'Utworzono specyfikację i dodano belki do roboczej wysyłki',null,JSON.stringify({shipmentId:id,articleId,baleIds:ids}),null);
-      return redirect(req,res,`/shipments/${id}/select?article_id=${articleId}`,'Dodano nową specyfikację do wysyłki.');
+      return redirect(req,res,`/shipments/${id}`,'Dodano nową specyfikację do wysyłki.');
     }
     if(action==='remove'&&req.method==='POST'){
       role(req.user,...editableRoles);
