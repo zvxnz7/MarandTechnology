@@ -79,6 +79,11 @@ db.exec(`
     name_key TEXT NOT NULL DEFAULT '',
     UNIQUE(code,name)
   );
+  CREATE TABLE IF NOT EXISTS local_worker_exclusions (
+    employee_uid TEXT PRIMARY KEY,
+    name_snapshot TEXT NOT NULL,
+    excluded_at TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS bale_sequences (
     machine TEXT NOT NULL,
     production_year INTEGER NOT NULL,
@@ -490,8 +495,9 @@ function bootstrap() {
     articles: db.prepare(`SELECT a.id,a.id articleId,c.id choiceId,c.machine,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.is_trial,0) isTrial,
       COALESCE(s.weight_weigh_interval,20) weightWeighInterval FROM articles a JOIN article_machine_choices c ON c.article_id=a.id AND c.active=1
       LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE,c.machine`).all(),
-    workers: db.prepare("SELECT id,employee_uid,name FROM workers WHERE active=1 AND work_status='active' AND central_managed=1 AND central_active=1 ORDER BY name COLLATE NOCASE").all(),
+    workers: db.prepare("SELECT id,employee_uid,name FROM workers WHERE active=1 AND work_status='active' AND central_managed=1 AND central_active=1 AND NOT EXISTS (SELECT 1 FROM local_worker_exclusions x WHERE x.employee_uid=workers.employee_uid) ORDER BY name COLLATE NOCASE").all(),
     workerCatalog: workerCatalog(),
+    hiddenWorkers: hiddenWorkerCatalog(),
     sequences,
     bales: rows,
     recentBales: recentRows,
@@ -502,7 +508,13 @@ function bootstrap() {
 }
 function workerCatalog() {
   return db.prepare(`SELECT id,employee_uid,name,work_status status FROM workers
-    WHERE central_managed=1 AND central_active=1 ORDER BY name COLLATE NOCASE`).all();
+    WHERE central_managed=1 AND central_active=1
+      AND NOT EXISTS (SELECT 1 FROM local_worker_exclusions x WHERE x.employee_uid=workers.employee_uid)
+    ORDER BY name COLLATE NOCASE`).all();
+}
+function hiddenWorkerCatalog() {
+  return db.prepare(`SELECT x.employee_uid,COALESCE(w.name,x.name_snapshot) name FROM local_worker_exclusions x
+    LEFT JOIN workers w ON w.employee_uid=x.employee_uid ORDER BY name COLLATE NOCASE`).all();
 }
 async function createLocalBackup() {
   const backupDirectory = path.join(path.dirname(DB_PATH), 'kopie');
@@ -573,6 +585,9 @@ function saveCatalogs(body) {
   const activeMachines=new Set(machines.map(machine=>machine.code));
   const articles = validateCatalog(body, 'articles',activeMachines);
   const workers = validateCatalog(body, 'workers');
+  const removedWorkerUids=Array.isArray(body.removedWorkerUids)?body.removedWorkerUids.map(uid=>cleanText(uid,36,'Identyfikator pracownika')):[];
+  if(removedWorkerUids.length>500||removedWorkerUids.some(uid=>!/^[0-9a-f-]{32,36}$/i.test(uid))||new Set(removedWorkerUids).size!==removedWorkerUids.length) fail(400,'Nieprawidłowa lista usuniętych dziewiarzy.');
+  if(removedWorkerUids.some(uid=>workers.some(worker=>worker.employeeUid===uid))) fail(400,'Dziewiarz nie może być jednocześnie zapisany i usunięty.');
   const sequenceYear = Number(body.sequenceYear);
   if (!Number.isInteger(sequenceYear) || sequenceYear < 2000 || sequenceYear > new Date().getFullYear() + 1) fail(400, 'Wybierz prawidłowy rok produkcji dla liczników.');
   const sequences = Array.isArray(body.sequences) ? body.sequences : [];
@@ -597,6 +612,17 @@ function saveCatalogs(body) {
   } else if (apiToken) fail(400, 'Wpisz adres programu głównego przed tokenem.');
   transaction(() => {
     const stamp=now();
+    const includedWorkerUids=new Set(workers.map(item=>item.employeeUid));
+    const excludeWorker=db.prepare(`INSERT INTO local_worker_exclusions(employee_uid,name_snapshot,excluded_at) VALUES(?,?,?)
+      ON CONFLICT(employee_uid) DO UPDATE SET name_snapshot=excluded.name_snapshot,excluded_at=excluded.excluded_at`);
+    const findWorker=db.prepare('SELECT employee_uid,name FROM workers WHERE employee_uid=? AND central_managed=1');
+    for(const employeeUid of removedWorkerUids){
+      const worker=findWorker.get(employeeUid);
+      if(!worker) fail(409,'Lista dziewiarzy się zmieniła. Zaktualizuj ją i spróbuj ponownie.');
+      excludeWorker.run(worker.employee_uid,worker.name,stamp);
+    }
+    const restoreWorker=db.prepare('DELETE FROM local_worker_exclusions WHERE employee_uid=?');
+    for(const item of workers) restoreWorker.run(item.employeeUid);
     db.prepare('UPDATE machine_catalog SET active=0,updated_at=? WHERE active=1').run(stamp);
     const saveMachine=db.prepare(`INSERT INTO machine_catalog(code,name,active,created_at,updated_at) VALUES(?,?,1,?,?)
       ON CONFLICT(code) DO UPDATE SET name=excluded.name,active=1,updated_at=excluded.updated_at`);
@@ -1072,7 +1098,7 @@ function route(req, res) {
     } catch (error) { return json(res, error.status || 500, { error: error.message }); }
   }
   if (req.method === 'GET' && url.pathname === '/api/settings') {
-    try { return json(res, 200, { productionConnection: productionConnection(), centralCatalogSyncedAt: centralCatalogStatus(), centralWorkersSyncedAt: centralCatalogStatus('central_workers_synced_at'), weightWeighInterval: Number(localSetting('weight_weigh_interval', '20')) || 20 }); }
+    try { return json(res, 200, { productionConnection: productionConnection(), centralCatalogSyncedAt: centralCatalogStatus(), centralWorkersSyncedAt: centralCatalogStatus('central_workers_synced_at'), hiddenWorkers: hiddenWorkerCatalog(), weightWeighInterval: Number(localSetting('weight_weigh_interval', '20')) || 20 }); }
     catch (error) { return json(res, error.status || 500, { error: error.message }); }
   }
   if(req.method==='GET'&&url.pathname==='/api/catalog/search'){
@@ -1092,6 +1118,17 @@ function route(req, res) {
   if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) return json(res, 415, { error: 'Panel oczekuje danych JSON.' });
   return readBody(req).then(body => {
     try {
+      if (url.pathname === '/api/settings/workers/restore') {
+        const employeeUid=cleanText(body.employeeUid,36,'Identyfikator pracownika');
+        if(!/^[0-9a-f-]{32,36}$/i.test(employeeUid)) fail(400,'Nieprawidłowy identyfikator dziewiarza.');
+        const restored=transaction(()=>{
+          const removed=db.prepare('DELETE FROM local_worker_exclusions WHERE employee_uid=?').run(employeeUid).changes;
+          if(removed) db.prepare('UPDATE workers SET active=1 WHERE employee_uid=?').run(employeeUid);
+          return removed;
+        });
+        if(!restored) fail(404,'Nie znaleziono usuniętego dziewiarza.');
+        return json(res,200,{workers:workerCatalog(),hiddenWorkers:hiddenWorkerCatalog(),bootstrap:bootstrap()});
+      }
       if (url.pathname === '/api/settings/workers/refresh') {
         return refreshCentralCatalog(true, { syncArticles: false, syncWorkers: true }).then(result => {
           if (!result.updated) return json(res, 409, { error: 'Najpierw skonfiguruj połączenie z programem głównym.' });

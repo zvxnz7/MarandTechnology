@@ -450,6 +450,11 @@ h1 { margin: 3px 0; font-size: clamp(25px, 2.6vw, 32px); }
 .worker-status-label { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 11px; }
 .worker-status-input { width: 150px; min-height: 38px; margin: 0; padding: 6px 9px; font-size: 13px; }
 .catalog-remove { min-height: 34px; padding: 4px 9px; color: #8e3436; font-size: 11px; }
+.worker-remove { flex: 0 0 auto; }
+.hidden-worker-panel { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.hidden-worker-panel summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 650; }
+.hidden-worker-panel[open] summary { margin-bottom: 10px; }
+.catalog-restore { min-height: 34px; padding: 4px 10px; color: #17683b; font-size: 11px; }
 .catalog-empty { padding: 12px; color: var(--muted); font-size: 12px; text-align: center; }
 
 .numeric-keypad { position: fixed; z-index: 20; right: 24px; bottom: 16px; width: min(360px, calc(100vw - 24px)); padding: 11px; border: 1px solid #d8dde2; border-radius: 13px; background: #fff; box-shadow: 0 14px 44px rgb(22 33 44 / 22%); }

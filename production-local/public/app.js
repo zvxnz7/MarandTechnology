@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], catalogMachines: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'calculated', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], hiddenWorkers: [], pendingWorkerRemovals: [], catalogMachines: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'calculated', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -578,6 +578,7 @@ async function loadSettings() {
   }
   state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: item.weightWeighInterval || 20 }));
   state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
+  state.hiddenWorkers = settingsData.hiddenWorkers || state.data.hiddenWorkers || [];
   state.catalogMachines = (state.data.machineCatalog || state.data.machines.map(code=>({code,name:state.data.machineLabels?.[code]||code}))).map(item=>({code:item.code,name:item.name}));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
@@ -613,12 +614,38 @@ function renderCatalogs() {
     renderCatalogs();
   }));
   const workerList = $('#worker-list');
-  workerList.innerHTML = state.catalogWorkers.length ? state.catalogWorkers.map((item, index) => `<div class="catalog-row worker-catalog-row"><strong>${escapeHtml(item.name)}</strong><label class="worker-status-label">Status<select class="worker-status-input" data-index="${index}" aria-label="Status: ${escapeHtml(item.name)}"><option value="active" ${item.status === 'active' ? 'selected' : ''}>Aktywny</option><option value="vacation" ${item.status === 'vacation' ? 'selected' : ''}>Urlop</option><option value="sick" ${item.status === 'sick' ? 'selected' : ''}>Choroba</option></select></label></div>`).join('') : '<div class="catalog-empty">Brak pracowników z programu głównego. Kliknij „Zaktualizuj listę”.</div>';
+  workerList.innerHTML = state.catalogWorkers.length ? state.catalogWorkers.map((item, index) => `<div class="catalog-row worker-catalog-row"><strong>${escapeHtml(item.name)}</strong><label class="worker-status-label">Status<select class="worker-status-input" data-index="${index}" aria-label="Status: ${escapeHtml(item.name)}"><option value="active" ${item.status === 'active' ? 'selected' : ''}>Aktywny</option><option value="vacation" ${item.status === 'vacation' ? 'selected' : ''}>Urlop</option><option value="sick" ${item.status === 'sick' ? 'selected' : ''}>Choroba</option></select></label><button type="button" class="catalog-remove worker-remove" data-index="${index}" aria-label="Usuń dziewiarza ${escapeHtml(item.name)}">Usuń</button></div>`).join('') : '<div class="catalog-empty">Brak pracowników z programu głównego. Kliknij „Zaktualizuj listę”.</div>';
   workerList.querySelectorAll('.worker-status-input').forEach(select => select.addEventListener('change', () => {
     const item = state.catalogWorkers[Number(select.dataset.index)];
     if (item) item.status = select.value;
   }));
+  workerList.querySelectorAll('.worker-remove').forEach(button => button.addEventListener('click', () => {
+    const index=Number(button.dataset.index),item=state.catalogWorkers[index];
+    if(!item)return;
+    if(!window.confirm(`Usunąć dziewiarza ${item.name} z lokalnej listy? Historia zapisanych belek pozostanie bez zmian.`))return;
+    state.catalogWorkers.splice(index,1);
+    state.pendingWorkerRemovals.push(item.employee_uid);
+    renderCatalogs();
+    toast(`Dziewiarz ${item.name} usunięty z listy roboczej. Kliknij „Zapisz”, aby utrwalić zmianę.`);
+  }));
+  const hiddenWorkerPanel=$('#hidden-worker-panel'),hiddenWorkerList=$('#hidden-worker-list');
+  hiddenWorkerPanel.hidden=!state.hiddenWorkers.length;
+  hiddenWorkerList.innerHTML=state.hiddenWorkers.map(item=>`<div class="catalog-row worker-catalog-row"><strong>${escapeHtml(item.name)}</strong><button type="button" class="catalog-restore worker-restore" data-employee-uid="${escapeHtml(item.employee_uid)}">Przywróć</button></div>`).join('');
+  hiddenWorkerList.querySelectorAll('.worker-restore').forEach(button=>button.addEventListener('click',()=>restoreWorker(button.dataset.employeeUid)));
   renderMachineCatalog();
+}
+async function restoreWorker(employeeUid) {
+  setSettingsActionsDisabled(true);
+  try {
+    const result=await api('/api/settings/workers/restore',{method:'POST',body:JSON.stringify({employeeUid})});
+    const pendingStatuses=new Map(state.catalogWorkers.map(item=>[item.employee_uid,item.status]));
+    state.catalogWorkers=(result.workers||[]).map(item=>({employee_uid:item.employee_uid,name:item.name,status:pendingStatuses.get(item.employee_uid)||item.status||'active'}));
+    state.hiddenWorkers=result.hiddenWorkers||[];
+    render(result.bootstrap);
+    renderCatalogs();
+    toast('Przywrócono dziewiarza na lokalnej liście.');
+  } catch(error) { toast(error.message,true); }
+  finally { setSettingsActionsDisabled(false); }
 }
 function renderSequenceList(year) {
   const yearSequences = state.data.sequences?.[year] || {};
@@ -688,7 +715,7 @@ function addCentralArticleFromSearch(event) {
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
 function setSettingsActionsDisabled(disabled) {
-  document.querySelectorAll('[data-save-settings], #refresh-workers, #refresh-articles, #add-machine, [data-machine-remove]').forEach(button => { button.disabled = disabled; });
+  document.querySelectorAll('[data-save-settings], #refresh-workers, #refresh-articles, #add-machine, [data-machine-remove], .worker-remove, .worker-restore').forEach(button => { button.disabled = disabled; });
 }
 async function saveSettings() {
   setSettingsActionsDisabled(true);
@@ -702,15 +729,18 @@ async function saveSettings() {
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
-    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, machines, sequenceYear, sequences }) });
+    const removedWorkerCount=state.pendingWorkerRemovals.length;
+    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, machines, sequenceYear, sequences, removedWorkerUids: [...new Set(state.pendingWorkerRemovals)] }) });
     render(data);
     state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: item.weightWeighInterval || 20 }));
     state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
+    state.hiddenWorkers = data.hiddenWorkers || [];
+    state.pendingWorkerRemovals=[];
     state.catalogMachines = (data.machineCatalog || []).map(item=>({code:item.code,name:item.name}));
     renderSequenceList($('#sequence-year').value);
     renderCatalogs();
     showView('settings');
-    toast('Zapisano artykuły, pracowników, park maszynowy, numerację i ustawienia ważenia.');
+    toast(removedWorkerCount ? `Zapisano ustawienia. Usunięto ${removedWorkerCount} ${removedWorkerCount===1?'dziewiarza':'dziewiarzy'} z lokalnej listy; historia belek została zachowana.` : 'Zapisano artykuły, pracowników, park maszynowy, numerację i ustawienia ważenia.');
   } catch (error) { toast(error.message, true); }
   finally { setSettingsActionsDisabled(false); }
 }
@@ -725,6 +755,7 @@ async function refreshWorkers() {
     const result = await api('/api/settings/workers/refresh', { method: 'POST', body: JSON.stringify({}) });
     render(result.bootstrap);
     state.catalogWorkers = result.workers.map(item => ({ employee_uid: item.employee_uid, name: item.name, status: pendingStatuses.get(item.employee_uid) || item.status || 'active' }));
+    state.hiddenWorkers = result.bootstrap.hiddenWorkers || [];
     renderCatalogs();
     $('#worker-catalog-sync').textContent = `Lista zaktualizowana: ${new Date(result.syncedAt).toLocaleString('pl-PL')}.`;
     toast(`Zaktualizowano listę pracowników (${state.catalogWorkers.length}).`);
