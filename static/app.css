@@ -425,3 +425,11 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .instruction-editor-content{min-height:150px;padding:14px;outline:none;font-size:16px;font-weight:normal;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .instruction-editor-content:focus{box-shadow:inset 0 0 0 2px #e7afb0}
 .instruction-editor-content:empty:before{content:'Np. wykonać 10 belek po 150 m, pozostałe po 100 m.';color:#8a8f95;pointer-events:none}
+
+/* Receptury: surowy tekst WZ w wierszu, a identyfikacja wyrównana do prawej. */
+.finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto auto;gap:18px}
+.finishing-recipe-row-heading{display:grid;grid-template-columns:minmax(180px,.65fr) minmax(0,1.35fr);align-items:start;gap:4px 16px}
+.finishing-recipe-preview{display:block;min-width:0;color:#7b838b;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere}
+.finishing-recipe-row-symbols{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;text-align:right}
+@media(max-width:950px){.finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto auto;gap:10px}.finishing-recipe-row-heading{grid-column:1;grid-row:1}.finishing-recipe-row-symbols{grid-column:2;grid-row:1;justify-content:center}.finishing-recipe-row-actions{grid-column:3;grid-row:1}}
+@media(max-width:650px){.finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.finishing-recipe-row-heading{grid-column:1/-1;grid-row:1;grid-template-columns:1fr}.finishing-recipe-row-symbols{grid-column:1;grid-row:2;align-items:flex-end;text-align:right}.finishing-recipe-row-actions{grid-column:2;grid-row:2}}
