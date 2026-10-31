@@ -31,6 +31,7 @@ document.querySelectorAll('[data-update-refresh]').forEach(marker=>{
 document.querySelectorAll('form[data-dirty]').forEach(f=>{f.addEventListener('input',()=>dirty=true);f.addEventListener('submit',()=>{submitting=true;});});
 document.querySelectorAll('select[data-auto-submit]').forEach(select=>select.addEventListener('change',()=>select.form?.requestSubmit()));
 document.querySelectorAll('.nav-group').forEach(group=>{const active=[...group.querySelectorAll('.nav-link')].find(link=>location.pathname===link.pathname||link.pathname!=='/'&&location.pathname.startsWith(`${link.pathname}/`));if(active){active.classList.add('nav-current');group.open=true;}});
+document.querySelectorAll('.shipment-article-actions a').forEach(link=>link.addEventListener('click',event=>event.stopPropagation()));
 document.querySelectorAll('[data-range-selection]').forEach(form=>{
  const boxes=[...form.querySelectorAll('[data-range-select]')],hidden=form.querySelector('[data-range-values]'),all=form.querySelector('[data-range-all]'),pickedRows=form.querySelector('[data-range-picked-rows]'),selectedCount=form.querySelector('[data-range-selected-count]');let last=null;
  const save=()=>{
