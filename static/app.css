@@ -351,10 +351,12 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-tolerance label span{font-size:13px;font-weight:800}
 .finishing-tolerance input{width:8ch;max-width:100%;padding:10px 8px}
 .finishing-width-needles{align-self:flex-end}
-.finishing-process-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
-.finishing-check-option{display:flex;align-items:center;gap:10px;min-height:46px;margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:7px;background:#fafbfc;font-size:14px}
+.finishing-process-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px 18px;align-items:stretch}
+.finishing-process-grid>.finishing-check-option{grid-column:span 2}
+.finishing-check-option{display:flex;align-items:center;gap:10px;min-height:66px;height:100%;margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:7px;background:#fafbfc;font-size:14px}
 .finishing-check-option input[type=checkbox]{width:20px;height:20px;min-width:20px;margin:0;accent-color:var(--red)}
-.finishing-process-described{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(220px,1.3fr);align-items:center;gap:12px}
+.finishing-process-described{grid-column:span 3;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr);align-items:center;gap:12px;min-height:66px;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:#fafbfc}
+.finishing-process-described>.finishing-check-option{min-height:42px;height:auto;padding:0;border:0;background:transparent}
 .finishing-process-described>label:not(.finishing-check-option){margin:0}
 .finishing-process-described>label:not(.finishing-check-option) input{margin-top:0}
 .finishing-winding-input{height:78px;min-height:78px;max-height:78px;resize:none;overflow-y:auto}
@@ -385,8 +387,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe summary{display:flex;justify-content:space-between;gap:12px;padding:12px;cursor:pointer}
 .finishing-recipe summary span{color:var(--muted);font-size:12px}.finishing-recipe-detail{padding:0 12px 12px}
 .finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
-@media(max-width:800px){.finishing-recipe-identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-described{grid-template-columns:1fr;gap:4px}}
-@media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry,.finishing-recipe-identity-grid,.finishing-process-grid{grid-template-columns:1fr}.finishing-recipe-primary{padding:14px}.finishing-recipe-primary input{font-size:20px}.finishing-recipe-section{padding:16px}.finishing-measurement-row{gap:14px}.finishing-width-needles{width:100%}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
+@media(max-width:800px){.finishing-recipe-identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid>.finishing-check-option{grid-column:span 1}.finishing-process-described{grid-column:span 2;grid-template-columns:minmax(140px,.7fr) minmax(0,1.3fr)}}
+@media(max-width:650px){.finishing-form .form-grid,.finishing-recipe-form .form-grid,.finishing-bale-entry,.finishing-recipe-identity-grid,.finishing-process-grid{grid-template-columns:1fr}.finishing-recipe-primary{padding:14px}.finishing-recipe-primary input{font-size:20px}.finishing-recipe-section{padding:16px}.finishing-measurement-row{gap:14px}.finishing-width-needles{width:100%}.finishing-process-described{grid-column:span 1;grid-template-columns:minmax(120px,.7fr) minmax(0,1.3fr);gap:8px}.finishing-process-grid>.finishing-check-option{grid-column:span 1}.finishing-recipe summary{display:grid}.finishing-tabs a{flex:1 1 auto;justify-content:center}.finishing-incidents li form{flex-direction:column}}
 .shipment-print-report thead th{background:#e1e3e5;color:#222;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .instruction-editor-label{display:block;font-weight:600;margin:18px 0}
 .instruction-editor{margin-top:7px;border:1px solid #cfd4da;border-radius:6px;background:#fff;overflow:hidden}
