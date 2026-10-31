@@ -236,6 +236,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-article>summary span:not(.plant-chip),.shipment-picked-article small{color:var(--muted);font-weight:500}
 .shipment-article-actions{display:flex;align-items:center;gap:16px;white-space:nowrap;font-size:12px;font-weight:600}.shipment-article-actions a{color:var(--ink)}.shipment-article-actions a:hover{text-decoration:underline}.shipment-article-actions .shipment-article-delete{color:var(--red)}
 .shipment-article-meta{display:flex;align-items:center;justify-content:flex-end;gap:8px;white-space:nowrap;font-size:12px;color:var(--muted)}
+.shipment-picker [data-range-picked-rows] td:last-child{text-align:center;width:68px}
+.shipment-picked-remove{border:0;background:transparent;color:var(--red);padding:2px 4px;font-size:12px;font-weight:600}.shipment-picked-remove:hover{background:#fff0f0;border-color:transparent;text-decoration:underline}
 @media(max-width:1000px){.shipment-article-row{grid-template-columns:minmax(180px,1fr) minmax(0,1.4fr);}.shipment-article-meta{grid-column:1/-1;justify-content:flex-start}}
 @media(max-width:650px){.shipment-article-row{grid-template-columns:1fr;gap:8px}.shipment-article-actions{flex-wrap:wrap;gap:12px}.shipment-article-meta{grid-column:auto}}
 .shipment-date-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0}

@@ -40,7 +40,7 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
   if(selectedCount)selectedCount.textContent=String(selected.length);
   if(pickedRows){
    pickedRows.replaceChildren();
-   if(!selected.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=8;cell.textContent='Zaznacz belki z tabeli po lewej.';row.append(cell);pickedRows.append(row);}
+   if(!selected.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=9;cell.textContent='Zaznacz belki z tabeli po lewej.';row.append(cell);pickedRows.append(row);}
    selected.forEach((box,index)=>{
     const row=document.createElement('tr');
     [String(index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.errors||'0',box.dataset.stops||'0',box.dataset.lot||'',box.dataset.date||''].forEach((value,column)=>{
@@ -49,12 +49,14 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
      else cell.textContent=value;
      row.append(cell);
     });
+    const removeCell=document.createElement('td'),removeButton=document.createElement('button');removeButton.type='button';removeButton.className='shipment-picked-remove';removeButton.dataset.rangeRemove=box.value;removeButton.textContent='Usuń';removeCell.append(removeButton);row.append(removeCell);
     pickedRows.append(row);
    });
   }
  };
  boxes.forEach(box=>box.addEventListener('click',event=>{if(event.shiftKey&&last){const from=boxes.indexOf(last),to=boxes.indexOf(box),checked=box.checked;for(let i=Math.min(from,to);i<=Math.max(from,to);i++)boxes[i].checked=checked;}last=box;save();}));
  if(all)all.addEventListener('change',()=>{boxes.forEach(box=>box.checked=all.checked);save();});
+ form.addEventListener('click',event=>{const remove=event.target.closest('[data-range-remove]');if(!remove)return;const box=boxes.find(item=>item.value===remove.dataset.rangeRemove);if(box){box.checked=false;save();}});
  form.addEventListener('submit',event=>{save();if(!hidden.value&&!form.hasAttribute('data-allow-empty-selection')){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});
 });
 document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
