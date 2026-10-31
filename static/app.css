@@ -334,13 +334,14 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-primary{display:grid;gap:8px;padding:16px 18px;margin-bottom:18px;border:1px solid #ead9ae;border-radius:8px;background:#fff9ea}
 .finishing-recipe-primary label{font-size:18px;font-weight:800}
 .finishing-recipe-primary input{min-height:54px;font-size:23px;font-weight:750}
-.finishing-recipe-top-row{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);align-items:end;gap:18px;margin-bottom:18px}
+.finishing-recipe-top-row{display:grid;grid-template-columns:minmax(430px,1.25fr) minmax(350px,.75fr);align-items:end;gap:18px;margin-bottom:18px}
 .finishing-recipe-top-row.is-editing{grid-template-columns:1fr}
 .finishing-recipe-top-row .finishing-recipe-primary{margin:0}
 .finishing-recipe-copy{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:end;gap:4px 12px;min-width:0}
-.finishing-recipe-copy>label{grid-column:1;margin:0}
-.finishing-recipe-copy>button{grid-column:2;grid-row:1;align-self:end;white-space:nowrap}
-.finishing-recipe-copy>small{grid-column:1/-1;min-height:18px}
+.finishing-recipe-copy>label{grid-column:1;margin:0;color:#555f68;font-size:13px;font-weight:650}
+.finishing-recipe-copy>label input{font-size:13px;background:#fbfcfd}
+.finishing-recipe-copy>button{grid-column:2;grid-row:1;align-self:end;white-space:nowrap;padding:8px 12px;font-size:13px;background:#f6f7f8;color:#4f5962}
+.finishing-recipe-copy>small{grid-column:1/-1;min-height:18px;color:#7a8289}
 .finishing-recipe-copy>button:disabled{opacity:.55;cursor:not-allowed}
 .finishing-recipe-identity{gap:18px}
 .finishing-recipe-identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px}
