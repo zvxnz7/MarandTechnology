@@ -19,7 +19,7 @@ function validate(data){
   if(!data||data.format!==FORMAT)throw new Error('To nie jest paczka wykańczania Marand.');
   if(Number(data.target_schema_user_version)!==11)throw new Error('Paczka wykańczania wymaga schematu aplikacji 11.');
   if(!Array.isArray(data.periods)||!data.periods.length||data.periods.some(period=>!/^20\d{2}-(0[1-9]|1[0-2])$/.test(period))||new Set(data.periods).size!==data.periods.length)throw new Error('Paczka musi podawać unikalne okresy w formacie RRRR-MM.');
-  if(!Array.isArray(data.recipes)||!Array.isArray(data.orders)||(!data.recipes.length&&!data.orders.length))throw new Error('Paczka powinna zawierać receptury lub zlecenia wykończenia.');
+  if(!Array.isArray(data.recipes)||!Array.isArray(data.orders)||(!data.recipes.length&&!data.orders.length))throw new Error('Paczka powinna zawierać receptury lub zlecenia wykańczania.');
   const recipeKeys=new Set(),orderKeys=new Set(),allKeys=new Set();
   const addKey=(key,kind)=>{if(!validKey(key))throw new Error(`${kind}: brakuje prawidłowego source_key.`);if(allKeys.has(key))throw new Error(`Powtórzony source_key w paczce: ${key}.`);allKeys.add(key);};
   for(const recipe of data.recipes){addKey(recipe.source_key,'Receptura');if(!text(recipe.name,200)||!text(recipe.recipe_text,12000))throw new Error(`Receptura ${recipe.source_key}: nazwa i treść są wymagane.`);recipeKeys.add(recipe.source_key);finite(recipe.target_width_cm,'Szerokość');finite(recipe.target_grammage,'Gramatura');}
@@ -75,7 +75,7 @@ function preview(db,pkg){
     existing:{finishing_recipes:Number(db.prepare('SELECT count(*) n FROM finishing_recipes').get().n),finishing_orders:Number(db.prepare('SELECT count(*) n FROM finishing_orders').get().n),finishing_batches:Number(db.prepare('SELECT count(*) n FROM finishing_batches').get().n),finishing_receipts:Number(db.prepare('SELECT count(*) n FROM finishing_receipts').get().n)},
     incoming:{finishing_recipes:pkg.data.recipes.length,finishing_orders:pkg.data.orders.length,finishing_batches:pkg.data.orders.reduce((n,order)=>n+order.batches.length,0),finishing_receipts:pkg.data.orders.reduce((n,order)=>n+order.batches.reduce((k,batch)=>k+(batch.receipts||[]).length,0),0),returned_bales:pkg.data.orders.reduce((n,order)=>n+order.batches.reduce((k,batch)=>k+(batch.receipts||[]).reduce((j,receipt)=>j+(receipt.returned_bales||[]).length,0),0),0)},
     will_archive:{active_projects:0,unapproved_records_without_issued_cards:0,unmatched_articles:0},
-    preserved:['artykuły i kartoteka','projekty oraz specyfikacje','istniejące zlecenia i receptury wykończenia','koszty — nie są importowane'],
+    preserved:['artykuły i kartoteka','projekty oraz specyfikacje','istniejące zlecenia i receptury wykańczania','koszty — nie są importowane'],
     conflicts,ai_notice:'Paczka zawiera dane historyczne/testowe. Import tworzy osobne zlecenia bez wiązania zwróconych belek z konkretnymi belkami surowymi. Wartości kosztów są pomijane.',
   };
 }
@@ -120,7 +120,7 @@ function importData(db,pkg,backupPath,{userId,now,audit}){
         }
       }
       if(!order.batches.length&&status==='received')db.prepare('UPDATE finishing_orders SET status=\'received\' WHERE id=?').run(id);
-      audit({id:userId},'Zaimportowano zlecenie wykończenia',null,JSON.stringify({orderId:id,sourceKey:order.source_key,packageHash:pkg.digest}),null);
+      audit({id:userId},'Zaimportowano zlecenie wykańczania',null,JSON.stringify({orderId:id,sourceKey:order.source_key,packageHash:pkg.digest}),null);
     }
     const period=pkg.data.periods.slice().sort().join(','),result={status:'import wykańczania zakończony',package_sha256:pkg.digest,backup:backupPath,periods:pkg.data.periods,imported};
     db.prepare('INSERT INTO finishing_import_runs(period,digest,source_name,imported_count,imported_at,imported_by) VALUES(?,?,?,?,?,?)').run(period,pkg.digest,text(pkg.data.source_name||pkg.sourceName,250),imported.finishing_orders,stamp,userId);

@@ -8,7 +8,7 @@ function flatten(v) {
  for(const g of v.gb||[])for(const [key,label]of V.GB)if(key!=='number')rows[`GB${g.number} — ${label}`]=g[key]||'';
  rows['Komentarz do dzianiny surowej']=v.raw_comments||'';
  rows['Komentarz do dzianiny wykończonej']=v.finished_comments||'';
- rows['Warianty wykończenia']=JSON.stringify(v.finished||[]);
+ rows['Warianty wykańczania']=JSON.stringify(v.finished||[]);
  return rows;
 }
 function changes(before,after){const a=flatten(before),b=flatten(after);return [...new Set([...Object.keys(a),...Object.keys(b)])].filter(k=>(a[k]||'')!==(b[k]||'')).map(k=>({label:k,before:a[k]||'—',after:b[k]||'—'}));}

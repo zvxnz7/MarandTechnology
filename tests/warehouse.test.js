@@ -134,11 +134,11 @@ test('przycisk utworzenia specyfikacji jest w sekcji Dodane belki przy 200 belka
   }finally{f.db.close();}
 });
 
-test('biblioteki pokazują wykończalnie, dziewiarzy, artykuły i przyszły słownik wykończeń',()=>{
+test('biblioteki pokazują wykończalnie, dziewiarzy, artykuły i przyszły słownik wykańczania',()=>{
   const f=fixture();
   try{
     const page=Warehouse.handle(f.ctx('GET','/settings/libraries'));
-    for(const label of ['Wykończalnie','Anfarb','MarkoColor','Femina','Sagan','Dziewiarze','Wykończenia','bibliotekę artykułów'])assert.match(page.body,new RegExp(label,'i'));
+    for(const label of ['Wykończalnie','Anfarb','MarkoColor','Femina','Sagan','Dziewiarze','Wykańczania','bibliotekę artykułów'])assert.match(page.body,new RegExp(label,'i'));
     const created=Warehouse.handle(f.ctx('POST','/settings/libraries/workers',{name:'Jan Kowalski',code:'JK'}));
     assert.equal(created.location,'/settings/libraries');
     const worker=f.db.prepare('SELECT employee_uid FROM knitting_workers WHERE name=?').get('Jan Kowalski');

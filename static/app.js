@@ -183,13 +183,13 @@ if(sourceImportUpload){
     : `Plik ${file.name} · ${report.package_sha256.slice(0,16)}…`;
    const archiveSection=document.querySelector('[data-import-archive-section]'),confirmation=document.querySelector('[data-import-confirmation]');
    if(report.package_type==='finishing'){
-    list('[data-import-existing]',[`Receptury wykończeń: ${existing.finishing_recipes}`,`Zlecenia wykończenia: ${existing.finishing_orders}`,`Partie: ${existing.finishing_batches}`,`Przyjęcia: ${existing.finishing_receipts}`]);
-    list('[data-import-incoming]',[`Receptury: ${incoming.finishing_recipes}`,`Zlecenia wykończenia: ${incoming.finishing_orders}`,`Partie wykończalnicze: ${incoming.finishing_batches}`,`Przyjęcia: ${incoming.finishing_receipts}`,`Wiersze belek z indywidualnymi metrami i kg: ${incoming.returned_bales}`]);
+    list('[data-import-existing]',[`Receptury wykańczania: ${existing.finishing_recipes}`,`Zlecenia wykańczania: ${existing.finishing_orders}`,`Partie: ${existing.finishing_batches}`,`Przyjęcia: ${existing.finishing_receipts}`]);
+    list('[data-import-incoming]',[`Receptury: ${incoming.finishing_recipes}`,`Zlecenia wykańczania: ${incoming.finishing_orders}`,`Partie wykończalnicze: ${incoming.finishing_batches}`,`Przyjęcia: ${incoming.finishing_receipts}`,`Wiersze belek z indywidualnymi metrami i kg: ${incoming.returned_bales}`]);
     list('[data-import-archive]',[]);list('[data-import-preserved]',report.preserved);archiveSection.hidden=true;
     document.querySelector('[data-import-ai-notice]').textContent=report.ai_notice;
     const conflictBox=document.querySelector('[data-import-conflict-box]'),conflicts=document.querySelector('[data-import-conflicts]');conflicts.replaceChildren();for(const conflict of report.conflicts){const item=document.createElement('li');item.textContent=[conflict.symbol,conflict.message].filter(Boolean).join(': ');conflicts.appendChild(item);}conflictBox.hidden=report.conflicts.length===0;
     document.querySelector('[data-import-info]').textContent='Import nie dopisze kosztów ani powiązań zwróconych belek z konkretnymi belkami surowymi. Sumy metrów i kg pozostają sumami; bez danych kg dla każdej belki nie powstaną etykiety z wymyśloną wagą.';
-    confirmation.textContent='Rozumiem, że import doda wskazane receptury i historyczne zlecenia wykończenia. Program zrobi kopię bazy przed zapisem.';
+    confirmation.textContent='Rozumiem, że import doda wskazane receptury i historyczne zlecenia wykańczania. Program zrobi kopię bazy przed zapisem.';
     applyForm.elements.token.value=result.token;applyForm.hidden=report.conflicts.length>0;preview.hidden=false;status.textContent=report.conflicts.length?'Paczka nie może być zaimportowana. Sprawdź konflikty powyżej.':'Podgląd gotowy. Baza pozostaje bez zmian do chwili potwierdzenia.';preview.scrollIntoView({behavior:'smooth',block:'start'});return;
    }
    archiveSection.hidden=false;confirmation.textContent='Rozumiem, że niepasujące artykuły, projekty i robocze wpisy bez wydanej karty zostaną przeniesione do archiwum na 30 dni. Zatwierdzone specyfikacje i wydane karty pozostaną bez zmian.';

@@ -25,7 +25,7 @@ const GB = [
 ];
 const FINISH = [
   ['name', 'Nazwa'], ['weight', 'Gramatura (g/m²)'], ['width', 'Szerokość (cm)'], ['pk', 'Pk'], ['pr', 'Pr'],
-  ['thickness', 'Dystans / grubość (mm)'], ['finish', 'Wykończenie / usztywnienie'], ['comments', 'Komentarz'],
+  ['thickness', 'Dystans / grubość (mm)'], ['finish', 'Wykańczanie / usztywnienie'], ['comments', 'Komentarz'],
 ];
 const ROLE = { admin: 'Administrator', approver: 'Zatwierdzanie', technologist: 'Technolog', viewer: 'Podgląd' };
 const STATE = { draft: 'Robocza', submitted: 'Do zatwierdzenia', approved: 'Zatwierdzona' };
@@ -197,7 +197,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const finishRows = Array.from({ length: 3 }, (_, i) => {
     const f = v.finished[i] || {};
     const fields = FINISH.map(([k, label]) => field(label, `finish_${i}_${k}`, f[k] || '')).join('');
-    return `<details class="gb-row" ${Object.values(f).some(Boolean) ? 'open' : ''}><summary>Wariant wykończenia ${i + 1}</summary><div class="form-grid">${fields}</div></details>`;
+    return `<details class="gb-row" ${Object.values(f).some(Boolean) ? 'open' : ''}><summary>Wariant wykańczania ${i + 1}</summary><div class="form-grid">${fields}</div></details>`;
   }).join('');
   const inheritedNotice = r.base_id ? `<div class="notice">Dane skopiowano z <a href="/records/${r.base_id}">wcześniejszego wpisu #${r.base_id}</a>. Wyszarzone wartości można edytować — po zmianie wrócą do zwykłego tła.</div>` : '';
   const descriptionField = newArticleFields
@@ -210,7 +210,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2>${field('Uwagi dla dziewiarza', 'knitter_notes', v.knitter_notes || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Parametry dzianiny surowej</h2><div class="target-grid raw-grid">${rawGrid}</div>${field('Komentarz do dzianiny surowej', 'raw_comments', v.raw_comments || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted">Pola opcjonalne. Wartości można uzupełnić później.</p><div class="target-grid">${targetGrid}</div>${field('Komentarz do dzianiny wykończonej', 'finished_comments', v.finished_comments || '', { multiline: true })}</section>
-<section class="panel padded"><h2>Dodatkowe warianty wykończenia (opcjonalnie)</h2>${finishRows}</section>
+<section class="panel padded"><h2>Dodatkowe warianty wykańczania (opcjonalnie)</h2>${finishRows}</section>
 <section class="panel padded"><h2>Etapy i uwagi</h2>${field('Etapy prób — daty, miejsca, wyniki', 'stages', v.stages || '', { multiline: true, className: 'tall' })}${field('Komentarze dodatkowe', 'comments', v.comments || '', { multiline: true })}<p class="muted">Polecenia do konkretnego uruchomienia, np. 10 belek po 150 m, wpiszesz osobno przy wydaniu karty.</p></section>
 <section class="panel padded"><h2>Historia zmian artykułu</h2>${field('Komentarz do tej zmiany (opcjonalnie)', 'change_comment', '', { maxlength: 1000 })}</section><div class="savebar"><span>Utworzenie wpisu: ${datepl(r.created_at)} · rewizja ${r.revision}</span>${button('Zapisz zmiany', 'primary')}</div></form>`;
   return layout({ user, csrf, flashes, title: 'Uzupełnij dane · Marand', body: `<a class="breadcrumb" href="/records/${r.id}">← Wróć do wpisu</a><div class="pagehead"><div><span class="eyebrow">${r.kind === 'trial' ? 'PRÓBA' : 'SPECYFIKACJA ROBOCZA'}</span><h1>Uzupełnij dane</h1><p class="muted">Możesz zapisać niepełny wpis i wrócić do niego później.</p></div></div>${newArticleFields ? '<div class="notice">Pierwsza specyfikacja artykułu. Wewnętrzny indeks artykułu jest nadawany automatycznie.</div>' : ''}${inheritedNotice}${form.replace('class="editor"', `class="editor${newArticleFields ? ' new-article-fields' : ''}"`)}` });
@@ -224,7 +224,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   const gbTable = v.gb.length ? v.gb.map(row => `<tr>${GB.map(([k]) => `<td class="preline">${esc(row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB.length}">Brak danych GB.</td></tr>`;
   const raw = RAW_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.raw || {})[k] || '—')}</dd>`).join('');
   const targets = TARGET_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.targets || {})[k] || '—')}</dd>`).join('');
-  const finishes = v.finished.length ? `<section class="panel padded"><h2>Warianty wykończenia / wyniki</h2>${v.finished.map((f, i) => `<h3>${esc(f.name || `Wariant ${i + 1}`)}</h3><p>Gramatura: ${esc(f.weight || '—')} g/m² · Szerokość: ${esc(f.width || '—')} cm · Pk: ${esc(f.pk || '—')} · Pr: ${esc(f.pr || '—')} · Dystans: ${esc(f.thickness || '—')}</p><p class="preline">${esc(f.finish || '')} ${esc(f.comments || '')}</p>`).join('')}</section>` : '';
+  const finishes = v.finished.length ? `<section class="panel padded"><h2>Warianty wykańczania / wyniki</h2>${v.finished.map((f, i) => `<h3>${esc(f.name || `Wariant ${i + 1}`)}</h3><p>Gramatura: ${esc(f.weight || '—')} g/m² · Szerokość: ${esc(f.width || '—')} cm · Pk: ${esc(f.pk || '—')} · Pr: ${esc(f.pr || '—')} · Dystans: ${esc(f.thickness || '—')}</p><p class="preline">${esc(f.finish || '')} ${esc(f.comments || '')}</p>`).join('')}</section>` : '';
   const mayArchive = canEdit && r.state === 'draft' && ['trial','spec'].includes(r.kind);
   const actionButtons = `${canEdit && r.state === 'draft' ? link(`/records/${r.id}/edit`, 'Edytuj / uzupełnij', 'button primary') : ''}${`<a class="button" href="/records/${r.id}/preview" target="_blank" rel="noopener">Podgląd wydruku ↗</a>`}${canEdit && r.active_spec === r.id ? link(`/records/${r.id}/issue`, 'Wydaj kartę na maszynę', 'button primary') : ''}${mayArchive ? link(`/records/${r.id}/delete`, 'Przenieś do archiwum…', 'button danger') : ''}`;
   const copyActions = canEdit ? `<div class="actions space">${csrfForm(csrf, `/records/${r.id}/copy`, `${hidden('kind', 'spec')}${button(r.kind === 'spec' ? 'Nowa wersja specyfikacji' : 'Przygotuj specyfikację z próby')}`)}</div>` : '';
@@ -309,7 +309,7 @@ function archivePage({ user, csrf, flashes, records = [], projects = [], article
 function confirmRestoreImportPage({ user, csrf, flashes, run, backupName }) {
   const imported = run.result?.imported || {};
   const importSummary = imported.finishing_orders !== undefined
-    ? `${esc(imported.finishing_recipes ?? 0)} receptur · ${esc(imported.finishing_orders ?? 0)} zleceń wykończenia · ${esc(imported.finishing_batches ?? 0)} partii`
+    ? `${esc(imported.finishing_recipes ?? 0)} receptur · ${esc(imported.finishing_orders ?? 0)} zleceń wykańczania · ${esc(imported.finishing_batches ?? 0)} partii`
     : `${esc(imported.articles ?? 0)} artykułów · ${esc(imported.projects ?? 0)} prób`;
   const details = `<p>Import: <strong>${datepl(run.imported_at)}</strong>${run.result?.package_sha256 ? ` · paczka SHA-256: ${esc(run.package_hash.slice(0, 12))}…` : ''}</p><p>Przywrócona zostanie kopia <strong>${esc(backupName)}</strong>, wykonana przed tym importem. Baza i zdjęcia wrócą do wcześniejszego stanu. Zmiany wykonane po imporcie znikną.</p><p>Przed przywróceniem program wykona i sprawdzi dodatkową kopię obecnej bazy i zdjęć.</p>`;
   const content = `${hidden('package_hash', run.package_hash)}<label class="check"><input type="checkbox" name="confirm" value="PRZYWRÓĆ" required> Potwierdzam przywrócenie bazy sprzed tego importu.</label>${button('Przywróć bazę sprzed importu', 'danger')}`;
@@ -327,7 +327,7 @@ function sourceImportPage({ user, csrf, flashes, latestImport = null, restoreSta
   if (latestImport) {
     const imported = latestImport.result?.imported || {};
     const summary = imported.finishing_orders !== undefined
-      ? `${esc(imported.finishing_recipes ?? 0)} receptur · ${esc(imported.finishing_orders ?? 0)} zleceń wykończenia · ${esc(imported.finishing_batches ?? 0)} partii · ${esc(imported.finishing_receipts ?? 0)} przyjęć`
+      ? `${esc(imported.finishing_recipes ?? 0)} receptur · ${esc(imported.finishing_orders ?? 0)} zleceń wykańczania · ${esc(imported.finishing_batches ?? 0)} partii · ${esc(imported.finishing_receipts ?? 0)} przyjęć`
       : `${esc(imported.articles ?? 0)} artykułów · ${esc(imported.specifications ?? 0)} specyfikacji · ${esc(imported.projects ?? 0)} prób`;
     const action = latestImport.restore_ready
       ? `<a class="button danger" href="/admin/import/restore?package_hash=${encodeURIComponent(latestImport.package_hash)}">Przywróć bazę sprzed importu</a>`

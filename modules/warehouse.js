@@ -892,27 +892,27 @@ function handle(ctx) {
   if(p==='/settings/libraries/finishes'&&req.method==='POST'){
     role(req.user,...managerRoles);
     const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100);
-    if(!name) throw Object.assign(new Error('Wpisz rodzaj wykończenia.'),{status:400});
+    if(!name) throw Object.assign(new Error('Wpisz rodzaj wykańczania.'),{status:400});
     try{db.prepare('INSERT INTO finishing_types(name,name_key,active,created_at,updated_at,updated_by) VALUES(?,?,1,?,?,?)').run(name,normalizeSearch(name),ctx.now(),ctx.now(),req.user.id);}
-    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki rodzaj wykończenia już istnieje.'),{status:409});throw error;}
-    return redirect(req,res,'/settings/libraries','Dodano rodzaj wykończenia.');
+    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki rodzaj wykańczania już istnieje.'),{status:409});throw error;}
+    return redirect(req,res,'/settings/libraries','Dodano rodzaj wykańczania.');
   }
   const finishEdit=p.match(/^\/settings\/libraries\/finishes\/(\d+)\/edit$/);
   if(finishEdit&&req.method==='POST'){
     role(req.user,...managerRoles);
     const name=String(ctx.form.name||'').trim().replace(/\s+/g,' ').slice(0,100);
-    if(!name) throw Object.assign(new Error('Wpisz rodzaj wykończenia.'),{status:400});
-    try{const result=db.prepare('UPDATE finishing_types SET name=?,name_key=?,updated_at=?,updated_by=? WHERE id=?').run(name,normalizeSearch(name),ctx.now(),req.user.id,Number(finishEdit[1]));if(!result.changes)throw Object.assign(new Error('Nie znaleziono rodzaju wykończenia.'),{status:404});}
-    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki rodzaj wykończenia już istnieje.'),{status:409});throw error;}
+    if(!name) throw Object.assign(new Error('Wpisz rodzaj wykańczania.'),{status:400});
+    try{const result=db.prepare('UPDATE finishing_types SET name=?,name_key=?,updated_at=?,updated_by=? WHERE id=?').run(name,normalizeSearch(name),ctx.now(),req.user.id,Number(finishEdit[1]));if(!result.changes)throw Object.assign(new Error('Nie znaleziono rodzaju wykańczania.'),{status:404});}
+    catch(error){if(String(error.message).includes('UNIQUE'))throw Object.assign(new Error('Taki rodzaj wykańczania już istnieje.'),{status:409});throw error;}
     if(req.headers['x-requested-with']==='fetch') return send(req,res,200,JSON.stringify({ok:true}),'application/json; charset=utf-8');
-    return redirect(req,res,'/settings/libraries','Zapisano rodzaj wykończenia.');
+    return redirect(req,res,'/settings/libraries','Zapisano rodzaj wykańczania.');
   }
   const finishToggle=p.match(/^\/settings\/libraries\/finishes\/(\d+)\/toggle$/);
   if(finishToggle&&req.method==='POST'){
     role(req.user,...managerRoles);
     const result=db.prepare('UPDATE finishing_types SET active=1-active,updated_at=?,updated_by=? WHERE id=?').run(ctx.now(),req.user.id,Number(finishToggle[1]));
-    if(!result.changes) throw Object.assign(new Error('Nie znaleziono rodzaju wykończenia.'),{status:404});
-    return redirect(req,res,'/settings/libraries','Zmieniono status rodzaju wykończenia.');
+    if(!result.changes) throw Object.assign(new Error('Nie znaleziono rodzaju wykańczania.'),{status:404});
+    return redirect(req,res,'/settings/libraries','Zmieniono status rodzaju wykańczania.');
   }
   if(p==='/warehouse/export.xlsx'&&req.method==='GET') {
     const trialGroup=ctx.url.searchParams.get('trials')==='1';
