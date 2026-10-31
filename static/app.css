@@ -139,7 +139,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .stock-table tbody td{font-size:12px;line-height:1.25;text-align:center}
 .stock-table tbody td:first-child{text-align:center}.stock-table tbody td:nth-child(2){text-align:left}
 .stock-table .item-title{font-size:14px;line-height:1.25;overflow-wrap:anywhere}
-.stock-title-row{display:flex;align-items:center;gap:14px}.stock-title-row h1{margin-bottom:0}.production-stock-print{width:40px;height:40px;padding:8px}.production-stock-print svg{width:22px;height:22px}.stock-table tbody tr.stock-shipped .item-title,.stock-table tbody td.stock-shipped-quantity,.stock-table tbody td.stock-shipment-day{color:#c62828!important;font-weight:700}
+.stock-title-row{display:flex;align-items:center;gap:14px}.stock-title-row h1{margin-bottom:0}.production-stock-print{width:40px;height:40px;padding:8px}.production-stock-print svg{width:22px;height:22px}.stock-table tbody td.stock-shipment-day{color:#c62828!important;font-weight:700}
 .stock-table .stock-day-header,.stock-table .stock-day-start{border-left:2px solid #cbd1d6}
 .stock-table .stock-day-subheader{border-bottom:1px solid var(--line)}
 .stock-table .stock-date{font-size:11px;letter-spacing:0;text-transform:none}
@@ -196,6 +196,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-selected h2{margin:0;font-size:20px}
 .warehouse-stock-summary{display:flex;align-items:center;gap:12px;margin:3px 0 9px;font-size:13px}
 .warehouse-stock-summary strong{font-size:14px}
+.warehouse-trial-sort{display:flex;align-items:center;margin:8px 0 0}.warehouse-trial-sort label{display:flex;align-items:center;gap:8px;margin:0;color:var(--muted);font-size:12px}.warehouse-trial-sort select{width:auto;min-width:250px;min-height:34px;margin:0;padding:5px 8px;font-size:12px}
 .warehouse-lost-count{color:#9d2d32;font-size:12px;font-weight:700}
 .warehouse-bulk-status{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0;padding:8px;background:#fff;border:1px solid var(--line);border-radius:6px}
 .warehouse-bulk-status input[name=reason]{width:min(330px,100%);padding:7px 9px;font-size:12px}

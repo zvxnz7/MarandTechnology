@@ -214,7 +214,6 @@ function overviewPage(ctx) {
     WHERE trim(coalesce(b.trial_symbol,''))<>'' AND a.archived_at IS NULL AND a.purged_at IS NULL AND ${Warehouse.activeStockSql()}`).get();
   if(trialStock.pieces) latest.push({id:'trials',symbol:'Próby',status:'standard',pieces:trialStock.pieces,weight_kg:trialStock.weight_kg,uploaded_at:trialStock.uploaded_at,isTrialGroup:true});
   const balances = new Map();
-  const shippedArticles=new Set();
   const shippedDates=new Map();
   const addMovement = (articleId, date, pieces, weight) => {
     if (!date || date > latestDate) return;
@@ -232,7 +231,6 @@ function overviewPage(ctx) {
       JOIN shipments sh ON sh.id=sa.shipment_id JOIN production_bales b ON b.local_id=sb.bale_local_id
       WHERE sh.status='closed'`).all()) {
     const groupId=bale.trial_symbol?'trials':bale.article_id;
-    shippedArticles.add(groupId);
     if(!shippedDates.has(groupId)) shippedDates.set(groupId,new Set());
     shippedDates.get(groupId).add(bale.shipment_date);
     addMovement(groupId, bale.shipment_date, -1, -(Number(bale.weight_kg) || 0));
@@ -261,10 +259,10 @@ function overviewPage(ctx) {
         eventIndex++;
       }
       const shipmentDay=shippedDates.get(article.id)?.has(date);
-      return `<td class="stock-day-start${date===latestDate&&shippedArticles.has(article.id)?' stock-shipped-quantity':''}${shipmentDay?' stock-shipment-day':''}" data-stock-date="${date}" data-pieces="${piecesBalance}">${piecesBalance}</td><td class="stock-day-end" data-stock-date="${date}" data-weight-kg="${weightBalance}">${formatWeight(weightBalance)}</td>`;
+      return `<td class="stock-day-start${shipmentDay?' stock-shipment-day':''}" data-stock-date="${date}" data-pieces="${piecesBalance}">${piecesBalance}</td><td class="stock-day-end${shipmentDay?' stock-shipment-day':''}" data-stock-date="${date}" data-weight-kg="${weightBalance}">${formatWeight(weightBalance)}</td>`;
     }).join('');
     const stockLink=article.isTrialGroup?'/warehouse?trials=1':`/warehouse?article_id=${article.id}`;
-    return `<tr class="stock-row stock-row-${V.esc(article.status)}${shippedArticles.has(article.id)?' stock-shipped':''}"><td>${state}</td><td><a class="item-title" href="${stockLink}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
+    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="${stockLink}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
   }).join('');
   const pieces = latest.reduce((sum, row) => sum + row.pieces, 0);
   const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);

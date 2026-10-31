@@ -220,8 +220,8 @@ function registeredBales(db, articleId) {
     ) ORDER BY b.production_date,b.local_created_at,b.uploaded_at,b.bale_number COLLATE NOCASE`).all(articleId);
 }
 
-function registeredTrialBales(db) {
-  return db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,coalesce(f.status,'available') inventory_status,
+function registeredTrialBales(db, sort = 'date_asc') {
+  const rows=db.prepare(`SELECT b.*,CASE WHEN trim(b.trial_symbol)<>'' THEN b.trial_symbol ELSE a.symbol END symbol,coalesce(f.status,'available') inventory_status,
       coalesce((SELECT group_concat(tag,',') FROM warehouse_bale_tags bt WHERE bt.bale_local_id=b.local_id),'') quality_tags,
       (SELECT status FROM warehouse_bale_custom_statuses cs WHERE cs.bale_local_id=b.local_id) custom_status,
       (SELECT sh.status FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
@@ -234,6 +234,9 @@ function registeredTrialBales(db) {
       SELECT 1 FROM shipment_bales sb JOIN shipment_articles sa ON sa.id=sb.shipment_article_id
       JOIN shipments sh ON sh.id=sa.shipment_id WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL AND sh.status='closed'
     ) ORDER BY b.production_date,b.local_created_at,b.uploaded_at,b.bale_number COLLATE NOCASE`).all();
+  if(sort==='symbol_asc') rows.sort((a,b)=>a.symbol.localeCompare(b.symbol,'pl-PL',{sensitivity:'base',numeric:true})||a.production_date.localeCompare(b.production_date)||a.bale_number.localeCompare(b.bale_number,'pl-PL',{numeric:true}));
+  else if(sort==='date_desc') rows.sort((a,b)=>b.production_date.localeCompare(a.production_date)||String(b.local_created_at).localeCompare(String(a.local_created_at))||a.bale_number.localeCompare(b.bale_number,'pl-PL',{numeric:true}));
+  return rows;
 }
 
 function trialBalance(db) {
@@ -295,10 +298,10 @@ function warehouseExcelStatus(row) {
   return statuses.join('; ');
 }
 
-function warehouseExcel(ctx, article) {
+function warehouseExcel(ctx, article, trialSort = 'date_asc') {
   const articleId=article.id;
   if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
-  const rows=(article.isTrialGroup?registeredTrialBales(ctx.db):registeredBales(ctx.db,articleId)).map((row,index)=>[
+  const rows=(article.isTrialGroup?registeredTrialBales(ctx.db,trialSort):registeredBales(ctx.db,articleId)).map((row,index)=>[
     index+1,row.symbol,row.bale_number,Number(row.weight_kg),Number(row.meters),Number(row.errors),Number(row.stops),row.lot||'',row.notes||'',date(row.production_date),warehouseExcelStatus(row),
   ]);
   return Xlsx.workbook(['LP','Symbol','Nr szt.','Masa kg','Metry','Błędy','Stopy','LOT','Uwagi','Data produkcji','Status'],rows,article.symbol);
@@ -328,6 +331,8 @@ function catalogPage(ctx) {
   const rawArticleId = Number(ctx.url.searchParams.get('article_id') || 0);
   if (ctx.url.searchParams.get('partial') === 'search') return articleSearchResults(ctx, q);
   const trialGroupSelected=ctx.url.searchParams.get('trials')==='1';
+  const requestedTrialSort=String(ctx.url.searchParams.get('trial_sort')||'date_asc');
+  const trialSort=['date_asc','date_desc','symbol_asc'].includes(requestedTrialSort)?requestedTrialSort:'date_asc';
   const trialGroupBalance=trialGroupSelected?trialBalance(ctx.db):null;
   const current = trialGroupSelected
     ? (trialGroupBalance.visible_pieces>0?{id:'trials',symbol:'Próby',...trialGroupBalance,isTrialGroup:true}:null)
@@ -335,17 +340,18 @@ function catalogPage(ctx) {
   const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Symbol lub opis artykułu" aria-label="Szukaj artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="warehouse-search-results"></label><p class="muted small">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia. Przy kilku słowach każde musi pasować.</p><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
   let selectedView = '';
   if (current) {
-    const bales = current.isTrialGroup ? registeredTrialBales(ctx.db) : registeredBales(ctx.db, current.id);
+    const bales = current.isTrialGroup ? registeredTrialBales(ctx.db,trialSort) : registeredBales(ctx.db, current.id);
     const availableCount = bales.filter(b => b.inventory_status === 'available').length;
     const currentWeight = bales.filter(b => b.inventory_status === 'available').reduce((sum, b) => sum + b.weight_kg, 0);
     const lostCount = bales.filter(b => b.inventory_status === 'lost').length;
     const canManageStatuses = managerRoles.includes(ctx.req.user.role);
     const lostForm = canManageStatuses ? `<form method="post" action="/warehouse/bales/status" id="warehouse-bulk-status" class="warehouse-bulk-status">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="article_id" value="${current.id}"><input type="hidden" name="bale_ids" value="" data-warehouse-selected><input name="reason" placeholder="Powód zagubienia (opcjonalnie)" maxlength="500"><button name="status" value="lost" class="button danger">Oznacz jako zagubione</button><button name="status" value="second_grade" class="button warehouse-action-second-grade">Oznacz jako drugi gatunek</button><button name="status" value="stripe_risk" class="button warehouse-action-stripe-risk">Oznacz jako ryzyko pasiastości</button><input name="custom_status" maxlength="120" placeholder="Własny status"><button name="status" value="custom" class="button warehouse-action-custom-status">Dodaj status</button>${lostCount||bales.some(b=>b.quality_tags||b.custom_status) ? '<button name="status" value="available" class="button">Usuń oznaczenia / przywróć dostępność</button>' : ''}</form>` : '';
     const cols = canManageStatuses ? 11 : 10;
-    const exportIcons=`<span class="warehouse-export-icons no-print"><button type="button" class="warehouse-icon-button" data-print-page title="Drukuj wykaz" aria-label="Drukuj wykaz sztuk ${V.esc(current.symbol)}">${printerSvg}</button><a class="warehouse-icon-button" href="/warehouse/export.xlsx?${current.isTrialGroup?'trials=1':`article_id=${current.id}`}" title="Eksportuj do Excela" aria-label="Eksportuj wykaz sztuk ${V.esc(current.symbol)} do Excela">${excelSvg}</a></span>`;
+    const exportIcons=`<span class="warehouse-export-icons no-print"><button type="button" class="warehouse-icon-button" data-print-page title="Drukuj wykaz" aria-label="Drukuj wykaz sztuk ${V.esc(current.symbol)}">${printerSvg}</button><a class="warehouse-icon-button" href="/warehouse/export.xlsx?${current.isTrialGroup?`trials=1&trial_sort=${trialSort}`:`article_id=${current.id}`}" title="Eksportuj do Excela" aria-label="Eksportuj wykaz sztuk ${V.esc(current.symbol)} do Excela">${excelSvg}</a></span>`;
     const baleTableRows=baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`;
     const listedWeight=bales.reduce((sum,b)=>sum+Number(b.weight_kg||0),0);
-    selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p></div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
+    const trialSortControl=current.isTrialGroup?`<form method="get" action="/warehouse" class="warehouse-trial-sort no-print"><input type="hidden" name="trials" value="1"><label>Sortuj belki<select name="trial_sort" data-auto-submit><option value="date_asc"${trialSort==='date_asc'?' selected':''}>Data produkcji · od najstarszej</option><option value="date_desc"${trialSort==='date_desc'?' selected':''}>Data produkcji · od najnowszej</option><option value="symbol_asc"${trialSort==='symbol_asc'?' selected':''}>Symbol próby · A–Z</option></select></label></form>`:'';
+    selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p>${trialSortControl}</div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
   }
   if (!current) {
     const canManageStatuses=managerRoles.includes(ctx.req.user.role),cols=canManageStatuses?11:10;
@@ -888,13 +894,15 @@ function handle(ctx) {
   }
   if(p==='/warehouse/export.xlsx'&&req.method==='GET') {
     const trialGroup=ctx.url.searchParams.get('trials')==='1';
+    const requestedTrialSort=String(ctx.url.searchParams.get('trial_sort')||'date_asc');
+    const trialSort=['date_asc','date_desc','symbol_asc'].includes(requestedTrialSort)?requestedTrialSort:'date_asc';
     const articleId=Number(ctx.url.searchParams.get('article_id')||0);
     if(!trialGroup&&(!Number.isSafeInteger(articleId)||articleId<1)) throw Object.assign(new Error('Wybierz artykuł przed eksportem.'),{status:400});
     const article=trialGroup?{id:'trials',symbol:'Próby',isTrialGroup:true}:articleBalances(db,'',{includeTrials:false}).find(row=>row.id===articleId);
     if(!article) throw Object.assign(new Error('Nie znaleziono artykułu w wykazie sztuk.'),{status:404});
     const symbolPart=articleFilenamePart(article);
     const filename=`wykaz-${symbolPart}-${ctx.todayWarsaw()}.xlsx`;
-    return send(req,res,200,warehouseExcel(ctx,article),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':`attachment; filename="${filename}"` });
+    return send(req,res,200,warehouseExcel(ctx,article,trialSort),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':`attachment; filename="${filename}"` });
   }
   if(p==='/warehouse'&&req.method==='GET') return send(req,res,200,catalogPage(ctx));
   if(p==='/warehouse/bales/status'&&req.method==='POST') {
