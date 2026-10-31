@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = selector => document.querySelector(selector);
-const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'calculated', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
+const state = { data: null, editingId: null, catalogArticles: [], catalogWorkers: [], catalogMachines: [], activeNumeric: null, dailyReports: [], reportCache: new Map(), addToReportDate: null, touch: { step: 'home', articleId: '', machine: '', workerId: '', activeInput: null, currentPrompt: '', returnPrompt: '', workerPickerIndex: null, pickerCreatedIndex: -1, textShift: false, extras: [], saving: false, weightSuggestion: null, weightInfo: null, weightMode: 'calculated', weightWeighed: false, weightAutoValue: '', weightManuallyEdited: false, weightSuggestionsEnabled: true, weightSuggestionRequestId: 0 } };
 const number = value => {
   const source = String(value ?? '').trim().replace(',', '.');
   return source === '' ? 0 : Number(source);
@@ -48,7 +48,7 @@ function fillCommonControls() {
   $('#article').innerHTML = `<option value="">Wybierz artykuł</option>${options(articles, 'choiceId', articleLabel, oldArticle)}`;
   if (oldArticle) $('#article').value = oldArticle;
   else if (articles.length === 1) $('#article').value = String(articles[0].choiceId ?? articles[0].id);
-  $('#machine').innerHTML = `<option value="">—</option>${state.data.machines.map(machine => `<option value="${machine}" ${machine === oldMachine ? 'selected' : ''}>${machine}</option>`).join('')}`;
+  $('#machine').innerHTML = `<option value="">—</option>${state.data.machines.map(machine => `<option value="${machine}" ${machine === oldMachine ? 'selected' : ''}>${escapeHtml(state.data.machineLabels?.[machine]||machine)}</option>`).join('')}`;
   const selected = selectedArticleChoice();
   $('#machine').value = selected?.machine ? articleMachine(selected) : '';
   $('#machine').disabled = true;
@@ -225,7 +225,7 @@ function renderTouchSelectionSummary() {
 }
 function touchRenderTiles() {
   const { step, articleId, machine, workerId } = state.touch;
-  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}">${escapeHtml(item.symbol)}${item.isTrial ? '<small>Próba</small>' : ''}<small>${item.machine ? `Maszyna ${escapeHtml(item.machine)}` : 'Przypisz maszynę w Ustawieniach'}</small></button>`).join('');
+  $('#touch-article-tiles').innerHTML = state.data.articles.map(item => `<button type="button" class="touch-tile touch-article-tile ${item.isTrial ? 'touch-tile-trial' : ''}" data-touch-article="${escapeHtml(item.choiceId ?? item.id)}"><span class="touch-article-machine">${escapeHtml(item.machine || '—')}</span><span class="touch-article-symbol">${escapeHtml(item.symbol)}</span>${item.isTrial ? '<small>Próba</small>' : ''}</button>`).join('');
   $('#touch-machine-tiles').innerHTML = state.data.machines.map((item, index) => `<button type="button" class="touch-tile touch-machine-color-${index % 6}" data-touch-machine="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('');
   $('#touch-worker-tiles').innerHTML = state.data.workers.map(item => `<button type="button" class="touch-tile touch-worker-color-${touchColorIndex(item.name)}" data-touch-worker="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join('');
   for (const key of ['article', 'machine', 'worker', 'data', 'weight-check', 'options', 'confirm']) {
@@ -578,6 +578,7 @@ async function loadSettings() {
   }
   state.catalogArticles = state.data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: item.weightWeighInterval || 20 }));
   state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
+  state.catalogMachines = (state.data.machineCatalog || state.data.machines.map(code=>({code,name:state.data.machineLabels?.[code]||code}))).map(item=>({code:item.code,name:item.name}));
   const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
   const workersSync=settingsData.centralWorkersSyncedAt?new Date(settingsData.centralWorkersSyncedAt).toLocaleString('pl-PL'):'lista nie była jeszcze aktualizowana';
@@ -586,14 +587,13 @@ async function loadSettings() {
   if ($('#production-server-url')) $('#production-server-url').value = settingsData.productionConnection?.serverUrl || 'http://192.168.1.14:8765';
   if ($('#production-api-token')) $('#production-api-token').value = '';
   if ($('#production-connection-status')) $('#production-connection-status').textContent = settingsData.productionConnection?.configured ? 'Token jest zapisany lokalnie. Adres programu głównego jest stały.' : 'Wklej token z programu głównego i wybierz „Sprawdź i zapisz token”.';
-  const yearSequences = state.data.sequences?.[$('#sequence-year').value] || {};
-  $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
+  renderSequenceList($('#sequence-year').value);
   renderCatalogs();
 }
 function renderCatalogs() {
   const articleList = $('#article-list');
   const assignedMachines=new Set(state.catalogArticles.map(item=>item.machine).filter(Boolean));
-  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row${item.justAdded?' catalog-row-new':''}"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}" required><option value="">—</option>${state.data.machines.filter(machine=>!assignedMachines.has(machine)||state.catalogArticles.findIndex(row=>row.machine===machine)===index).map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${machine}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label"><span>Ważenie co</span><input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="99" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"><span>belek</span></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
+  articleList.innerHTML = state.catalogArticles.length ? state.catalogArticles.map((item, index) => `<div class="catalog-row article-catalog-row${item.justAdded?' catalog-row-new':''}"><strong>${escapeHtml(item.symbol)}${item.centralId?`<small> · baza główna #${item.centralId}</small>`:''}</strong><label class="article-machine-label">Maszyna<select class="article-machine-input" data-index="${index}" aria-label="Maszyna dla ${escapeHtml(item.symbol)}" required><option value="">—</option>${state.catalogMachines.map(machine=>machine.code).filter(machine=>!assignedMachines.has(machine)||state.catalogArticles.findIndex(row=>row.machine===machine)===index).map(machine => `<option value="${machine}" ${item.machine === machine ? 'selected' : ''}>${escapeHtml(state.catalogMachines.find(item=>item.code===machine)?.name||machine)}</option>`).join('')}</select></label><label class="article-lot-label">LOT<input class="article-lot-input" data-index="${index}" maxlength="120" value="${escapeHtml(item.lot || '')}" placeholder="LOT artykułu"></label><label class="article-weight-interval-label"><span>Ważenie co</span><input class="article-weight-interval-input" data-index="${index}" type="number" min="1" max="99" step="1" value="${Number(item.weightWeighInterval || 20)}" aria-label="Kontrola wagi co ile belek: ${escapeHtml(item.symbol)}"><span>belek</span></label><label class="article-trial-toggle"><input class="article-trial-input" data-index="${index}" type="checkbox" ${item.isTrial ? 'checked' : ''}> Próba</label><button type="button" class="catalog-remove remove-article" data-index="${index}">Wyłącz</button></div>`).join('') : '<div class="catalog-empty">Brak aktywnych artykułów.</div>';
   articleList.querySelectorAll('.article-machine-input').forEach(input => input.addEventListener('change', () => { const index=Number(input.dataset.index),item=state.catalogArticles[index]; if(item){item.machine=input.value;renderCatalogs();articleList.querySelector(`.article-machine-input[data-index="${index}"]`)?.focus();} }));
   articleList.querySelectorAll('.article-weight-interval-input').forEach(input => input.addEventListener('input', () => { const item=state.catalogArticles[Number(input.dataset.index)]; if(!item)return; for(const row of state.catalogArticles) if(row.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL')) row.weightWeighInterval=Number(input.value); articleList.querySelectorAll('.article-weight-interval-input').forEach(control=>{if(state.catalogArticles[Number(control.dataset.index)]?.symbol.toLocaleUpperCase('pl-PL')===item.symbol.toLocaleUpperCase('pl-PL'))control.value=input.value;}); }));
   articleList.querySelectorAll('.article-lot-input').forEach(input => input.addEventListener('input', () => {
@@ -618,10 +618,56 @@ function renderCatalogs() {
     const item = state.catalogWorkers[Number(select.dataset.index)];
     if (item) item.status = select.value;
   }));
+  renderMachineCatalog();
 }
 function renderSequenceList(year) {
   const yearSequences = state.data.sequences?.[year] || {};
-  $('#sequence-list').innerHTML = state.data.machines.map(machine => `<label class="sequence-item">${machine}<input class="sequence-value" data-machine="${machine}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine] ?? ''}" placeholder="ostatni numer"></label>`).join('');
+  const machines=state.catalogMachines.length?state.catalogMachines:state.data.machineCatalog||state.data.machines.map(code=>({code,name:code}));
+  $('#sequence-list').innerHTML = machines.map(machine => `<label class="sequence-item">${escapeHtml(machine.name)}<input class="sequence-value" data-machine="${escapeHtml(machine.code)}" type="number" min="0" max="99999999" step="1" inputmode="numeric" value="${yearSequences[machine.code] ?? ''}" placeholder="ostatni numer"></label>`).join('');
+  $('#machine-summary').textContent=machines.map(machine=>machine.code).join(' · ');
+}
+function syncMachineDraft() {
+  state.data.machines=state.catalogMachines.map(machine=>machine.code);
+  state.data.machineLabels=Object.fromEntries(state.catalogMachines.map(machine=>[machine.code,machine.name]));
+  state.data.machineCatalog=state.catalogMachines.map(machine=>({...machine,active:1}));
+}
+function renderMachineCatalog() {
+  const host=$('#machine-list');
+  if(!host)return;
+  host.innerHTML=state.catalogMachines.length?state.catalogMachines.map((machine,index)=>`<div class="catalog-row machine-catalog-row"><strong class="machine-code-chip">${escapeHtml(machine.code)}</strong><input class="machine-name-input" data-machine-name="${index}" maxlength="60" value="${escapeHtml(machine.name)}" aria-label="Nazwa maszyny ${escapeHtml(machine.code)}"><button type="button" class="catalog-remove" data-machine-remove="${escapeHtml(machine.code)}">Usuń</button></div>`).join(''):'<div class="catalog-empty">Brak maszyn. Dodaj maszynę poniżej.</div>';
+  host.querySelectorAll('[data-machine-name]').forEach(input=>input.addEventListener('input',()=>{
+    const machine=state.catalogMachines[Number(input.dataset.machineName)];
+    if(machine){machine.name=input.value;syncMachineDraft();}
+  }));
+  host.querySelectorAll('[data-machine-name]').forEach(input=>input.addEventListener('change',()=>renderCatalogs()));
+  host.querySelectorAll('[data-machine-remove]').forEach(button=>button.addEventListener('click',()=>{
+    const code=button.dataset.machineRemove;
+    const affected=state.catalogArticles.filter(item=>item.machine===code).length;
+    const message=`Usunąć maszynę ${code}?${affected?` Wyłączy to ${affected} przypisanych ${affected===1?'ustawienie artykułu':'ustawienia artykułów'}.`:''} Zapisane belki i numeracja pozostaną w historii.`;
+    if(!window.confirm(message))return;
+    state.catalogMachines=state.catalogMachines.filter(item=>item.code!==code);
+    state.catalogArticles=state.catalogArticles.filter(item=>item.machine!==code);
+    syncMachineDraft();
+    renderCatalogs();
+    renderSequenceList($('#sequence-year').value);
+    paintTouch();
+    if(affected)toast(`Usunięto maszynę ${code} i jej przypisania artykułów. Zapisane belki i numeracja pozostają w historii.`);
+  }));
+}
+function addMachineFromForm() {
+  const code=$('#machine-code-new').value.trim().toUpperCase();
+  const name=$('#machine-name-new').value.trim();
+  if(!/^[A-Z][A-Z0-9]{0,7}$/.test(code)){toast('Podaj kod maszyny z liter i cyfr, np. M9.',true);return;}
+  if(!name){toast('Podaj nazwę maszyny, np. M9-HKS2.',true);return;}
+  if(state.catalogMachines.some(item=>item.code===code)){toast(`Maszyna ${code} już znajduje się na liście.`,true);return;}
+  if(state.catalogMachines.some(item=>item.name.toLocaleUpperCase('pl-PL')===name.toLocaleUpperCase('pl-PL'))){toast('Taka nazwa maszyny już istnieje.',true);return;}
+  state.catalogMachines.push({code,name});
+  syncMachineDraft();
+  $('#machine-code-new').value='';
+  $('#machine-name-new').value='';
+  renderCatalogs();
+  renderSequenceList($('#sequence-year').value);
+  $('#machine-code-new').focus();
 }
 let catalogSearchTimer;
 async function searchCentralArticles() {
@@ -642,29 +688,34 @@ function addCentralArticleFromSearch(event) {
   button.disabled=true;button.lastElementChild.textContent='Dodano';
 }
 function setSettingsActionsDisabled(disabled) {
-  document.querySelectorAll('[data-save-settings], #refresh-workers, #refresh-articles').forEach(button => { button.disabled = disabled; });
+  document.querySelectorAll('[data-save-settings], #refresh-workers, #refresh-articles, #add-machine, [data-machine-remove]').forEach(button => { button.disabled = disabled; });
 }
 async function saveSettings() {
   setSettingsActionsDisabled(true);
   try {
-    const unassigned = state.catalogArticles.find(item => !state.data.machines.includes(item.machine));
+    const unassigned = state.catalogArticles.find(item => !state.catalogMachines.some(machine=>machine.code===item.machine));
     if (unassigned) throw new Error(`Wybierz maszynę dla artykułu ${unassigned.symbol}.`);
     const articles = state.catalogArticles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: Number(item.weightWeighInterval || 20) }));
+    const machines=state.catalogMachines.map(item=>({code:item.code,name:item.name.trim()}));
     const workers = state.catalogWorkers.map(item => ({ employeeUid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
     const sequenceYear = Number($('#sequence-year').value);
     const sequences = [...$('#sequence-list').querySelectorAll('.sequence-value')]
       .filter(input => input.value !== '')
       .map(input => ({ machine: input.dataset.machine, lastValue: Number(input.value) }));
-    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, sequenceYear, sequences }) });
+    const data = await api('/api/settings', { method: 'POST', body: JSON.stringify({ articles, workers, machines, sequenceYear, sequences }) });
     render(data);
     state.catalogArticles = data.articles.map(item => ({ symbol: item.symbol, lot: item.lot || '', centralId: item.centralId || null, isTrial: Boolean(item.isTrial), machine: item.machine || '', weightWeighInterval: item.weightWeighInterval || 20 }));
     state.catalogWorkers = (data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid || '', name: item.name, status: item.status || 'active' }));
+    state.catalogMachines = (data.machineCatalog || []).map(item=>({code:item.code,name:item.name}));
+    renderSequenceList($('#sequence-year').value);
     renderCatalogs();
     showView('settings');
-    toast('Zapisano artykuły, pracowników, numerację i ustawienia ważenia.');
+    toast('Zapisano artykuły, pracowników, park maszynowy, numerację i ustawienia ważenia.');
   } catch (error) { toast(error.message, true); }
   finally { setSettingsActionsDisabled(false); }
 }
+
+$('#add-machine').addEventListener('click',addMachineFromForm);
 
 async function refreshWorkers() {
   setSettingsActionsDisabled(true);

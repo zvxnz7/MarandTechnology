@@ -17,13 +17,13 @@ const DEFAULT_PRODUCTION_SERVER_URL = 'http://192.168.1.14:8765';
 const MAX_BODY = 1024 * 1024;
 const DATA_ROOT = process.env.MARAND_KNITTER_DATA || path.join(process.env.LOCALAPPDATA || os.homedir(), 'Marand', 'Produkcja');
 const DB_PATH = path.join(path.resolve(DATA_ROOT), 'production.sqlite3');
-const MACHINES = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'B1', 'B2', 'B3'];
+const DEFAULT_MACHINES = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'B1', 'B2', 'B3'];
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
 const startingSchemaVersion = db.prepare('PRAGMA user_version').get().user_version;
-if (startingSchemaVersion > 13) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
+if (startingSchemaVersion > 14) throw new Error('Lokalna baza pochodzi z nowszej wersji panelu.');
 db.exec(`
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY,
@@ -59,6 +59,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS local_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS machine_catalog (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS workers (
     id INTEGER PRIMARY KEY,
@@ -221,6 +228,14 @@ if (startingSchemaVersion < 13) {
 db.prepare(`INSERT INTO local_settings(key,value) VALUES('production_server_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
   .run(DEFAULT_PRODUCTION_SERVER_URL);
 db.prepare("INSERT INTO local_settings(key,value) VALUES('weight_weigh_interval','20') ON CONFLICT(key) DO NOTHING").run();
+if(!db.prepare("SELECT 1 FROM local_settings WHERE key='machine_catalog_seeded'").get()){
+  if(!db.prepare('SELECT 1 FROM machine_catalog LIMIT 1').get()){
+    const stamp=now(),insert=db.prepare('INSERT OR IGNORE INTO machine_catalog(code,name,active,created_at,updated_at) VALUES(?,?,1,?,?)');
+    for(const code of DEFAULT_MACHINES)insert.run(code,code,stamp,stamp);
+  }
+  db.prepare("INSERT INTO local_settings(key,value) VALUES('machine_catalog_seeded','1')").run();
+}
+if(startingSchemaVersion<14)db.exec('PRAGMA user_version=14;');
 
 function now() { return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'); }
 function todayWarsaw() {
@@ -329,10 +344,15 @@ function validateProductionDate(value) {
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 10) !== date) fail(400, 'Podaj prawidłową datę produkcji.');
   return date;
 }
+function machineCatalog(activeOnly = true) {
+  return db.prepare(`SELECT code,name,active FROM machine_catalog ${activeOnly ? 'WHERE active=1' : ''} ORDER BY code COLLATE NOCASE`).all();
+}
+function activeMachineCodes() { return machineCatalog().map(machine => machine.code); }
 function validateArticleAndMachine(articleId, machine, allowInactive = false) {
   const id = Number(articleId);
   if (!Number.isSafeInteger(id) || id < 1 || !db.prepare(allowInactive ? 'SELECT id FROM articles WHERE id=?' : 'SELECT id FROM articles WHERE id=? AND active=1').get(id)) fail(400, 'Wybierz aktywny artykuł.');
-  if (!MACHINES.includes(machine)) fail(400, 'Wybierz prawidłową maszynę.');
+  const machineExists=db.prepare(allowInactive?'SELECT code FROM machine_catalog WHERE code=?':'SELECT code FROM machine_catalog WHERE code=? AND active=1').get(machine);
+  if (!machineExists) fail(400, 'Wybierz aktywną maszynę z ustawień kierownika.');
   return id;
 }
 function normalizeBale(input, articleId, allowInactiveWorkers = false, existingTrialSymbol, existingWeightWeighed) {
@@ -464,7 +484,9 @@ function bootstrap() {
   return {
     today,
     productionDay: currentProductionDate(),
-    machines: MACHINES,
+    machines: machineCatalog().map(machine=>machine.code),
+    machineLabels: Object.fromEntries(machineCatalog().map(machine=>[machine.code,machine.name])),
+    machineCatalog: machineCatalog(),
     articles: db.prepare(`SELECT a.id,a.id articleId,c.id choiceId,c.machine,a.symbol,a.central_id centralId,COALESCE(s.lot,'') lot,COALESCE(s.is_trial,0) isTrial,
       COALESCE(s.weight_weigh_interval,20) weightWeighInterval FROM articles a JOIN article_machine_choices c ON c.article_id=a.id AND c.active=1
       LEFT JOIN article_settings s ON s.article_id=a.id WHERE a.active=1 AND (a.central_managed=0 OR a.central_active=1) ORDER BY a.symbol COLLATE NOCASE,c.machine`).all(),
@@ -501,7 +523,7 @@ async function createLocalBackup() {
   await Promise.all(backups.slice(20).map(name => fsp.rm(path.join(backupDirectory, name), { force: true })));
   console.log(`Utworzono kopię lokalnej bazy: ${target}`);
 }
-function validateCatalog(body, key) {
+function validateCatalog(body, key, activeMachines = new Set(activeMachineCodes())) {
   const source = body[key];
   if (!Array.isArray(source) || source.length > 500) fail(400, 'Nieprawidłowa lista.');
   const items = source.map(item => {
@@ -512,7 +534,7 @@ function validateCatalog(body, key) {
       if(centralId!==null&&(!Number.isSafeInteger(centralId)||centralId<1)) fail(400,'Identyfikator artykułu z centrali jest nieprawidłowy.');
       const isTrial = item.isTrial === true;
       const machine=String(item.machine??'');
-      if(!MACHINES.includes(machine)) fail(400,`Dla artykułu ${symbol} wybierz konkretną maszynę w Ustawieniach.`);
+      if(!activeMachines.has(machine)) fail(400,`Dla artykułu ${symbol} wybierz konkretną aktywną maszynę w Ustawieniach.`);
       const weightWeighInterval=Number(item.weightWeighInterval??20);
       if(!Number.isInteger(weightWeighInterval)||weightWeighInterval<1||weightWeighInterval>99) fail(400,`Dla artykułu ${symbol} ustaw kontrolę wagi od 1 do 99 belek.`);
       return { symbol, lot: cleanText(item.lot, 120, 'LOT'), centralId, isTrial, machine, weightWeighInterval };
@@ -525,7 +547,6 @@ function validateCatalog(body, key) {
     if (!['active','vacation','sick'].includes(status)) fail(400, 'Nieprawidłowy status dziewiarza.');
     return { employeeUid, name, nameKey: normalizeWorkerName(name), status };
   });
-  if (!items.length && key === 'articles') fail(400, 'Dodaj przynajmniej jeden aktywny artykuł.');
   const keys = items.map(item => key === 'articles'
     ? `${item.symbol.toLocaleUpperCase('pl-PL')}\u0000${item.machine}`
     : item.nameKey);
@@ -533,18 +554,34 @@ function validateCatalog(body, key) {
   if (key === 'articles' && new Set(items.map(item => item.machine)).size !== items.length) fail(400, 'Każda maszyna może być przypisana tylko do jednego artykułu. Wybierz inną maszynę dla powtórzonego przypisania.');
   return items;
 }
+function validateMachines(source) {
+  if(!Array.isArray(source)||source.length>100)fail(400,'Nieprawidłowa lista maszyn.');
+  const rows=source.map(item=>{
+    const code=String(item.code||'').trim().toUpperCase();
+    const name=cleanText(item.name,60,'Nazwa maszyny');
+    if(!/^[A-Z][A-Z0-9]{0,7}$/.test(code))fail(400,'Kod maszyny może zawierać litery i cyfry, np. M1.');
+    if(!name)fail(400,'Podaj nazwę maszyny.');
+    return {code,name};
+  });
+  if(new Set(rows.map(row=>row.code)).size!==rows.length)fail(400,'Lista zawiera powtórzony kod maszyny.');
+  const names=rows.map(row=>row.name.toLocaleUpperCase('pl-PL'));
+  if(new Set(names).size!==names.length)fail(400,'Każda maszyna musi mieć inną nazwę.');
+  return rows;
+}
 function saveCatalogs(body) {
-  const articles = validateCatalog(body, 'articles');
+  const machines=validateMachines(Array.isArray(body.machines)?body.machines:machineCatalog().map(({code,name})=>({code,name})));
+  const activeMachines=new Set(machines.map(machine=>machine.code));
+  const articles = validateCatalog(body, 'articles',activeMachines);
   const workers = validateCatalog(body, 'workers');
   const sequenceYear = Number(body.sequenceYear);
   if (!Number.isInteger(sequenceYear) || sequenceYear < 2000 || sequenceYear > new Date().getFullYear() + 1) fail(400, 'Wybierz prawidłowy rok produkcji dla liczników.');
   const sequences = Array.isArray(body.sequences) ? body.sequences : [];
-  if (sequences.length > MACHINES.length) fail(400, 'Nieprawidłowa konfiguracja numeracji.');
+  if (sequences.length > activeMachines.size) fail(400, 'Nieprawidłowa konfiguracja numeracji.');
   const normalizedSequences = [];
   const seenMachines = new Set();
   for (const item of sequences) {
     const machine = String(item.machine || '');
-    if (!MACHINES.includes(machine) || seenMachines.has(machine)) fail(400, 'Nieprawidłowa lub powtórzona maszyna w numeracji.');
+    if (!activeMachines.has(machine) || seenMachines.has(machine)) fail(400, 'Nieprawidłowa lub powtórzona maszyna w numeracji.');
     seenMachines.add(machine);
     const lastValue = Number(item.lastValue);
     if (!Number.isSafeInteger(lastValue) || lastValue < 0 || lastValue > 99999999) fail(400, `Podaj poprawny ostatni numer dla ${machine}.`);
@@ -559,6 +596,11 @@ function saveCatalogs(body) {
     if (apiToken && !/^[a-f0-9]{64}$/i.test(apiToken)) fail(400, 'Token serwera ma nieprawidłowy format. Wklej token wygenerowany w programie głównym.');
   } else if (apiToken) fail(400, 'Wpisz adres programu głównego przed tokenem.');
   transaction(() => {
+    const stamp=now();
+    db.prepare('UPDATE machine_catalog SET active=0,updated_at=? WHERE active=1').run(stamp);
+    const saveMachine=db.prepare(`INSERT INTO machine_catalog(code,name,active,created_at,updated_at) VALUES(?,?,1,?,?)
+      ON CONFLICT(code) DO UPDATE SET name=excluded.name,active=1,updated_at=excluded.updated_at`);
+    for(const machine of machines)saveMachine.run(machine.code,machine.name,stamp,stamp);
     db.exec('UPDATE articles SET active=0; UPDATE workers SET active=0; UPDATE article_machine_choices SET active=0;');
     const addArticle = db.prepare(`INSERT INTO articles(symbol,active,central_id,central_managed,central_active,created_at) VALUES(?,1,?,?,1,?)
       ON CONFLICT(symbol) DO UPDATE SET active=1,central_id=coalesce(excluded.central_id,articles.central_id),central_managed=CASE WHEN excluded.central_id IS NULL THEN articles.central_managed ELSE 1 END,central_active=1`);
