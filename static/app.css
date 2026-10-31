@@ -357,6 +357,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-process-grid>.finishing-check-option{grid-column:span 2}
 .finishing-check-option{display:flex;align-items:center;gap:10px;min-height:66px;height:100%;margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:7px;background:#fafbfc;font-size:14px}
 .finishing-check-option input[type=checkbox]{width:20px;height:20px;min-width:20px;margin:0;accent-color:var(--red)}
+.finishing-measurement-row>.finishing-check-option.finishing-width-needles{align-self:end;justify-self:start;width:auto;min-height:44px;height:44px;padding:0;border:0;border-radius:0;background:transparent}
 .finishing-process-described{grid-column:span 3;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr);align-items:center;gap:12px;min-height:66px;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:#fafbfc}
 .finishing-process-described>.finishing-check-option{min-height:42px;height:auto;padding:0;border:0;background:transparent}
 .finishing-process-described>label:not(.finishing-check-option){margin:0}
