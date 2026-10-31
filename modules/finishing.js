@@ -81,20 +81,23 @@ function readRecipeDetails(recipe) {
   try{return JSON.parse(recipe?.recipe_details||'{}')||{};}catch{return {};}
 }
 function recipeDetailsFromForm(form) {
-  const choice=(key,values)=>values.includes(form[key])?form[key]:'';
-  return {
+  const selected=key=>form[key]==='yes'?'yes':undefined;
+  const details={
     tradeSymbol:text(form,'trade_symbol',200),rawMaterial:text(form,'raw_material',1000),
     grammagePlus:number(form.target_grammage_plus),grammageMinus:number(form.target_grammage_minus),
     widthMode:form.width_between_needles==='yes'?'needles':'exact',widthPlus:number(form.target_width_plus),widthMinus:number(form.target_width_minus),
     widthMinimum:number(form.target_width_minimum),widthMaximum:number(form.target_width_maximum),
     widthNeedles:text(form,'target_width_needles',100),
-    brushing:choice('brushing',['yes','no']),brushingForVelcro:choice('brushing_for_velcro',['yes','no']),
-    stiffeningEnabled:choice('stiffening_enabled',['yes','no']),stiffeningDescription:text(form,'stiffening_description',2000),
-    softeningEnabled:choice('softening_enabled',['yes','no']),softeningDescription:text(form,'softening_description',2000),
-    trimEdges:choice('trim_edges',['yes','no']),bondEdges:choice('bond_edges',['yes','no']),trimSygnits:choice('trim_sygnits',['yes','no']),
+    brushing:selected('brushing'),brushingForVelcro:selected('brushing_for_velcro'),
+    stiffeningEnabled:selected('stiffening_enabled'),stiffeningDescription:text(form,'stiffening_description',2000),
+    softeningEnabled:selected('softening_enabled'),softeningDescription:text(form,'softening_description',2000),
+    trimEdges:selected('trim_edges'),bondEdges:selected('bond_edges'),trimSygnits:selected('trim_sygnits'),
     winding:[text(form,'winding_1',1000),text(form,'winding_2',1000),text(form,'winding_3',1000)],
     shrinkage:text(form,'shrinkage',2000),
   };
+  for(const key of ['brushing','brushingForVelcro','trimEdges','bondEdges','trimSygnits'])if(details[key]!=='yes')delete details[key];
+  for(const [enabled,description] of [['stiffeningEnabled','stiffeningDescription'],['softeningEnabled','softeningDescription']])if(details[enabled]!=='yes'){delete details[enabled];delete details[description];}
+  return details;
 }
 function recipeSummary(details,base={}) {
   const lines=[];
@@ -106,14 +109,14 @@ function recipeSummary(details,base={}) {
   else if(details.widthMode==='minimum')lines.push(`Szerokość: nie mniej niż ${details.widthMinimum??'—'} cm`);
   else if(details.widthMode==='needles')lines.push(`Szerokość między igłami: ${base.targetWidthCm??details.widthNeedles??'—'}${base.targetWidthCm!==null&&base.targetWidthCm!==undefined?' cm':''}${details.widthPlus!==null||details.widthMinus!==null?` (+${details.widthPlus??'—'} / −${details.widthMinus??'—'})`:''}`);
   else if(base.targetWidthCm!==null&&base.targetWidthCm!==undefined)lines.push(`Szerokość: ${base.targetWidthCm} cm${details.widthPlus!==null||details.widthMinus!==null?` (+${details.widthPlus??'—'} / −${details.widthMinus??'—'})`:''}`);
-  if(details.brushing)lines.push(`Drapanie: ${details.brushing==='yes'?'tak':'nie'}`);
-  if(details.brushingForVelcro)lines.push(`Drapanie pod rzep: ${details.brushingForVelcro==='yes'?'tak':'nie'}`);
-  if(details.stiffeningEnabled)lines.push(`Usztywnienie: ${details.stiffeningEnabled==='yes'?'tak':'nie'}${details.stiffeningDescription?` — ${details.stiffeningDescription}`:''}`);
-  else if(base.targetStiffening)lines.push(`Usztywnienie: ${base.targetStiffening}`);
-  if(details.softeningEnabled)lines.push(`Zmiękczenie: ${details.softeningEnabled==='yes'?'tak':'nie'}${details.softeningDescription?` — ${details.softeningDescription}`:''}`);
-  if(details.trimEdges)lines.push(`Obcinanie brzegów: ${details.trimEdges==='yes'?'tak':'nie'}`);
-  if(details.bondEdges)lines.push(`Podklejanie brzegów: ${details.bondEdges==='yes'?'tak':'nie'}`);
-  if(details.trimSygnits)lines.push(`Obcinanie sygnitów: ${details.trimSygnits==='yes'?'tak':'nie'}`);
+  if(details.brushing==='yes')lines.push('Drapanie: tak');
+  if(details.brushingForVelcro==='yes')lines.push('Drapanie pod rzep: tak');
+  if(details.stiffeningEnabled==='yes')lines.push(`Usztywnienie: tak${details.stiffeningDescription?` — ${details.stiffeningDescription}`:''}`);
+  else if(base.targetStiffening&& !/^nie$/i.test(String(base.targetStiffening).trim()))lines.push(`Usztywnienie: ${base.targetStiffening}`);
+  if(details.softeningEnabled==='yes')lines.push(`Zmiękczenie: tak${details.softeningDescription?` — ${details.softeningDescription}`:''}`);
+  if(details.trimEdges==='yes')lines.push('Obcinanie brzegów: tak');
+  if(details.bondEdges==='yes')lines.push('Podklejanie brzegów: tak');
+  if(details.trimSygnits==='yes')lines.push('Obcinanie sygnitów: tak');
   for(const instruction of details.winding||[])if(instruction)lines.push(`Nawijanie: ${instruction}`);
   if(details.shrinkage)lines.push(`Kurczliwości: ${details.shrinkage}`);
   return lines.join('\n');
@@ -130,7 +133,7 @@ function prepareRecipe(form,fail) {
   if(details.widthMode==='range'&&(details.widthMinimum===null||details.widthMaximum===null||details.widthMinimum>details.widthMaximum))fail(400,'Podaj prawidłowy zakres szerokości.');
   const width=widthInput??(details.widthMode==='minimum'?details.widthMinimum:null);
   const color=text(form,'target_color',160);
-  const stiffening=details.stiffeningEnabled==='yes'?`Tak${details.stiffeningDescription?` — ${details.stiffeningDescription}`:''}`:details.stiffeningEnabled==='no'?'Nie':'';
+  const stiffening=details.stiffeningEnabled==='yes'?`Tak${details.stiffeningDescription?` — ${details.stiffeningDescription}`:''}`:'';
   const notes=text(form,'notes',5000),summary=recipeSummary(details,{targetColor:color,targetWidthCm:width,targetGrammage:grammage});
   return {name,rawSymbol,details,plantId,width,grammage,color,stiffening,notes,recipeText:summary};
 }
@@ -276,7 +279,7 @@ function recipesPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim(),plantId=Number(ctx.url.searchParams.get('plant_id')||0),allRecipes=recipes(ctx.db);
   const qNorm=q.toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const matches=allRecipes.filter(recipe=>(!plantId||recipe.finishing_plant_id===plantId)&&(!qNorm||[recipe.name,recipe.raw_symbol,recipe.recipe_text,recipe.target_color].some(value=>String(value||'').toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(qNorm))));
-  const rows=matches.map(recipe=>{const d=readRecipeDetails(recipe),detailsText=recipeSummary(d,{targetColor:recipe.target_color,targetStiffening:recipe.target_stiffening,targetWidthCm:recipe.target_width_cm,targetGrammage:recipe.target_grammage}),structured=Object.keys(d).length>0;return `<details class="finishing-recipe"><summary><strong>${V.esc(recipe.name)}</strong><span>${V.esc(recipe.raw_symbol||'Bez symbolu artykułu')}${d.tradeSymbol?` · ${V.esc(d.tradeSymbol)}`:''} · ${V.esc(recipe.finishing_plant_name||'Dowolna wykończalnia')}</span></summary><div class="finishing-recipe-detail">${detailsText?`<pre class="preline finishing-recipe-text">${V.esc(detailsText)}</pre>`:''}${recipe.recipe_text&&!structured?`<pre class="preline finishing-recipe-text">${V.esc(recipe.recipe_text)}</pre>`:''}${recipe.notes?`<pre class="preline finishing-recipe-text">${V.esc(recipe.notes)}</pre>`:''}${editableRoles.includes(ctx.req.user.role)?`<a class="button" href="/finishing/recipes/${recipe.id}/edit">Edytuj</a>`:''}</div></details>`;}).join('');
+  const rows=matches.map(recipe=>{const d=readRecipeDetails(recipe),detailsText=recipeSummary(d,{targetColor:recipe.target_color,targetStiffening:recipe.target_stiffening,targetWidthCm:recipe.target_width_cm,targetGrammage:recipe.target_grammage}),structured=Object.keys(d).length>0;return `<div class="finishing-recipe-row"><details class="finishing-recipe"><summary><strong>${V.esc(recipe.name)}</strong><span>${V.esc(recipe.raw_symbol||'Bez symbolu artykułu')}${d.tradeSymbol?` · ${V.esc(d.tradeSymbol)}`:''} · ${V.esc(recipe.finishing_plant_name||'Dowolna wykończalnia')}</span></summary><div class="finishing-recipe-detail">${detailsText?`<pre class="preline finishing-recipe-text">${V.esc(detailsText)}</pre>`:''}${recipe.recipe_text&&!structured?`<pre class="preline finishing-recipe-text">${V.esc(recipe.recipe_text)}</pre>`:''}${recipe.notes?`<pre class="preline finishing-recipe-text">${V.esc(recipe.notes)}</pre>`:''}</div></details>${editableRoles.includes(ctx.req.user.role)?`<a class="button finishing-recipe-edit" href="/finishing/recipes/${recipe.id}/edit">Edytuj</a>`:''}</div>`;}).join('');
   const body=`${navTabs('recipes')}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Biblioteka receptur wykańczania</h1><p class="muted">Receptury są przechowywane w bazie danych. Zlecenie zapisuje własną kopię wybranej receptury.</p></div>${editableRoles.includes(ctx.req.user.role)?'<a class="button primary" href="/finishing/recipes/new">+ Dodaj recepturę</a>':''}</div><form method="get" action="/finishing/recipes" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input name="q" value="${V.esc(q)}" placeholder="Nazwa receptury lub symbol dzianiny"></label><label>Wykończalnia<select name="plant_id"><option value="0">Wszystkie</option>${plants(ctx.db).map(plant=>`<option value="${plant.id}"${plantId===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label><button class="primary">Szukaj</button><a class="button" href="/finishing/recipes">Wyczyść</a></form><section>${rows||'<div class="panel padded">Brak aktywnych receptur. Dodaj je ręcznie lub zaimportuj dane testowe.</div>'}</section>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Biblioteka receptur wykańczania',body});
 }
