@@ -530,6 +530,7 @@ function validateCatalog(body, key) {
     ? `${item.symbol.toLocaleUpperCase('pl-PL')}\u0000${item.machine}`
     : item.nameKey);
   if (new Set(keys).size !== keys.length) fail(400, 'Lista zawiera powtarzający się wpis.');
+  if (key === 'articles' && new Set(items.map(item => item.machine)).size !== items.length) fail(400, 'Każda maszyna może być przypisana tylko do jednego artykułu. Wybierz inną maszynę dla powtórzonego przypisania.');
   return items;
 }
 function saveCatalogs(body) {

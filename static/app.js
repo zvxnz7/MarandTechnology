@@ -55,7 +55,7 @@ document.querySelectorAll('[data-range-selection]').forEach(form=>{
  };
  boxes.forEach(box=>box.addEventListener('click',event=>{if(event.shiftKey&&last){const from=boxes.indexOf(last),to=boxes.indexOf(box),checked=box.checked;for(let i=Math.min(from,to);i<=Math.max(from,to);i++)boxes[i].checked=checked;}last=box;save();}));
  if(all)all.addEventListener('change',()=>{boxes.forEach(box=>box.checked=all.checked);save();});
- form.addEventListener('submit',event=>{save();if(!hidden.value){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});
+ form.addEventListener('submit',event=>{save();if(!hidden.value&&!form.hasAttribute('data-allow-empty-selection')){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę.');}});
 });
 document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
  const preview=form.querySelector('[data-correction-specification-preview]'),count=form.querySelector('[data-correction-spec-count]');

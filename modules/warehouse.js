@@ -35,6 +35,7 @@ function initialize(db) {
       active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL,
       created_by INTEGER REFERENCES users(id)
     );
+    CREATE TABLE IF NOT EXISTS warehouse_seed_state (name TEXT PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS knitting_workers (
       employee_uid TEXT PRIMARY KEY, code TEXT NOT NULL DEFAULT '', name TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL,
@@ -159,8 +160,11 @@ function initialize(db) {
   // Do not rename legacy plant rows automatically: historical rows can coexist
   // with their canonical labels, and changing name_key would violate the UNIQUE
   // constraint while the old row is still referenced by production history.
-  const insertPlant=db.prepare('INSERT OR IGNORE INTO finishing_plants(name,name_key,created_at) VALUES(?,?,?)');
-  for(const name of ['Anfarb','MarkoColor','Femina','Sagan']) insertPlant.run(name,normalizeSearch(name),new Date().toISOString());
+  if(!db.prepare("SELECT 1 FROM warehouse_seed_state WHERE name='finishing-plants'").get()){
+    const insertPlant=db.prepare('INSERT OR IGNORE INTO finishing_plants(name,name_key,created_at) VALUES(?,?,?)');
+    for(const name of ['Anfarb','MarkoColor','Femina','Sagan']) insertPlant.run(name,normalizeSearch(name),new Date().toISOString());
+    db.prepare("INSERT INTO warehouse_seed_state(name) VALUES('finishing-plants')").run();
+  }
 }
 
 const money = value => Number(value || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -540,11 +544,12 @@ function shipmentPage(ctx, shipment) {
       const disposition=b.correction_disposition||b.batch_disposition;
       const dispositionLabels={mistaken:'Pomylona sztuka · wróciła do bieżącego stanu',shipped_out:'bez zmian'};
       const assignmentStatus=removed?(disposition?`Usunięta korektą · ${dispositionLabels[disposition]||disposition}`:'Usunięta z wysyłki'):b.correction_action==='added'?'Dodana korektą':'W specyfikacji';
-      return `<tr class="${removed?'shipment-bale-removed':''}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td>${canEdit&&!removed?`<td><form method="post" action="/shipments/${shipment.id}/remove">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="specification_id" value="${item.id}"><input type="hidden" name="bale_id" value="${V.esc(b.local_id)}"><button class="link danger">Usuń</button></form></td>`:canEdit?'<td></td>':''}</tr>`;
+      return `<tr class="${removed?'shipment-bale-removed':''}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td></tr>`;
     }).join('');
     const deleteSpecification=canClose?`<a class="button danger" href="/shipments/${shipment.id}/specifications/${item.id}/delete">Usuń specyfikację</a>`:'';
+    const editSpecification=canEdit?`<a class="button" href="/shipments/${shipment.id}/select?article_id=${item.article_id}&specification_id=${item.id}">Edytuj specyfikację</a>`:'';
     const plant=item.finishing_plant_name?`<span class="plant-chip ${plantColor(item.finishing_plant_id)}">${V.esc(item.finishing_plant_name)}</span>`:'';
-    return `<details class="shipment-article" id="specification-${item.id}"${openSpecificationId===item.id?' open':''}><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${item.bale_count} szt w wysyłce · ${money(item.weight_kg)} kg ${plant}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${deleteSpecification}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data produkcji</th><th>Historia przypisania</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="9">Brak belek.</td></tr>'}</tbody></table></div></details>`;
+    return `<details class="shipment-article" id="specification-${item.id}"${openSpecificationId===item.id?' open':''}><summary>${articleNo(shipment,item)} · ${V.esc(item.symbol)} <span>${item.bale_count} szt w wysyłce · ${money(item.weight_kg)} kg ${plant}</span></summary><div class="shipment-article-actions"><a class="button" target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${editSpecification}${deleteSpecification}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data produkcji</th><th>Historia przypisania</th></tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="8">Brak belek.</td></tr>'}</tbody></table></div></details>`;
   }).join('');
   const status = shipment.status==='closed'?`<span class="badge approved">Zamknięta · ${V.datepl(shipment.closed_at)}</span>`:shipment.status==='cancelled'?'<span class="badge archived">Anulowana</span>':'<span class="badge submitted">W przygotowaniu</span>';
   const details = canEdit ? `<form method="post" action="/shipments/${shipment.id}/date" class="shipment-date-form" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="shipment_date" value="${V.esc(shipment.shipment_date)}" data-autosave-value required></label><span data-autosave-status class="autosave-status" aria-live="polite"></span></form>` : `<p>Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p>`;
@@ -568,10 +573,22 @@ function shipmentReportPage(ctx, shipment) {
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Raport wysyłki ${shipmentNo(shipment)} · Marand`,body});
 }
 
+function finishingPlantInUse(db,id) {
+  return Boolean(db.prepare(`SELECT 1 WHERE EXISTS(SELECT 1 FROM shipment_articles WHERE finishing_plant_id=?) OR EXISTS(SELECT 1 FROM finishing_orders WHERE finishing_plant_id=?) OR EXISTS(SELECT 1 FROM finishing_recipes WHERE finishing_plant_id=?)`).get(id,id,id));
+}
+
+function finishingPlantDeletePage(ctx,plant) {
+  const body=`<a class="breadcrumb" href="/settings/libraries">← Biblioteki</a><div class="pagehead"><div><span class="eyebrow">USTAWIENIA</span><h1>Usuń wykończalnię</h1></div></div><section class="panel padded"><h2>${V.esc(plant.name)}</h2><p>Ta wykończalnia zostanie trwale usunięta z biblioteki. Usuwanie jest dostępne tylko wtedy, gdy nie jest powiązana ze specyfikacjami, recepturami ani zleceniami.</p><form method="post" action="/settings/finishing-plants/${plant.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete','1')}<a class="button" href="/settings/libraries">Anuluj</a><button class="danger">Potwierdź usunięcie</button></form></section>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Usuń wykończalnię · Marand',body});
+}
+
 function finishingPlantsPage(ctx) {
   if(!managerRoles.includes(ctx.req.user.role)) throw Object.assign(new Error('Brak uprawnień do bibliotek.'),{status:403});
-  const plants=ctx.db.prepare('SELECT id,name,active FROM finishing_plants ORDER BY active DESC,name COLLATE NOCASE').all();
-  const rows=plants.map(plant=>`<tr><td><form method="post" action="/settings/finishing-plants/${plant.id}/edit" class="library-edit" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<input name="name" data-autosave-value value="${V.esc(plant.name)}" maxlength="100" required aria-label="Nazwa wykańczalni"><span data-autosave-status class="autosave-status" aria-live="polite"></span></form></td><td><span class="badge ${plant.active?'approved':'archived'}">${plant.active?'Aktywna':'Nieaktywna'}</span></td><td><form method="post" action="/settings/finishing-plants/${plant.id}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${plant.active?'Dezaktywuj':'Aktywuj'}</button></form></td></tr>`).join('');
+  const plants=ctx.db.prepare('SELECT id,name,active FROM finishing_plants ORDER BY active DESC,name COLLATE NOCASE').all().map(plant=>({...plant,inUse:finishingPlantInUse(ctx.db,plant.id)}));
+  const rows=plants.map(plant=>{
+    const plantActions=`<form method="post" action="/settings/finishing-plants/${plant.id}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${plant.active?'Dezaktywuj':'Aktywuj'}</button></form>${plant.inUse?'<span class="muted small">Powiązana z historią</span>':`<a class="button danger" href="/settings/finishing-plants/${plant.id}/delete">Usuń</a>`}`;
+    return `<tr><td><form method="post" action="/settings/finishing-plants/${plant.id}/edit" class="library-edit" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<input name="name" data-autosave-value value="${V.esc(plant.name)}" maxlength="100" required aria-label="Nazwa wykończalni"><span data-autosave-status class="autosave-status" aria-live="polite"></span></form></td><td><span class="badge ${plant.active?'approved':'archived'}">${plant.active?'Aktywna':'Nieaktywna'}</span></td><td class="actions">${plantActions}</td></tr>`;
+  }).join('');
   const workers=ctx.db.prepare("SELECT employee_uid,name,active FROM knitting_workers WHERE name_key NOT LIKE 'archived:%' ORDER BY active DESC,name COLLATE NOCASE").all();
   const workerRows=workers.map(worker=>`<tr><td><form method="post" action="/settings/libraries/workers/${encodeURIComponent(worker.employee_uid)}/edit" class="library-edit" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<input name="name" data-autosave-value value="${V.esc(worker.name)}" maxlength="100" required aria-label="Imię i nazwisko"><span data-autosave-status class="autosave-status" aria-live="polite"></span></form></td><td><span class="badge ${worker.active?'approved':'archived'}">${worker.active?'Aktywny':'Nieaktywny'}</span></td><td><form method="post" action="/settings/libraries/workers/${encodeURIComponent(worker.employee_uid)}/toggle">${hidden('csrf',ctx.req.session.csrf)}<button>${worker.active?'Dezaktywuj':'Aktywuj'}</button></form></td></tr>`).join('');
   const finishTypes=ctx.db.prepare('SELECT id,name,active FROM finishing_types ORDER BY active DESC,name COLLATE NOCASE').all();
@@ -614,27 +631,33 @@ function shipmentSelectionPage(ctx, shipment) {
   const q = String(ctx.url.searchParams.get('q') || '').trim();
   const articles = articleBalances(ctx.db,q).filter(a=>a.stock_pieces>0);
   const currentItems = shipmentArticles(ctx.db,shipment.id);
-  if(ctx.url.searchParams.get('partial')==='search') return shipmentArticleSearchResults(articles,shipment.id,0,Number(ctx.url.searchParams.get('article_id')||0));
-  const articleId = Number(ctx.url.searchParams.get('article_id') || 0);
+  const specificationId=Number(ctx.url.searchParams.get('specification_id')||0);
+  const editingSpecification=specificationId?currentItems.find(item=>item.id===specificationId):null;
+  if(specificationId&&!editingSpecification) throw Object.assign(new Error('Nie znaleziono specyfikacji w tej wysyłce.'),{status:404});
+  if(ctx.url.searchParams.get('partial')==='search') return shipmentArticleSearchResults(articles,shipment.id,specificationId,Number(ctx.url.searchParams.get('article_id')||0));
+  const articleId = Number(ctx.url.searchParams.get('article_id') || editingSpecification?.article_id || 0);
   const selectedArticle = articles.find(a=>a.id===articleId);
-  const articleForm = `<form method="get" action="/shipments/${shipment.id}/select" class="shipment-select-article" data-shipment-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Wpisz symbol artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="shipment-search-results"></label><input type="hidden" name="article_id" value="${selectedArticle?selectedArticle.id:''}"><div id="shipment-search-results" class="warehouse-search-results-wrap" data-shipment-search-results>${q?shipmentArticleSearchResults(articles,shipment.id,0,selectedArticle?.id||0):''}</div></form>`;
+  const articleForm = `<form method="get" action="/shipments/${shipment.id}/select" class="shipment-select-article" data-shipment-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(editingSpecification?.symbol||q)}" placeholder="Wpisz symbol artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="shipment-search-results"${editingSpecification?' readonly':''}></label><input type="hidden" name="article_id" value="${selectedArticle?selectedArticle.id:''}">${editingSpecification?hidden('specification_id',editingSpecification.id):''}<div id="shipment-search-results" class="warehouse-search-results-wrap" data-shipment-search-results>${q&&!editingSpecification?shipmentArticleSearchResults(articles,shipment.id,0,selectedArticle?.id||0):''}</div></form>`;
   const selectionToolbar = `<div class="shipment-selection-toolbar">${articleForm}</div><p class="muted small shipment-select-hint">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia.</p>`;
   let availableRows = '<tr><td colspan="9">Wybierz artykuł, aby zobaczyć dostępne belki.</td></tr>';
+  const selectedBales=editingSpecification?shipmentBales(ctx.db,editingSpecification.id):[];
+  const selectedBaleIds=new Set(selectedBales.map(b=>b.local_id));
   if(selectedArticle) {
     const available = ctx.db.prepare(`SELECT b.* FROM production_bales b LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
       WHERE b.article_id=? AND coalesce(f.status,'available')='available'
-      AND NOT EXISTS (SELECT 1 FROM shipment_bales sb WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL)
-      ORDER BY b.production_date,b.local_created_at,b.uploaded_at,b.bale_number COLLATE NOCASE`).all(selectedArticle.id);
+      AND (NOT EXISTS (SELECT 1 FROM shipment_bales sb WHERE sb.bale_local_id=b.local_id AND sb.removed_at IS NULL)
+        OR EXISTS (SELECT 1 FROM shipment_bales sb WHERE sb.bale_local_id=b.local_id AND sb.shipment_article_id=? AND sb.removed_at IS NULL))
+      ORDER BY b.production_date,b.local_created_at,b.uploaded_at,b.bale_number COLLATE NOCASE`).all(selectedArticle.id,editingSpecification?.id||0);
     availableRows = available.map((b,i)=>{
       const meters=Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2});
       const lot=b.lot||'—',productionDate=date(b.production_date),weight=money(b.weight_kg);
-      return `<tr><td><input type="checkbox" value="${V.esc(b.local_id)}" data-range-select data-bale-number="${V.esc(b.bale_number)}" data-detail-url="/warehouse/bales/${encodeURIComponent(b.local_id)}" data-weight="${V.esc(weight)}" data-meters="${V.esc(meters)}" data-errors="${b.errors}" data-stops="${b.stops}" data-lot="${V.esc(lot)}" data-date="${V.esc(productionDate)}" aria-label="Belka ${V.esc(b.bale_number)}"></td><td>${i+1}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}" target="_blank" rel="noopener">${V.esc(b.bale_number)}</a></td><td>${weight}</td><td>${meters}</td><td>${b.errors}</td><td>${b.stops}</td><td>${V.esc(lot)}</td><td>${productionDate}</td></tr>`;
+      return `<tr><td><input type="checkbox" value="${V.esc(b.local_id)}" data-range-select${selectedBaleIds.has(b.local_id)?' checked':''} data-bale-number="${V.esc(b.bale_number)}" data-detail-url="/warehouse/bales/${encodeURIComponent(b.local_id)}" data-weight="${V.esc(weight)}" data-meters="${V.esc(meters)}" data-errors="${b.errors}" data-stops="${b.stops}" data-lot="${V.esc(lot)}" data-date="${V.esc(productionDate)}" aria-label="Belka ${V.esc(b.bale_number)}"></td><td>${i+1}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}" target="_blank" rel="noopener">${V.esc(b.bale_number)}</a></td><td>${weight}</td><td>${meters}</td><td>${b.errors}</td><td>${b.stops}</td><td>${V.esc(lot)}</td><td>${productionDate}</td></tr>`;
     }).join('')||'<tr><td colspan="9">Brak dostępnych belek.</td></tr>';
   }
-  const selectedBaleRows='<tr><td colspan="8">Zaznacz belki z tabeli po lewej.</td></tr>';
-  const picker=selectedArticle?`<form id="shipment-picker-form" method="post" action="/shipments/${shipment.id}/add" data-range-selection class="shipment-picker shipment-available-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('article_id',selectedArticle.id)}<input type="hidden" name="bale_ids" value="" data-range-values><section><h2>Dostępne belki · ${V.esc(selectedArticle.symbol)}</h2><p class="muted small shipment-picker-hint">Zaznacz belki do nowej specyfikacji. Shift wybiera zakres. Kliknij numer belki, aby otworzyć szczegóły.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th><input type="checkbox" data-range-all aria-label="Zaznacz wszystkie dostępne belki"></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><div class="shipment-picked-heading"><h2>Dodane belki · <span data-range-selected-count>0</span></h2><button type="submit" class="primary shipment-create-spec-button">Utwórz specyfikację</button></div><p class="muted small shipment-picker-hint">Belki wybrane do tej specyfikacji.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody data-range-picked-rows>${selectedBaleRows}</tbody></table></div></form>`:`<div class="shipment-picker"><section><h2>Dostępne belki</h2><p class="muted small shipment-picker-hint">Wybierz artykuł, aby zobaczyć stan magazynu.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><h2>Dodane belki · 0</h2><p class="muted small shipment-picker-hint">Belki wybrane do tej specyfikacji.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="8">Wybierz artykuł, a potem belki z tabeli po lewej.</td></tr></tbody></table></div></section></div>`;
+  const selectedBaleRows=selectedBales.map((b,index)=>`<tr><td>${index+1}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}" target="_blank" rel="noopener">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${b.errors}</td><td>${b.stops}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td></tr>`).join('')||'<tr><td colspan="8">Zaznacz belki z tabeli po lewej.</td></tr>';
+  const picker=selectedArticle?`<form id="shipment-picker-form" method="post" action="${editingSpecification?`/shipments/${shipment.id}/specifications/${editingSpecification.id}/edit`:`/shipments/${shipment.id}/add`}" data-range-selection${editingSpecification?' data-allow-empty-selection':''} class="shipment-picker shipment-available-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('article_id',selectedArticle.id)}<input type="hidden" name="bale_ids" value="" data-range-values><section><h2>${editingSpecification?'Belki artykułu':'Dostępne belki'} · ${V.esc(selectedArticle.symbol)}</h2><p class="muted small shipment-picker-hint">${editingSpecification?'Zaznaczone belki są już w tej specyfikacji. Zmień wybór i zapisz.':'Zaznacz belki do nowej specyfikacji.'} Shift wybiera zakres. Kliknij numer belki, aby otworzyć szczegóły.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th><input type="checkbox" data-range-all aria-label="Zaznacz wszystkie dostępne belki"></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><div class="shipment-picked-heading"><h2>Belki w specyfikacji · <span data-range-selected-count>${selectedBales.length}</span></h2><button type="submit" class="primary shipment-create-spec-button">${editingSpecification?'Zapisz zmiany':'Utwórz specyfikację'}</button></div><p class="muted small shipment-picker-hint">Belki wybrane do tej specyfikacji.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody data-range-picked-rows>${selectedBaleRows}</tbody></table></div></form>`:`<div class="shipment-picker"><section><h2>Dostępne belki</h2><p class="muted small shipment-picker-hint">Wybierz artykuł, aby zobaczyć stan magazynu.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th></th><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody>${availableRows}</tbody></table></div></section><section><h2>Dodane belki · 0</h2><p class="muted small shipment-picker-hint">Belki wybrane do tej specyfikacji.</p><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Nr szt.</th><th>kg</th><th>metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Data produkcji</th></tr></thead><tbody><tr><td colspan="8">Wybierz artykuł, a potem belki z tabeli po lewej.</td></tr></tbody></table></div></section></div>`;
   const totals = currentItems.reduce((s,x)=>({pieces:s.pieces+x.bale_count,weight:s.weight+x.weight_kg}),{pieces:0,weight:0});
-  const body = `<a class="breadcrumb" href="/shipments/${shipment.id}">← Wysyłka ${shipmentNo(shipment)}</a><div class="pagehead"><div><span class="eyebrow">WYBÓR BELEK</span><h1>Dodaj specyfikację do wysyłki ${shipmentNo(shipment)}</h1><p class="muted">Jeden wybór artykułu i belek tworzy jedną nową specyfikację. Ten sam artykuł może mieć kilka specyfikacji.</p></div><div class="shipment-totals"><strong>${totals.pieces} szt</strong><strong>${money(totals.weight)} kg</strong></div></div>${selectionToolbar}${picker}`;
+  const body = `<a class="breadcrumb" href="/shipments/${shipment.id}${editingSpecification?`?open_specification=${editingSpecification.id}#specification-${editingSpecification.id}`:''}">← Wysyłka ${shipmentNo(shipment)}</a><div class="pagehead"><div><span class="eyebrow">WYBÓR BELEK</span><h1>${editingSpecification?`Edytuj specyfikację ${articleNo(shipment,editingSpecification)}`:`Dodaj specyfikację do wysyłki ${shipmentNo(shipment)}`}</h1><p class="muted">${editingSpecification?`Zmień wybór belek w specyfikacji ${V.esc(editingSpecification.symbol)}.`:`Jeden wybór artykułu i belek tworzy jedną nową specyfikację. Ten sam artykuł może mieć kilka specyfikacji.`}</p></div><div class="shipment-totals"><strong>${totals.pieces} szt</strong><strong>${money(totals.weight)} kg</strong></div></div>${selectionToolbar}${picker}`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Wybór belek · ${shipmentNo(shipment)} · Marand`,body});
 }
 
@@ -783,6 +806,24 @@ function handle(ctx) {
     if(req.headers['x-requested-with']==='fetch') return send(req,res,200,JSON.stringify({ok:true}),'application/json; charset=utf-8');
     return redirect(req,res,'/settings/libraries','Zapisano nazwę wykończalni.');
   }
+  const plantDelete=p.match(/^\/settings\/finishing-plants\/(\d+)\/delete$/);
+  if(plantDelete){
+    role(req.user,...managerRoles);
+    const id=Number(plantDelete[1]),plant=db.prepare('SELECT id,name FROM finishing_plants WHERE id=?').get(id);
+    if(!plant) throw Object.assign(new Error('Nie znaleziono wykończalni.'),{status:404});
+    if(finishingPlantInUse(db,id)) throw Object.assign(new Error('Nie można usunąć wykończalni powiązanej ze specyfikacjami, recepturami lub zleceniami. Możesz ją dezaktywować.'),{status:409});
+    if(req.method==='GET') return send(req,res,200,finishingPlantDeletePage(ctx,plant));
+    if(req.method==='POST'){
+      if(ctx.form.confirm_delete!=='1') throw Object.assign(new Error('Potwierdź usunięcie wykończalni.'),{status:400});
+      transaction(()=>{
+        if(finishingPlantInUse(db,id)) throw Object.assign(new Error('Wykończalnia została w międzyczasie użyta i nie może być usunięta.'),{status:409});
+        const result=db.prepare('DELETE FROM finishing_plants WHERE id=?').run(id);
+        if(!result.changes) throw Object.assign(new Error('Nie znaleziono wykończalni.'),{status:404});
+        ctx.audit(req.user,'Usunięto wykończalnię z biblioteki',null,JSON.stringify({id,name:plant.name}),null);
+      });
+      return redirect(req,res,'/settings/libraries','Usunięto wykończalnię.');
+    }
+  }
   const plantToggle=p.match(/^\/settings\/finishing-plants\/(\d+)\/toggle$/);
   if(plantToggle&&req.method==='POST'){
     role(req.user,...managerRoles);
@@ -909,7 +950,7 @@ function handle(ctx) {
     ctx.audit(req.user,'Utworzono roboczą wysyłkę',null,JSON.stringify({shipmentId:id,year}),null);
     return redirect(req,res,`/shipments/${id}`,'Utworzono nową wysyłkę.');
   }
-  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|report|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/(delete)))?$/);
+  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|report|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/(delete|edit)))?$/);
   if(pathMatch){
     const id=Number(pathMatch[1]),action=pathMatch[2]||'',itemId=Number(pathMatch[3]||0),correctionId=Number(pathMatch[4]||0),specificationId=Number(pathMatch[5]||0),specificationAction=pathMatch[6]||'',shipment=shipmentRecord(db,id);
     if(!shipment) throw Object.assign(new Error('Nie znaleziono wysyłki.'),{status:404});
@@ -923,6 +964,32 @@ function handle(ctx) {
       return send(req,res,200,wzPage(ctx,shipment,item),'text/html; charset=utf-8');
     }
     if(action.startsWith('correction/')) return send(req,res,200,correctionPage(ctx,shipment,correctionId),'text/html; charset=utf-8');
+    if(specificationAction==='edit'&&req.method==='POST'){
+      role(req.user,...editableRoles);
+      if(shipment.status!=='draft') throw Object.assign(new Error('Zamkniętej wysyłki nie można zmieniać.'),{status:409});
+      const item=shipmentArticles(db,id).find(row=>row.id===specificationId);
+      if(!item) throw Object.assign(new Error('Nie znaleziono specyfikacji w tej wysyłce.'),{status:404});
+      if(Number(ctx.form.specification_id||specificationId)!==specificationId||Number(ctx.form.article_id)!==item.article_id) throw Object.assign(new Error('Dane edytowanej specyfikacji są nieprawidłowe.'),{status:400});
+      const selectedIds=[...new Set(String(ctx.form.bale_ids||'').split(',').filter(Boolean))];
+      const currentIds=new Set(shipmentBales(db,specificationId).map(bale=>bale.local_id));
+      const selectedSet=new Set(selectedIds),removedIds=[...currentIds].filter(baleId=>!selectedSet.has(baleId)),addedIds=selectedIds.filter(baleId=>!currentIds.has(baleId));
+      for(const baleId of addedIds){
+        const bale=baleAvailableForNewShipment(db,baleId);
+        if(!bale) throw Object.assign(new Error(`Belka ${baleId} nie jest już dostępna do wysyłki. Odśwież wybór.`),{status:409});
+        if(Number(bale.article_id)!==item.article_id) throw Object.assign(new Error('Do specyfikacji można dodawać tylko belki z tego samego artykułu.'),{status:400});
+      }
+      transaction(()=>{
+        const remove=db.prepare("UPDATE shipment_bales SET removed_at=?,removed_by=?,removal_reason='Usunięto z roboczej wysyłki' WHERE shipment_article_id=? AND bale_local_id=? AND removed_at IS NULL");
+        for(const baleId of removedIds){
+          const result=remove.run(ctx.now(),req.user.id,specificationId,baleId);
+          if(!result.changes) throw Object.assign(new Error('Lista belek w specyfikacji zmieniła się. Odśwież wybór i spróbuj ponownie.'),{status:409});
+        }
+        const add=db.prepare('INSERT INTO shipment_bales(shipment_article_id,bale_local_id,added_at) VALUES(?,?,?)');
+        for(const baleId of addedIds) add.run(specificationId,baleId,ctx.now());
+      });
+      ctx.audit(req.user,'Zmieniono belki w roboczej specyfikacji wysyłki',null,JSON.stringify({shipmentId:id,specificationId,articleId:item.article_id,addedBaleIds:addedIds,removedBaleIds:removedIds}),null);
+      return redirect(req,res,`/shipments/${id}?open_specification=${specificationId}#specification-${specificationId}`,'Zapisano zmiany w specyfikacji.');
+    }
     if(specificationAction==='delete'){
       role(req.user,...managerRoles);
       if(shipment.status!=='draft') throw Object.assign(new Error('Specyfikację można usunąć tylko z roboczej wysyłki.'),{status:409});
