@@ -430,7 +430,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto auto;gap:18px}
 .finishing-recipe-row-heading{display:grid;grid-template-columns:minmax(180px,.65fr) minmax(0,1.35fr);align-items:start;gap:4px 16px}
 .finishing-recipe-preview{display:block;min-width:0;color:#7b838b;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere}
-.finishing-recipe-row-symbols{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;text-align:right}
+.finishing-recipe-row-symbols{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:6px 14px;white-space:nowrap;text-align:right}
 .finishing-recipe-preview{min-width:0;color:#7b838b;font-size:11px}
 .finishing-recipe-preview>summary{cursor:pointer;list-style:none;color:#7b838b}
 .finishing-recipe-preview>summary::-webkit-details-marker{display:none}
@@ -438,4 +438,4 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-preview[open]>summary::before{content:'−'}
 .finishing-recipe-preview>pre{margin:6px 0 0;padding:8px 10px;border-radius:5px;background:#f6f7f8;color:#68727c;font:inherit;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:950px){.finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto auto;gap:10px}.finishing-recipe-row-heading{grid-column:1;grid-row:1}.finishing-recipe-row-symbols{grid-column:2;grid-row:1;justify-content:center}.finishing-recipe-row-actions{grid-column:3;grid-row:1}}
-@media(max-width:650px){.finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.finishing-recipe-row-heading{grid-column:1/-1;grid-row:1;grid-template-columns:1fr}.finishing-recipe-row-symbols{grid-column:1;grid-row:2;align-items:flex-end;text-align:right}.finishing-recipe-row-actions{grid-column:2;grid-row:2}}
+@media(max-width:650px){.finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.finishing-recipe-row-heading{grid-column:1/-1;grid-row:1;grid-template-columns:1fr}.finishing-recipe-row-symbols{grid-column:1;grid-row:2;justify-content:flex-start;gap:4px 8px;font-size:10px}.finishing-recipe-row-symbols>strong:first-child{font-size:11px}.finishing-recipe-row-actions{grid-column:2;grid-row:2}}
