@@ -11,6 +11,23 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  const sync=()=>{const raw=sale.checked;plant.required=!raw;recipe.required=!raw;};
  recipe.addEventListener('change',applyRecipe);sale.addEventListener('change',sync);sync();
 });
+document.querySelectorAll('[data-finishing-recipe-copy-button]').forEach(button=>{
+ const form=button.form,search=form.querySelector('[data-finishing-recipe-copy-search]'),status=form.querySelector('[data-finishing-recipe-copy-status]');
+ let sources=[];try{sources=JSON.parse(form.querySelector('[data-finishing-recipe-copy-data]')?.textContent||'[]');}catch{}
+ const selected=()=>sources.find(source=>source.label===search.value);
+ const update=()=>{const source=selected();button.disabled=!source;if(source)status.textContent=`Wybrano: ${source.label}`;else if(search.value)status.textContent='Wybierz recepturę z listy podpowiedzi.';else status.textContent=sources.length?'Wybierz recepturę z listy podpowiedzi.':'Brak receptur do skopiowania.';};
+ search.addEventListener('input',update);search.addEventListener('change',update);
+ button.addEventListener('click',()=>{
+  const source=selected();if(!source)return;
+  for(const [name,value] of Object.entries(source.values)){
+   const checkbox=form.querySelector(`input[type="checkbox"][name="${name}"]`);
+   if(checkbox){checkbox.checked=Boolean(value);checkbox.dispatchEvent(new Event('change',{bubbles:true}));continue;}
+   const field=form.elements.namedItem(name);if(field&&'value'in field){field.value=value??'';field.dispatchEvent(new Event('input',{bubbles:true}));field.dispatchEvent(new Event('change',{bubbles:true}));}
+  }
+  status.textContent=`Skopiowano parametry receptury: ${source.label}`;
+ });
+ update();
+});
 document.querySelectorAll('[data-finishing-batch-form]').forEach(form=>{
  const meters=form.elements.meters_list,weights=form.elements.weights_list,preview=form.querySelector('[data-finishing-bale-preview]');
  const parse=input=>input.value.split(/[+\n\r;]+/).map(part=>part.trim()).filter(Boolean);

@@ -334,6 +334,14 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-primary{display:grid;gap:8px;padding:16px 18px;margin-bottom:18px;border:1px solid #ead9ae;border-radius:8px;background:#fff9ea}
 .finishing-recipe-primary label{font-size:18px;font-weight:800}
 .finishing-recipe-primary input{min-height:54px;font-size:23px;font-weight:750}
+.finishing-recipe-top-row{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);align-items:end;gap:18px;margin-bottom:18px}
+.finishing-recipe-top-row.is-editing{grid-template-columns:1fr}
+.finishing-recipe-top-row .finishing-recipe-primary{margin:0}
+.finishing-recipe-copy{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:end;gap:4px 12px;min-width:0}
+.finishing-recipe-copy>label{grid-column:1;margin:0}
+.finishing-recipe-copy>button{grid-column:2;grid-row:1;align-self:end;white-space:nowrap}
+.finishing-recipe-copy>small{grid-column:1/-1;min-height:18px}
+.finishing-recipe-copy>button:disabled{opacity:.55;cursor:not-allowed}
 .finishing-recipe-identity{gap:18px}
 .finishing-recipe-identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px}
 .finishing-recipe-identity-grid label,.finishing-recipe-section>label{margin:0}
@@ -398,6 +406,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe summary{display:flex;justify-content:space-between;gap:12px;padding:12px;cursor:pointer}
 .finishing-recipe summary span{color:var(--muted);font-size:12px}.finishing-recipe-detail{padding:0 12px 12px}
 .finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
+@media(max-width:1000px){.finishing-recipe-top-row{grid-template-columns:1fr}.finishing-recipe-copy{grid-template-columns:minmax(220px,1fr) auto}}
 @media(max-width:800px){.finishing-recipe-identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid>.finishing-check-option{grid-column:span 1}.finishing-process-described{grid-column:span 2;grid-template-columns:minmax(140px,.7fr) minmax(0,1.3fr)}}
 @media(max-width:1400px){.finishing-recipe-technical-row{grid-template-columns:1fr}}
 @media(max-width:800px){.finishing-measurement-row{grid-template-columns:130px 170px minmax(0,1fr);gap:0 6px}}
