@@ -88,6 +88,20 @@ CREATE INDEX IF NOT EXISTS finishing_orders_status ON finishing_orders(status,cr
 CREATE INDEX IF NOT EXISTS finishing_orders_source ON finishing_orders(shipment_article_id,id);
 CREATE INDEX IF NOT EXISTS finishing_orders_symbol ON finishing_orders(raw_symbol);
 
+CREATE TABLE IF NOT EXISTS finishing_order_bales(
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES finishing_orders(id) ON DELETE CASCADE,
+  bale_local_id TEXT NOT NULL REFERENCES production_bales(local_id),
+  bale_number TEXT NOT NULL,
+  machine TEXT NOT NULL,
+  production_date TEXT NOT NULL,
+  weight_kg REAL NOT NULL CHECK(weight_kg>0),
+  meters REAL NOT NULL CHECK(meters>0),
+  lot TEXT NOT NULL DEFAULT '',
+  UNIQUE(order_id,bale_local_id)
+);
+CREATE INDEX IF NOT EXISTS finishing_order_bales_order ON finishing_order_bales(order_id,id);
+
 CREATE TABLE IF NOT EXISTS finishing_batches(
   id INTEGER PRIMARY KEY,
   order_id INTEGER NOT NULL REFERENCES finishing_orders(id) ON DELETE CASCADE,
