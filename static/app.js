@@ -1,12 +1,14 @@
 'use strict';
 let dirty=false,submitting=false;
+const correctionParentUrl=document.body?.dataset.correctionParentUrl;
+if(correctionParentUrl&&window.opener&&!window.opener.closed){try{window.opener.location.replace(correctionParentUrl);}catch{}}
 document.querySelectorAll('[data-print-page]').forEach(button=>button.addEventListener('click',()=>{
  const timestamp=document.querySelector('[data-print-timestamp]');
  if(timestamp)timestamp.textContent=new Intl.DateTimeFormat('pl-PL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date());
  window.print();
 }));
 document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
- const sale=form.querySelector('[data-finishing-raw-sale]'),plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]'),recipeSearch=form.querySelector('[data-finishing-recipe-search]'),recipeResults=form.querySelector('[data-finishing-recipe-results]'),recipeSelected=form.querySelector('[data-finishing-recipe-selected]'),source=form.querySelector('[data-finishing-source]'),sourceDetails=form.querySelector('[data-finishing-source-details]');
+ const orderTypeInputs=[...form.querySelectorAll('[name="order_type"]')],plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]'),recipeSearch=form.querySelector('[data-finishing-recipe-search]'),recipeResults=form.querySelector('[data-finishing-recipe-results]'),recipeSelected=form.querySelector('[data-finishing-recipe-selected]'),selectedRecipeDetails=form.querySelector('[data-finishing-selected-recipe]'),selectedRecipeText=form.querySelector('[data-finishing-selected-recipe-text]'),source=form.querySelector('[data-finishing-source]'),sourceDetails=form.querySelector('[data-finishing-source-details]');
  let recipeTimer=null,recipeController=null,sourceController=null,activeRecipeIndex=-1;
  const recipeOptions=()=>[...recipeResults.querySelectorAll('[data-finishing-recipe-option]')];
  const setActiveRecipe=index=>{
@@ -17,13 +19,14 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
   else recipeSearch.removeAttribute('aria-activedescendant');
  };
  const closeRecipeResults=()=>{recipeResults.replaceChildren();recipeSearch.setAttribute('aria-expanded','false');recipeSearch.removeAttribute('aria-activedescendant');activeRecipeIndex=-1;};
- const clearRecipe=()=>{recipe.value='';delete recipe.dataset.selectedLabel;delete recipe.dataset.plant;recipeSelected.textContent='';};
- const sync=()=>{const raw=sale.checked;plant.required=!raw;recipeSearch.required=!raw;};
+ const clearRecipe=()=>{recipe.value='';delete recipe.dataset.selectedLabel;delete recipe.dataset.plant;recipeSelected.textContent='';selectedRecipeDetails.hidden=true;selectedRecipeDetails.open=false;selectedRecipeText.textContent='';form.elements.trade_symbol.value='';};
+ const sync=()=>{const raw=orderTypeInputs.find(input=>input.checked)?.value==='raw_sale';plant.required=!raw;recipeSearch.required=!raw;};
  const applyRecipe=button=>{
   const label=button.dataset.recipeLabel||button.querySelector('strong')?.textContent||'';
   recipe.value=button.dataset.recipeId||'';recipe.dataset.selectedLabel=label;recipe.dataset.plant=button.dataset.plant||'';recipeSearch.value=label;recipeSearch.setCustomValidity('');
   recipeSelected.textContent=`Wybrano recepturę: ${label}`;
-  for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage']]){const input=form.elements[field],value=button.dataset[key];if(input&&value)input.value=value;}
+  selectedRecipeText.textContent=button.dataset.recipeText||'Brak tekstowego opisu receptury.';selectedRecipeDetails.hidden=false;selectedRecipeDetails.open=false;
+  for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage']]){const input=form.elements[field],value=button.dataset[key];if(input)input.value=value||'';}
   if(form.elements.trade_symbol)form.elements.trade_symbol.value=button.dataset.tradeSymbol||'';
   if(button.dataset.plant)plant.value=button.dataset.plant;
   closeRecipeResults();
@@ -55,8 +58,8 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  });
  recipeResults.addEventListener('click',event=>{const option=event.target.closest('[data-finishing-recipe-option]');if(option)applyRecipe(option);});
  plant.addEventListener('change',()=>{if(recipe.value&&recipe.dataset.plant&&recipe.dataset.plant!==plant.value){clearRecipe();recipeSearch.value='';}clearTimeout(recipeTimer);recipeTimer=setTimeout(searchRecipes,120);});
- source.addEventListener('change',loadSource);sale.addEventListener('change',sync);
- form.addEventListener('submit',event=>{if(!sale.checked&&!recipe.value){event.preventDefault();recipeSearch.setCustomValidity('Wybierz recepturę z wyników wyszukiwania.');recipeSearch.reportValidity();}else recipeSearch.setCustomValidity('');});
+ source.addEventListener('change',loadSource);orderTypeInputs.forEach(input=>input.addEventListener('change',sync));
+ form.addEventListener('submit',event=>{const raw=orderTypeInputs.find(input=>input.checked)?.value==='raw_sale';if(!raw&&!recipe.value){event.preventDefault();recipeSearch.setCustomValidity('Wybierz recepturę z wyników wyszukiwania.');recipeSearch.reportValidity();}else recipeSearch.setCustomValidity('');});
  document.addEventListener('click',event=>{if(!form.contains(event.target))closeRecipeResults();});
  sync();
 });

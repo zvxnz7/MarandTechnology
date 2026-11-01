@@ -65,6 +65,7 @@ CREATE INDEX IF NOT EXISTS finishing_recipes_symbol ON finishing_recipes(raw_sym
 CREATE TABLE IF NOT EXISTS finishing_orders(
   id INTEGER PRIMARY KEY,
   shipment_article_id INTEGER REFERENCES shipment_articles(id),
+  order_type TEXT NOT NULL DEFAULT 'standard' CHECK(order_type IN ('standard','raw_sale','trial')),
   finishing_plant_id INTEGER REFERENCES finishing_plants(id),
   source_shipment_no TEXT NOT NULL DEFAULT '',
   source_shipment_date TEXT NOT NULL DEFAULT '',

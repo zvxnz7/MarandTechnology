@@ -274,24 +274,37 @@ function migrateV12(db) {
     db.exec('PRAGMA user_version=12; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
 }
+function migrateV13(db) {
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  if(version>=13)return;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const columns=new Set(db.prepare("PRAGMA table_info('finishing_orders')").all().map(column=>column.name));
+    if(!columns.has('order_type'))db.exec("ALTER TABLE finishing_orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'standard' CHECK(order_type IN ('standard','raw_sale','trial'))");
+    db.exec("UPDATE finishing_orders SET order_type='raw_sale' WHERE status='raw_sale' AND order_type='standard'");
+    db.exec('PRAGMA user_version=13; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>12)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===12) { db.exec(schema); return; }
-  if(version===11) { migrateV12(db); return; }
-  if(version===10) { migrateV11(db); migrateV12(db); return; }
-  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); return; }
-  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
-  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
-  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
-  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); return; }
+  if(version>13)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===13) { db.exec(schema); return; }
+  if(version===12) { migrateV13(db); return; }
+  if(version===11) { migrateV12(db); migrateV13(db); return; }
+  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -328,5 +341,6 @@ function migrate(db, dbPath) {
   migrateV10(db);
   migrateV11(db);
   migrateV12(db);
+  migrateV13(db);
 }
 module.exports = { migrate };
