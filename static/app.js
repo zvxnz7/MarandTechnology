@@ -135,9 +135,14 @@ document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
  const updatePreview=()=>{
   const removed=[...form.querySelectorAll('[data-correction-remove]')].filter(box=>box.checked);
   form.querySelectorAll('[data-correction-current-row]').forEach(row=>{const selected=Boolean(row.querySelector('[data-correction-remove]')?.checked),status=row.querySelector('[data-correction-disposition]');row.classList.toggle('shipment-correction-removed',selected);if(status){status.hidden=!selected;status.disabled=!selected;}});
-  form.querySelectorAll('.shipment-correction-preview-added').forEach(row=>row.remove());
+  form.querySelectorAll('.shipment-correction-preview-added,.shipment-correction-preview-returned').forEach(row=>row.remove());
   const added=[...form.querySelectorAll('[data-correction-add]:checked')];
   if(preview){
+   removed.filter(box=>box.closest('tr')?.querySelector('[data-correction-disposition]')?.value==='returned').forEach(box=>{
+    const sourceRow=box.closest('tr'),row=document.createElement('tr');row.className='shipment-correction-preview-returned';
+    const values=['Potencjalnie wraca do stanu','',sourceRow?.cells[2]?.textContent?.trim()||'',sourceRow?.cells[3]?.textContent?.trim()||'',sourceRow?.cells[4]?.textContent?.trim()||'',sourceRow?.cells[5]?.textContent?.trim()||'—','Potencjalny powrót do bieżącego stanu'];
+    values.forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});preview.append(row);
+   });
    added.forEach((box,index)=>{
     const row=document.createElement('tr');row.className='shipment-correction-preview-added';
     const values=['Dodana',String(Math.max(0,preview.querySelectorAll('[data-correction-current-row]').length-removed.length)+index+1),box.dataset.baleNumber||'',box.dataset.weight||'',box.dataset.meters||'',box.dataset.lot||'—','Wybrana do dodania do specyfikacji wysyłkowej'];
@@ -146,7 +151,7 @@ document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
   }
   if(count)count.textContent=String(Math.max(0,(preview?.querySelectorAll('[data-correction-current-row]').length||0)-removed.length+added.length));
  };
- form.addEventListener('change',event=>{if(event.target.matches('[data-correction-remove],[data-correction-add]'))updatePreview();});
+ form.addEventListener('change',event=>{if(event.target.matches('[data-correction-remove],[data-correction-add],[data-correction-disposition]'))updatePreview();});
  form.addEventListener('submit',event=>{
   const removed=[...form.querySelectorAll('[data-correction-remove]:checked')].map(box=>({id:box.value,disposition:box.closest('tr')?.querySelector('[data-correction-disposition]')?.value||'returned'}));
   const added=[...form.querySelectorAll('[data-correction-add]:checked')].map(box=>box.value);
