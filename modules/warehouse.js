@@ -551,7 +551,8 @@ function shipmentPage(ctx, shipment) {
       const disposition=b.correction_disposition||b.batch_disposition;
       const dispositionLabels={mistaken:'Pomylona sztuka · wróciła do bieżącego stanu',shipped_out:'bez zmian'};
       const assignmentStatus=removed?(disposition?`Usunięta korektą · ${dispositionLabels[disposition]||disposition}`:'Usunięta z wysyłki'):b.correction_action==='added'?'Dodana korektą':'W specyfikacji';
-      return `<tr class="${removed?'shipment-bale-removed':''}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td></tr>`;
+      const rowClass=removed?'shipment-bale-removed':b.correction_action==='added'?'shipment-bale-added':'';
+      return `<tr class="${rowClass}"><td>${index+1}</td><td>${V.esc(b.symbol)}</td><td><a href="/warehouse/bales/${encodeURIComponent(b.local_id)}">${V.esc(b.bale_number)}</a></td><td>${money(b.weight_kg)}</td><td>${Number(b.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${V.esc(b.lot||'—')}</td><td>${date(b.production_date)}</td><td>${V.esc(assignmentStatus)}${reason?`<div class="muted small">${V.esc(reason)}</div>`:''}</td></tr>`;
     }).join('');
     const deleteSpecification=canClose?`<a class="shipment-article-delete" href="/shipments/${shipment.id}/specifications/${item.id}/delete">Usuń specyfikację</a>`:'';
     const editSpecification=canEdit?`<a href="/shipments/${shipment.id}/select?article_id=${item.article_id}&specification_id=${item.id}">Edytuj specyfikację</a>`:'';
