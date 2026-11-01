@@ -33,6 +33,7 @@ const FILES = [
   'administracja/AKTUALIZUJ.cmd', 'administracja/START_SERVER.cmd', 'administracja/STOP_SERVER.cmd', 'administracja/STATUS_SERVER.cmd',
   'administracja/SET_GITHUB_TOKEN.cmd', 'administracja/konfiguracja.przyklad.json',
   'NODE_SETUP.md', 'static/app.css', 'static/app.js', 'static/card.css', 'static/logo.jpg', 'seed/data.json',
+  'seed/finishing-recipe-corrections-v1.json',
 ];
 
 async function copyFile(relative) {

@@ -286,25 +286,77 @@ function migrateV13(db) {
     db.exec('PRAGMA user_version=13; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
 }
+function migrateV14(db) {
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  if(version>=14)return;
+  const repairPath=path.join(__dirname,'..','seed','finishing-recipe-corrections-v1.json');
+  const repair=JSON.parse(fs.readFileSync(repairPath,'utf8'));
+  if(repair.version!==1||!Array.isArray(repair.recipes)||repair.recipes.length!==repair.expected_recipes)throw new Error('Nieprawidłowy pakiet korekty receptur wykańczania.');
+  const normalize=value=>String(value??'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'').trim();
+  const key=(name,raw)=>`${normalize(name)}\u0000${normalize(raw)}`;
+  const existing=db.prepare('SELECT id,name,raw_symbol FROM finishing_recipes WHERE active=1').all();
+  const byKey=new Map();
+  for(const row of existing){const k=key(row.name,row.raw_symbol);if(!byKey.has(k))byKey.set(k,[]);byKey.get(k).push(row);}
+  const summary=recipe=>{
+    const d=recipe.recipe_details,lines=[];
+    if(d.tradeSymbol)lines.push(`Symbol handlowy: ${d.tradeSymbol}`);
+    if(d.rawMaterial)lines.push(`Surowiec: ${d.rawMaterial}`);
+    if(recipe.target_color)lines.push(`Kolor: ${recipe.target_color}`);
+    if(recipe.target_grammage!==null&&recipe.target_grammage!==undefined)lines.push(`Gramatura: ${recipe.target_grammage} g/m²${d.grammagePlus!==undefined||d.grammageMinus!==undefined?` (+${d.grammagePlus??'—'} / −${d.grammageMinus??'—'})`:''}`);
+    if(d.widthMode==='range')lines.push(`Szerokość: ${d.widthMinimum??'—'}–${d.widthMaximum??'—'} cm`);
+    else if(d.widthMode==='minimum')lines.push(`Szerokość: nie mniej niż ${d.widthMinimum??'—'} cm`);
+    else if(d.widthMode==='needles'&&recipe.target_width_cm!==null&&recipe.target_width_cm!==undefined)lines.push(`Szerokość między igłami: ${recipe.target_width_cm} cm`);
+    else if(recipe.target_width_cm!==null&&recipe.target_width_cm!==undefined)lines.push(`Szerokość: ${recipe.target_width_cm} cm`);
+    if(d.brushing==='yes')lines.push('Drapanie: tak');
+    if(d.brushingForVelcro==='yes')lines.push('Drapanie pod rzep: tak');
+    if(d.stiffeningEnabled==='yes')lines.push(`Usztywnienie: tak${d.stiffeningDescription?` — ${d.stiffeningDescription}`:''}`);
+    if(d.softeningEnabled==='yes')lines.push(`Zmiękczenie: tak${d.softeningDescription?` — ${d.softeningDescription}`:''}`);
+    if(d.trimEdges==='yes')lines.push('Obcinanie brzegów: tak');
+    if(d.bondEdges==='yes')lines.push('Podklejanie brzegów: tak');
+    if(d.trimSygnits==='yes')lines.push('Obcinanie sygnitów: tak');
+    for(const instruction of d.winding||[])if(instruction)lines.push(`Nawijanie: ${instruction}`);
+    if(d.shrinkage)lines.push(`Kurczliwości: ${d.shrinkage}`);
+    return lines.join('\n');
+  };
+  const update=db.prepare(`UPDATE finishing_recipes SET target_color=?,target_width_cm=?,target_grammage=?,target_stiffening=?,recipe_text=?,recipe_details=?,notes=?,updated_at=?,updated_by=NULL WHERE id=? AND active=1`);
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const stamp=new Date().toISOString(),unmatched=[],ambiguous=[];
+    let updated=0;
+    for(const recipe of repair.recipes){
+      const matches=byKey.get(key(recipe.name,recipe.raw_symbol))||[];
+      if(matches.length===0){unmatched.push({source_row:recipe.source_row,name:recipe.name,raw_symbol:recipe.raw_symbol});continue;}
+      if(matches.length!==1){ambiguous.push({source_row:recipe.source_row,name:recipe.name,raw_symbol:recipe.raw_symbol,ids:matches.map(row=>row.id)});continue;}
+      const stiffening=recipe.recipe_details.stiffeningEnabled==='yes'?(recipe.recipe_details.stiffeningDescription||'tak'):'';
+      update.run(recipe.target_color,recipe.target_width_cm,recipe.target_grammage,stiffening,summary(recipe),JSON.stringify(recipe.recipe_details),recipe.notes,stamp,matches[0].id);
+      updated++;
+    }
+    const result={updated,unmatched,ambiguous,expected:repair.expected_recipes};
+    db.prepare('INSERT INTO audit(at,action,detail) VALUES(?,?,?)').run(stamp,'Migracja receptur wykańczania: dane uporządkowane',JSON.stringify(result));
+    db.exec('PRAGMA user_version=14; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>13)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===13) { db.exec(schema); return; }
-  if(version===12) { migrateV13(db); return; }
-  if(version===11) { migrateV12(db); migrateV13(db); return; }
-  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); return; }
+  if(version>14)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===14) { db.exec(schema); return; }
+  if(version===13) { migrateV14(db); return; }
+  if(version===12) { migrateV13(db); migrateV14(db); return; }
+  if(version===11) { migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -342,5 +394,6 @@ function migrate(db, dbPath) {
   migrateV11(db);
   migrateV12(db);
   migrateV13(db);
+  migrateV14(db);
 }
 module.exports = { migrate };
