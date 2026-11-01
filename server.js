@@ -402,14 +402,38 @@ function isNewer(a, b) {
 }
 async function githubLatest(repo) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || '')) throw new Error('Ustaw MARAND_GITHUB_REPO w formacie właściciel/repozytorium.');
+  const cachePath=path.join(DATA,`github-release-${crypto.createHash('sha256').update(repo).digest('hex').slice(0,16)}.json`);
+  const cache=readJsonIfExists(cachePath);
+  const cachedRelease=cache?.repo===repo&&cache.release&&typeof cache.release.tag_name==='string'&&Array.isArray(cache.release.assets)?cache.release:null;
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Marand-Technologia-Updater' };
   if (process.env.MARAND_GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.MARAND_GITHUB_TOKEN}`;
-  const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers, signal: AbortSignal.timeout(15000) });
+  if(cache?.repo===repo&&cache.etag)headers['If-None-Match']=cache.etag;
+  let response;
+  try {
+    response=await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers, signal: AbortSignal.timeout(15000) });
+  } catch(error) {
+    if(cachedRelease)return {...cachedRelease,__marandStale:true,__marandWarning:'Nie udało się teraz połączyć z GitHubem. Pokazuję ostatnio zapamiętane wydanie.'};
+    throw new Error(`Nie udało się sprawdzić wydań na GitHubie: ${error.message}`);
+  }
+  if(response.status===304&&cachedRelease)return cachedRelease;
   if (!response.ok) {
     if (response.status === 404) throw new Error('Repozytorium nie ma jeszcze wydania. Po wypchnięciu zmian na main GitHub opublikuje je automatycznie; odśwież tę stronę za chwilę.');
+    const temporary=response.status===403||response.status===429||response.status>=500;
+    if(temporary&&cachedRelease){
+      const reason=response.status===403?'GitHub API zwróciło 403 (limit zapytań lub dostęp).':'GitHub chwilowo nie odświeżył informacji o wydaniu.';
+      return {...cachedRelease,__marandStale:true,__marandWarning:`${reason} Pokazuję ostatnio zapamiętane wydanie; spróbuj ponownie później.`};
+    }
+    if(response.status===403)throw new Error('GitHub API zwróciło 403. Sprawdź limit zapytań lub skonfiguruj MARAND_GITHUB_TOKEN.');
     throw new Error(`GitHub nie zwrócił wydania (${response.status}). Sprawdź repozytorium i dostęp do niego.`);
   }
-  return response.json();
+  const release=await response.json();
+  try {
+    await fsp.mkdir(DATA,{recursive:true});
+    const temporary=`${cachePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    await fsp.writeFile(temporary,JSON.stringify({repo,etag:response.headers.get('etag')||'',release,cached_at:new Date().toISOString()}),{flag:'wx',mode:0o600});
+    await fsp.rename(temporary,cachePath);
+  } catch(error) { console.warn('Nie udało się zapisać kopii informacji o wydaniu GitHub:',error.message); }
+  return release;
 }
 function readJsonIfExists(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
@@ -1243,7 +1267,7 @@ async function handle(req, res) {
       role(req.user, 'admin');
       const repo = process.env.MARAND_GITHUB_REPO || DEFAULT_GITHUB_REPO;
       let latest = null, updateError = '';
-      try { if (repo) latest = await githubLatest(repo); }
+      try { if (repo) { latest = await githubLatest(repo); updateError=latest.__marandWarning||''; } }
       catch (err) { updateError = err.message; }
       const updater = process.env.MARAND_UPDATER || '';
       const rel = updater ? path.relative(ROOT, path.resolve(updater)) : '';
