@@ -141,10 +141,11 @@ document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
   const returning=removed.filter(box=>box.closest('tr')?.querySelector('[data-correction-disposition]')?.value==='returned');
   if(stockPreview){
    if(returning.length)stockPreview.querySelector('[data-correction-stock-empty]')?.remove();
+   const firstAvailableRow=stockPreview.querySelector('[data-correction-add]')?.closest('tr')||null;
    returning.forEach(box=>{
     const sourceRow=box.closest('tr'),row=document.createElement('tr');row.className='shipment-correction-stock-return';
     const values=['↩','—',sourceRow?.cells[2]?.textContent?.trim()||'',sourceRow?.cells[3]?.textContent?.trim()||'',sourceRow?.cells[4]?.textContent?.trim()||'',sourceRow?.cells[5]?.textContent?.trim()||'—',box.dataset.productionDate||'—'];
-    values.forEach((value,index)=>{const cell=document.createElement('td');cell.textContent=value;if(index===0){cell.title='Potencjalnie wraca do stanu';cell.setAttribute('aria-label','Potencjalnie wraca do stanu');}if(index===6){const note=document.createElement('small');note.className='shipment-correction-return-note';note.textContent='Potencjalnie wraca do stanu';cell.append(note);}row.append(cell);});stockPreview.append(row);
+    values.forEach((value,index)=>{const cell=document.createElement('td');cell.textContent=value;if(index===0){cell.title='Potencjalnie wraca do stanu';cell.setAttribute('aria-label','Potencjalnie wraca do stanu');}if(index===6){const note=document.createElement('small');note.className='shipment-correction-return-note';note.textContent='Potencjalnie wraca do stanu';cell.append(note);}row.append(cell);});stockPreview.insertBefore(row,firstAvailableRow);
    });
    if(!stockPreview.querySelector('[data-correction-add]')&&!stockPreview.querySelector('.shipment-correction-stock-return')&&!stockPreview.querySelector('[data-correction-stock-empty]')){const row=document.createElement('tr');row.dataset.correctionStockEmpty='';const cell=document.createElement('td');cell.colSpan=7;cell.textContent='Brak dostępnych belek tego artykułu.';row.append(cell);stockPreview.append(row);}
   }
