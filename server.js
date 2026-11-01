@@ -181,7 +181,7 @@ function normalizedThreadCount(value) {
   return Number.isSafeInteger(product)&&product>0?String(product):null;
 }
 function migrateDraftThreadCounts() {
-  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind='spec' AND state='draft'").all();
+  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
   const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
   let changedRecords=0,changedValues=0,unresolved=0;
   transaction(()=>{
@@ -198,7 +198,7 @@ function migrateDraftThreadCounts() {
       changedRecords++;
     }
   });
-  if(changedRecords||unresolved)console.log(`Specyfikacje robocze — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
+  if(changedRecords||unresolved)console.log(`Robocze specyfikacje i warianty prób — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
 }
 function auditProjectChange(user, projectId, action, detail) {
   const records = db.prepare(`SELECT pa.article_id,
