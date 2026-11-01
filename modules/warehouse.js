@@ -516,7 +516,7 @@ function shipmentsPage(ctx) {
   const year = years.includes(requestedYear) ? requestedYear : '';
   const canPrepare = editableRoles.includes(ctx.req.user.role);
   const create = canPrepare ? `<form method="post" action="/shipments/create">${hidden('csrf',ctx.req.session.csrf)}<button class="primary">+ Przygotuj wysyłkę</button></form>` : '';
-  const correct = managerRoles.includes(ctx.req.user.role) ? `<a class="button shipment-correction-launch" href="/shipments/correct" target="_blank" rel="noopener">Koryguj wysyłkę</a>` : '';
+  const correct = managerRoles.includes(ctx.req.user.role) ? `<a class="button shipment-correction-launch" href="/shipments/correct">Koryguj wysyłkę</a>` : '';
   const searchReady = normalizeSearch(q).length >= 1;
   const searchTerms = searchReady ? q.split(/\s+/).map(normalizeSearch).filter(Boolean) : [];
   const rows = shipments.filter(s => {
