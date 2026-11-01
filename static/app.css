@@ -428,6 +428,11 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 
 /* Receptury: surowy tekst WZ w wierszu, a identyfikacja wyrównana do prawej. */
 .finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto auto;gap:18px}
+.finishing-recipe-search-field{position:relative;z-index:4}
+.finishing-recipe-search-field:focus-within{z-index:50}
+.finishing-recipe-option{align-items:flex-start}
+.finishing-recipe-option>strong{flex:1 1 auto}
+.finishing-recipe-option>span{flex:0 1 45%;white-space:normal;overflow-wrap:anywhere}
 .finishing-recipe-row-heading{display:grid;grid-template-columns:minmax(180px,.65fr) minmax(0,1.35fr);align-items:start;gap:4px 16px}
 .finishing-recipe-preview{display:block;min-width:0;color:#7b838b;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-recipe-row-symbols{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:6px 14px;white-space:nowrap;text-align:right}

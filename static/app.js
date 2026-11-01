@@ -148,7 +148,7 @@ document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
   const q=input.value.trim();controller?.abort();controller=null;
   if(!q){results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');return;}
   controller=new AbortController();
-  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'',article=form.querySelector('input[name="article_id"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}${article?`&article_id=${encodeURIComponent(article)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded',String(Boolean(options().length)));}
+  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'',article=form.querySelector('input[name="article_id"]')?.value||'',plant=form.querySelector('select[name="plant_id"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}${article?`&article_id=${encodeURIComponent(article)}`:''}${plant&&plant!=='0'?`&plant_id=${encodeURIComponent(plant)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded',String(Boolean(options().length)));}
   catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać artykułów.';input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}}
  };
  input.addEventListener('input',()=>{activeIndex=-1;controller?.abort();results.replaceChildren();input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');clearTimeout(timer);timer=setTimeout(search,180);});
@@ -159,6 +159,7 @@ document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
   else if(event.key==='Enter'&&activeIndex>=0&&items[activeIndex]){event.preventDefault();items[activeIndex].click();}
   else if(event.key==='Escape'){event.preventDefault();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}
  });
+ form.querySelector('select[name="plant_id"]')?.addEventListener('change',()=>{activeIndex=-1;clearTimeout(timer);search();});
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
  document.addEventListener('click',event=>{if(!form.contains(event.target)){clearTimeout(timer);controller?.abort();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}});
 });
