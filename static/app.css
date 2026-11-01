@@ -238,7 +238,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-article-meta{display:flex;align-items:center;justify-content:flex-end;gap:8px;white-space:nowrap;font-size:12px;color:var(--muted)}
 .shipment-article>.panel{margin-top:12px}
 .shipment-article .listing tr.shipment-bale-added>td{background:#f0f8f1}
-.shipment-article .listing tr.shipment-bale-removed>td{background:#fff3f3}
+.shipment-article .listing tr.shipment-bale-removed>td{background:#fff;text-decoration:line-through}
+.shipment-article .listing tr.shipment-bale-removed>td *{text-decoration:line-through}
 .shipment-picker [data-range-picked-rows] td:last-child{text-align:center;width:68px}
 .shipment-picked-remove{border:0;background:transparent;color:var(--red);padding:2px 4px;font-size:12px;font-weight:600}.shipment-picked-remove:hover{background:#fff0f0;border-color:transparent;text-decoration:underline}
 @media(max-width:1000px){.shipment-article>summary{grid-template-columns:minmax(180px,1fr) minmax(0,1.4fr);}.shipment-article-meta{grid-column:1/-1;justify-content:flex-start}}
