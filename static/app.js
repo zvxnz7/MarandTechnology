@@ -19,12 +19,12 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
   else recipeSearch.removeAttribute('aria-activedescendant');
  };
  const closeRecipeResults=()=>{recipeResults.replaceChildren();recipeSearch.setAttribute('aria-expanded','false');recipeSearch.removeAttribute('aria-activedescendant');activeRecipeIndex=-1;};
- const clearRecipe=()=>{recipe.value='';delete recipe.dataset.selectedLabel;delete recipe.dataset.plant;recipeSelected.textContent='';recipeEditShortcut.hidden=true;recipeEditShortcut.href='#';selectedRecipeDetails.hidden=true;selectedRecipeDetails.open=false;selectedRecipeText.textContent='';form.elements.trade_symbol.value='';};
+ const clearRecipe=()=>{recipe.value='';delete recipe.dataset.selectedLabel;delete recipe.dataset.plant;recipeSelected.textContent='';recipeEditShortcut.href='/finishing/recipes';recipeEditShortcut.setAttribute('aria-label','Otwórz bibliotekę receptur do edycji');recipeEditShortcut.title='Otwórz bibliotekę receptur do edycji';selectedRecipeDetails.hidden=true;selectedRecipeDetails.open=false;selectedRecipeText.textContent='';form.elements.trade_symbol.value='';};
  const sync=()=>{const raw=orderTypeInputs.find(input=>input.checked)?.value==='raw_sale';plant.required=!raw;recipeSearch.required=!raw;};
  const applyRecipe=button=>{
   const label=button.dataset.recipeLabel||button.querySelector('strong')?.textContent||'';
   recipe.value=button.dataset.recipeId||'';recipe.dataset.selectedLabel=label;recipe.dataset.plant=button.dataset.plant||'';recipeSearch.value=label;recipeSearch.setCustomValidity('');
-  recipeEditShortcut.href=`/finishing/recipes/${recipe.value}/edit`;recipeEditShortcut.hidden=false;
+  recipeEditShortcut.href=`/finishing/recipes/${recipe.value}/edit`;recipeEditShortcut.setAttribute('aria-label','Edytuj wybraną recepturę');recipeEditShortcut.title='Edytuj wybraną recepturę';
   recipeSelected.textContent=`Wybrano recepturę: ${label}`;
   selectedRecipeText.textContent=button.dataset.recipeText||'Brak tekstowego opisu receptury.';selectedRecipeDetails.hidden=false;selectedRecipeDetails.open=false;
   for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage']]){const input=form.elements[field],value=button.dataset[key];if(input)input.value=value||'';}
