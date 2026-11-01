@@ -153,6 +153,10 @@ document.querySelectorAll('[data-shipment-correction-form]').forEach(form=>{
   if(!removed.length&&!added.length){event.preventDefault();alert('Zaznacz przynajmniej jedną belkę do usunięcia lub dodania.');return;}
   form.querySelector('[name="removed_items"]').value=JSON.stringify(removed);
   form.querySelector('[data-correction-added-values]').value=added.join(',');
+  const popupName=form.target,width=Math.min(1180,Math.max(800,screen.availWidth-80)),height=Math.min(820,Math.max(600,screen.availHeight-80));
+  const left=Math.max(0,Math.round((screen.availWidth-width)/2)),top=Math.max(0,Math.round((screen.availHeight-height)/2));
+  const popup=window.open('about:blank',popupName,`popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+  if(popup)popup.focus();
  });
  updatePreview();
 });
