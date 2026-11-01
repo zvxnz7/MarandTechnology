@@ -75,7 +75,7 @@ function tableExists(db, name) {
 
 function validateSchema(db) {
   const version = Number(db.prepare('PRAGMA user_version').get().user_version);
-  if (![9, 10, 11, 12, 13].includes(version)) throw new Error(`Wymagany jest schemat bazy 9–13; wykryto ${version}. Zaktualizuj program przed importem.`);
+  if (![9, 10, 11, 12, 13, 14].includes(version)) throw new Error(`Wymagany jest schemat bazy 9–14; wykryto ${version}. Zaktualizuj program przed importem.`);
   for (const [table, needed] of Object.entries(REQUIRED_COLUMNS)) {
     const found = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name));
     const missing = needed.filter(column => !found.has(column));
