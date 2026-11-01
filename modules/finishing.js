@@ -110,6 +110,12 @@ function snapshotRecipe(recipe) {
 function readRecipeDetails(recipe) {
   try{return JSON.parse(recipe?.recipe_details||'{}')||{};}catch{return {};}
 }
+function recipeTradeSymbol(recipe) {
+  const details=readRecipeDetails(recipe);
+  const saved=details.tradeSymbol||details.trade_symbol||recipe?.trade_symbol;
+  if(String(saved||'').trim())return String(saved).trim();
+  return String(recipe?.recipe_text||'').match(/^\s*Symbol handlowy\s*:\s*(.+?)\s*$/im)?.[1]||'';
+}
 function recipeTextFor(recipe) {
   const details=readRecipeDetails(recipe);
   if(Object.keys(details).length)return recipeSummary(details,{targetColor:recipe.target_color,targetStiffening:recipe.target_stiffening,targetWidthCm:recipe.target_width_cm,targetGrammage:recipe.target_grammage});
@@ -215,7 +221,7 @@ function orderForm(ctx, selectedSource=0) {
     <div class="form-grid"><label>Wykończalnia<select name="finishing_plant_id" data-finishing-plant><option value="">Wybierz wykończalnię</option>${plantList.map(plant=>`<option value="${plant.id}"${eligibleSource?.finishing_plant_id===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label>
     <label>Klient<input name="client_name" list="finishing-clients" maxlength="200" required><datalist id="finishing-clients">${clientOptions}</datalist></label>
     <label>Symbol handlowy<input name="trade_symbol" maxlength="200"></label>
-    <div class="finishing-recipe-picker"><div class="finishing-recipe-search-box"><label for="finishing-recipe-search">Receptura z biblioteki<input id="finishing-recipe-search" type="search" data-finishing-recipe-search data-search-url="/finishing/orders/new?partial=recipes" autocomplete="off" placeholder="Wpisz nazwę lub symbol receptury" aria-autocomplete="list" aria-expanded="false" aria-controls="finishing-recipe-results"></label><div id="finishing-recipe-results" class="finishing-recipe-live-results" data-finishing-recipe-results role="listbox" aria-label="Pasujące receptury"></div></div><input type="hidden" name="recipe_id" data-finishing-recipe><p class="finishing-recipe-selected" data-finishing-recipe-selected aria-live="polite"></p><a class="finishing-recipe-add-link" href="/finishing/recipes/new" target="_blank" rel="noopener">+ Dodaj nową recepturę wykańczania ↗</a></div></div>
+    <div class="finishing-recipe-picker"><div class="finishing-recipe-search-box"><label for="finishing-recipe-search">Receptura z biblioteki<input id="finishing-recipe-search" type="search" role="combobox" data-finishing-recipe-search data-search-url="/finishing/orders/new?partial=recipes" autocomplete="off" placeholder="Wpisz nazwę lub symbol receptury" aria-autocomplete="list" aria-expanded="false" aria-controls="finishing-recipe-results"></label><div id="finishing-recipe-results" class="finishing-recipe-live-results" data-finishing-recipe-results role="listbox" aria-label="Pasujące receptury"></div></div><input type="hidden" name="recipe_id" data-finishing-recipe><p class="finishing-recipe-selected" data-finishing-recipe-selected aria-live="polite"></p><a class="finishing-recipe-add-link" href="/finishing/recipes/new" target="_blank" rel="noopener">+ Dodaj nową recepturę wykańczania ↗</a></div></div>
     <div class="finishing-targets"><h2>Parametry zadane</h2><div class="form-grid"><label>Kolor<input name="target_color" maxlength="160"></label><label>Usztywnienie<input name="target_stiffening" maxlength="160"></label><label>Szerokość cm<input name="target_width_cm" inputmode="decimal"></label><label>Gramatura g/m²<input name="target_grammage" inputmode="decimal"></label></div></div>
     <label>Uwagi do wykończalni<textarea name="notes" maxlength="3000"></textarea></label>
     <div class="finishing-form-actions"><label class="check"><input type="checkbox" name="raw_sale" value="1" data-finishing-raw-sale> Sprzedaż surowej dzianiny, bez wysyłki do wykończalni</label><button class="primary">Utwórz zlecenie wykańczania</button></div></form>`;
@@ -225,10 +231,10 @@ function recipeSearchView(db,query,plantId=0) {
   const normalize=value=>String(value||'').toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const term=normalize(query).trim();
   if(term.length<2)return '<p class="finishing-recipe-search-hint">Wpisz co najmniej 2 litery, aby wyszukać recepturę.</p>';
-  const matches=recipes(db,plantId).map(recipe=>({recipe,tradeSymbol:readRecipeDetails(recipe).tradeSymbol||''})).filter(({recipe,tradeSymbol})=>[recipe.name,recipe.raw_symbol,tradeSymbol,recipe.recipe_text,recipe.target_color].some(value=>normalize(value).includes(term))).slice(0,30);
+  const matches=recipes(db,plantId).map(recipe=>({recipe,tradeSymbol:recipeTradeSymbol(recipe)})).filter(({recipe,tradeSymbol})=>[recipe.name,recipe.raw_symbol,tradeSymbol,recipe.recipe_text,recipe.target_color].some(value=>normalize(value).includes(term))).slice(0,30);
   const buttons=matches.map(({recipe,tradeSymbol})=>{
     const label=`${recipe.name}${recipe.raw_symbol?` · ${recipe.raw_symbol}`:''}`;
-    return `<button type="button" role="option" aria-selected="false" class="finishing-recipe-result" data-finishing-recipe-option data-recipe-id="${recipe.id}" data-recipe-label="${V.esc(label)}" data-plant="${recipe.finishing_plant_id||''}" data-color="${V.esc(recipe.target_color||'')}" data-stiffening="${V.esc(recipe.target_stiffening||'')}" data-width="${recipe.target_width_cm??''}" data-grammage="${recipe.target_grammage??''}" data-trade-symbol="${V.esc(tradeSymbol)}"><strong>${V.esc(recipe.name)}</strong><span>${V.esc(recipe.raw_symbol||'Bez symbolu')}${tradeSymbol?` · ${V.esc(tradeSymbol)}`:''}${recipe.finishing_plant_name?` · ${V.esc(recipe.finishing_plant_name)}`:''}</span></button>`;
+    return `<button type="button" id="finishing-recipe-option-${recipe.id}" role="option" aria-selected="false" class="finishing-recipe-result" data-finishing-recipe-option data-recipe-id="${recipe.id}" data-recipe-label="${V.esc(label)}" data-plant="${recipe.finishing_plant_id||''}" data-color="${V.esc(recipe.target_color||'')}" data-stiffening="${V.esc(recipe.target_stiffening||'')}" data-width="${recipe.target_width_cm??''}" data-grammage="${recipe.target_grammage??''}" data-trade-symbol="${V.esc(tradeSymbol)}"><strong>${V.esc(recipe.name)}</strong><span>${V.esc(recipe.raw_symbol||'Bez symbolu')}${tradeSymbol?` · ${V.esc(tradeSymbol)}`:''}${recipe.finishing_plant_name?` · ${V.esc(recipe.finishing_plant_name)}`:''}</span></button>`;
   }).join('');
   return buttons?`<div class="finishing-recipe-result-list" role="group">${buttons}</div>`:'<p class="finishing-recipe-search-hint">Brak pasujących receptur.</p>';
 }
