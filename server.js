@@ -45,6 +45,7 @@ if (!fs.existsSync(DB_PATH)) throw new Error('Brak bazy danych. Uruchom najpierw
 const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstraints: true });
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
+migrateDraftThreadCounts();
 function recoverInterruptedSourceImport() {
   const markerPath = path.join(DATA, 'maintenance.json');
   const marker = readJsonIfExists(markerPath);
@@ -168,6 +169,36 @@ function audit(user, action, recordId = null, detail = '', articleId = undefined
   const linkedArticleId=articleId===undefined&&recordId?db.prepare('SELECT article_id FROM records WHERE id=?').get(recordId)?.article_id||null:articleId||null;
   const inserted=db.prepare('INSERT INTO audit(at,user_id,action,record_id,detail) VALUES(?,?,?,?,?)').run(now(), user ? user.id : null, action, recordId, detail);
   if(linkedArticleId)db.prepare('INSERT OR IGNORE INTO audit_articles(audit_id,article_id) VALUES(?,?)').run(inserted.lastInsertRowid,linkedArticleId);
+}
+function normalizedThreadCount(value) {
+  const raw=String(value||'').trim();
+  if (!raw || /^\d+$/.test(raw)) return null;
+  const plain=raw.match(/^(\d+)\s+nici$/i);
+  if (plain) return plain[1];
+  const expression=raw.match(/^(\d+(?:[.,]\d+)?)\s*[*x×]\s*(\d+(?:[.,]\d+)?)$/i);
+  if (!expression) return null;
+  const product=Number(expression[1].replace(',','.'))*Number(expression[2].replace(',','.'));
+  return Number.isSafeInteger(product)&&product>0?String(product):null;
+}
+function migrateDraftThreadCounts() {
+  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind='spec' AND state='draft'").all();
+  const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
+  let changedRecords=0,changedValues=0,unresolved=0;
+  transaction(()=>{
+    for(const row of rows){
+      const payload=parsePayload(row),changes=[];
+      for(const gb of payload.gb||[]){
+        const before=String(gb.threads||'').trim(),after=normalizedThreadCount(before);
+        if(after!==null&&after!==before){gb.threads=after;changes.push({gb:gb.number,from:before,to:after});changedValues++;}
+        else if(before&&!/^\d+$/.test(before)) unresolved++;
+      }
+      if(!changes.length)continue;
+      update.run(dump(payload),now(),row.id);
+      audit(null,'Przeliczono liczbę nici na jeden szal',row.id,JSON.stringify(changes),row.article_id);
+      changedRecords++;
+    }
+  });
+  if(changedRecords||unresolved)console.log(`Specyfikacje robocze — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
 }
 function auditProjectChange(user, projectId, action, detail) {
   const records = db.prepare(`SELECT pa.article_id,
