@@ -259,7 +259,7 @@ function parseForm(form, old) {
     if (filaments2 && (!/^\d+$/.test(filaments2) || Number(filaments2) < 1)) fail(400, 'Liczba filamentów drugiego składnika musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
     row.yarn2_filaments = filaments2 ? String(Number(filaments2)) : '';
     row.yarn2_process = formText(form, `gb_${i}_yarn2_process`).slice(0, 24).toUpperCase();
-    row.yarn_legacy = formText(form, `gb_${i}_yarn_legacy`).slice(0, 150);
+    row.yarn_legacy = (formText(form, `gb_${i}_yarn_legacy`) || formText(form, `gb_${i}_yarn`)).slice(0, 150);
     const structuredYarn = Yarn.compose(row);
     row.yarn = structuredYarn || row.yarn_legacy;
     if (structuredYarn) row.yarn_legacy = '';
