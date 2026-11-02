@@ -370,14 +370,38 @@ function parseForm(form, old) {
 }
 function validateReady(row) {
   const v = parsePayload(row);
-  if (!row.symbol || !v.gb.length) fail(400, 'Uzupełnij symbol i przynajmniej jedną GB.');
-  if (['machine_type', 'gauge', 'density', 'working_width'].some(k => !v.tech[k])) fail(400, 'Uzupełnij typ i podział maszyny, ścisłość oraz szerokość roboczą.');
-  if (v.gb.some(g => g.threads && !/^\d+$/.test(g.threads))) fail(400, 'Wpisz liczbę nici na jeden szal jako jedną liczbę całkowitą. Zapis typu 3*450 lub 3x450 najpierw przelicz i wpisz wynik.');
-  if (v.gb.some(g => (g.yarn_material || g.yarn_dtex || g.yarn_filaments || g.yarn_process) && (!g.yarn_material || !Yarn.decimal(g.yarn_dtex)))) fail(400, 'Uzupełnij rodzaj włókna i grubość przędzy w dtex dla każdej GB.');
-  if (v.gb.some(g => g.yarn_filaments && (!/^\d+$/.test(g.yarn_filaments) || Number(g.yarn_filaments) < 1))) fail(400, 'Liczba filamentów musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
-  if (v.gb.some(g => (g.yarn2_material || g.yarn2_dtex || g.yarn2_filaments || g.yarn2_process) && (!g.yarn_material || !Yarn.decimal(g.yarn_dtex) || !g.yarn2_material || !Yarn.decimal(g.yarn2_dtex)))) fail(400, 'Uzupełnij pierwszy składnik oraz rodzaj włókna i grubość w dtex drugiego składnika przędzy.');
-  if (v.gb.some(g => g.yarn2_filaments && (!/^\d+$/.test(g.yarn2_filaments) || Number(g.yarn2_filaments) < 1))) fail(400, 'Liczba filamentów drugiego składnika musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
-  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !Threading.parse(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici na jeden szal, wartość mm/rack, nawleczenie tekstowe (np. „2 pełne, 3 puste”) oraz raport dla każdej używanej GB.');
+  const issues = [];
+  if (!row.symbol) issues.push('brak symbolu artykułu');
+  if (!v.gb.length) issues.push('dodaj przynajmniej jedną GB');
+  const techLabels = { machine_type: 'typ maszyny', gauge: 'podział maszyny', density: 'ścisłość', working_width: 'szerokość robocza' };
+  const missingTech = Object.entries(techLabels).filter(([key]) => !v.tech[key]).map(([, label]) => label);
+  if (missingTech.length) issues.push(`ustawienia maszyny: ${missingTech.join(', ')}`);
+  for (const g of v.gb) {
+    const gb = `GB${g.number || '?'}`;
+    const fields = [];
+    const hasStructuredYarn = Boolean(g.yarn_material || g.yarn_dtex || g.yarn_filaments || g.yarn_process);
+    if (!g.number) fields.push('oznaczenie GB');
+    if (hasStructuredYarn) {
+      if (!g.yarn_material) fields.push('rodzaj przędzy');
+      if (!Yarn.decimal(g.yarn_dtex)) fields.push('grubość dtex');
+    } else if (!g.yarn) fields.push('przędza');
+    if (g.yarn_filaments && (!/^\d+$/.test(g.yarn_filaments) || Number(g.yarn_filaments) < 1)) fields.push('f musi być dodatnią liczbą całkowitą (1 oznacza mono)');
+    const hasSecondYarn = Boolean(g.yarn2_material || g.yarn2_dtex || g.yarn2_filaments || g.yarn2_process);
+    if (hasSecondYarn) {
+      if (!g.yarn_material || !Yarn.decimal(g.yarn_dtex)) fields.push('uzupełnij rodzaj i dtex pierwszej przędzy');
+      if (!g.yarn2_material) fields.push('rodzaj drugiej przędzy');
+      if (!Yarn.decimal(g.yarn2_dtex)) fields.push('dtex drugiej przędzy');
+    }
+    if (g.yarn2_filaments && (!/^\d+$/.test(g.yarn2_filaments) || Number(g.yarn2_filaments) < 1)) fields.push('f drugiej przędzy musi być dodatnią liczbą całkowitą');
+    if (!g.pattern) fields.push('raport ogniw wzorujących');
+    if (!g.threads) fields.push('nici na 1 szal');
+    else if (!/^\d+$/.test(g.threads)) fields.push('nici na 1 szal: wpisz jedną liczbę całkowitą, bez zapisu 3*450 lub 3x450');
+    if (!g.run_in) fields.push('mm/rack');
+    if (!g.threading) fields.push('nawleczenie (np. „2 pełne, 3 puste”)');
+    else if (!Threading.parse(g.threading)) fields.push('nawleczenie: wpisz tekst, np. „2 pełne, 3 puste”');
+    if (fields.length) issues.push(`${gb}: ${fields.join(', ')}`);
+  }
+  if (issues.length) fail(400, `Nie można zatwierdzić. Popraw: ${issues.join('; ')}.`);
 }
 function signedCookie(session) {
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
