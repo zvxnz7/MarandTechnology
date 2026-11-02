@@ -50,6 +50,7 @@ require('./modules/database').migrate(db, DB_PATH);
 migrateDraftThreadCounts();
 migrateDraftYarnStructures();
 migrateSpecThreading();
+migrateApprovedSpecsToDrafts();
 function recoverInterruptedSourceImport() {
   const markerPath = path.join(DATA, 'maintenance.json');
   const marker = readJsonIfExists(markerPath);
@@ -185,7 +186,7 @@ function normalizedThreadCount(value) {
   return Number.isSafeInteger(product)&&product>0?String(product):null;
 }
 function migrateDraftThreadCounts() {
-  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind IN ('spec','trial') AND (state='draft' OR (kind='spec' AND state='approved'))").all();
+  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
   const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
   let changedRecords=0,changedValues=0,unresolved=0;
   transaction(()=>{
@@ -202,10 +203,10 @@ function migrateDraftThreadCounts() {
       changedRecords++;
     }
   });
-  if(changedRecords||unresolved)console.log(`Specyfikacje robocze i zatwierdzone oraz warianty prób — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
+  if(changedRecords||unresolved)console.log(`Robocze specyfikacje i warianty prób — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
 }
 function migrateDraftYarnStructures() {
-  const rows=db.prepare("SELECT id,article_id,payload FROM records WHERE kind IN ('spec','trial') AND (state='draft' OR (kind='spec' AND state='approved'))").all();
+  const rows=db.prepare("SELECT id,article_id,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
   const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
   let changedRecords=0,changedValues=0,unresolved=0;
   transaction(()=>{
@@ -225,10 +226,10 @@ function migrateDraftYarnStructures() {
       changedRecords++;
     }
   });
-  if(changedRecords)console.log(`Oznaczenia przędzy — ustrukturyzowano ${changedValues} w ${changedRecords} specyfikacjach roboczych/zatwierdzonych i wariantach prób; ${unresolved} niejednoznacznych zapisów pozostawiono bez zmian.`);
+  if(changedRecords)console.log(`Oznaczenia przędzy — ustrukturyzowano ${changedValues} w ${changedRecords} wpisach roboczych; ${unresolved} niejednoznacznych zapisów pozostawiono bez zmian.`);
 }
 function migrateSpecThreading() {
-  const rows=db.prepare("SELECT id,article_id,kind,payload FROM records WHERE (kind='spec' AND state IN ('draft','approved')) OR (kind='trial' AND state='draft')").all();
+  const rows=db.prepare("SELECT id,article_id,kind,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
   const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
   let changedRecords=0,changedValues=0,unresolved=0;
   transaction(()=>{
@@ -245,7 +246,40 @@ function migrateSpecThreading() {
       changedRecords++;
     }
   });
-  if(changedRecords||unresolved)console.log(`Nawleczenie — zamieniono ${changedValues} zapisów w ${changedRecords} specyfikacjach roboczych/zatwierdzonych i wariantach prób; ${unresolved} nieczytelnych zapisów pozostawiono do ręcznej weryfikacji.`);
+  if(changedRecords||unresolved)console.log(`Nawleczenie — zamieniono ${changedValues} zapisów w ${changedRecords} wpisach roboczych; ${unresolved} nieczytelnych zapisów pozostawiono do ręcznej weryfikacji.`);
+}
+function migrateApprovedSpecsToDrafts() {
+  const rows=db.prepare(`SELECT r.*,a.active_spec FROM articles a JOIN records r ON r.id=a.active_spec
+    WHERE r.kind='spec' AND r.state='approved' AND a.archived_at IS NULL AND a.purged_at IS NULL`).all();
+  const working=db.prepare("SELECT id FROM records WHERE article_id=? AND kind='spec' AND state IN ('draft','submitted') AND expected_active=? LIMIT 1");
+  const insert=db.prepare(`INSERT INTO records(project_id,article_id,kind,symbol,number,state,revision,base_id,expected_active,payload,created_at,updated_at)
+    VALUES(?,?,'spec',?,?,'draft',1,?,?,?,?,?)`);
+  let created=0,convertedYarn=0,convertedCounts=0,convertedThreading=0,unresolved=0;
+  transaction(()=>{
+    for(const row of rows){
+      if(working.get(row.article_id,row.id))continue;
+      const payload=parsePayload(row),changes=[];
+      for(const gb of payload.gb||[]){
+        const beforeCount=String(gb.threads||'').trim(),count=normalizedThreadCount(beforeCount);
+        if(count!==null&&count!==beforeCount){gb.threads=count;changes.push({gb:gb.number,field:'threads',from:beforeCount,to:count});convertedCounts++;}
+        else if(beforeCount&&!/^\d+$/.test(beforeCount))unresolved++;
+        if(!(gb.yarn_material||gb.yarn_dtex||gb.yarn_filaments||gb.yarn_process||gb.yarn2_material||gb.yarn2_dtex)){
+          const before=String(gb.yarn||'').trim(),parsed=Yarn.parseLegacy(before);
+          if(parsed){Object.assign(gb,{yarn_material:parsed.material,yarn_dtex:parsed.dtex,yarn_filaments:parsed.filaments,yarn_process:parsed.process});gb.yarn=Yarn.compose(parsed);changes.push({gb:gb.number,field:'yarn',from:before,to:gb.yarn});convertedYarn++;}
+          else if(before)unresolved++;
+        }
+        const beforeThreading=String(gb.threading||'').trim(),threading=Threading.parse(beforeThreading);
+        if(threading&&threading!==beforeThreading){gb.threading=threading;changes.push({gb:gb.number,field:'threading',from:beforeThreading,to:threading});convertedThreading++;}
+        else if(beforeThreading&&!threading)unresolved++;
+      }
+      if(!changes.length)continue;
+      const stamp=now();
+      const id=insert.run(row.project_id,row.article_id,row.symbol,row.number,row.id,row.id,dump(payload),stamp,stamp).lastInsertRowid;
+      audit(null,'Utworzono roboczą korektę aktywnej specyfikacji',id,JSON.stringify({based_on:row.id,changes}),row.article_id);
+      created++;
+    }
+  });
+  if(created||unresolved)console.log(`Aktywne specyfikacje — utworzono ${created} roboczych korekt (przędza ${convertedYarn}, liczba nici ${convertedCounts}, nawleczenie ${convertedThreading}); ${unresolved} niejednoznacznych wartości pozostawiono do sprawdzenia.`);
 }
 function auditProjectChange(user, projectId, action, detail) {
   const records = db.prepare(`SELECT pa.article_id,
