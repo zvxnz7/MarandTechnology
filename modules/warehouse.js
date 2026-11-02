@@ -190,9 +190,10 @@ function articleBalances(db, q = '', options = {}) {
     "coalesce(f.status,'available')!='shipped_out'"];
   if (!options.includeTrials) clauses.push("trim(coalesce(b.trial_symbol,''))=''");
   const params = [];
-  for (const word of String(q || '').trim().split(/\s+/).map(normalizeSearch).filter(Boolean)) {
+  const query=normalizeSearch(q);
+  if (query) {
     clauses.push("search_text(a.symbol || ' ' || coalesce(a.description,'')) LIKE ? ESCAPE '\\'");
-    params.push(`%${word.replace(/[\\%_]/g, '\\$&')}%`);
+    params.push(`%${query.replace(/[\\%_]/g, '\\$&')}%`);
   }
   return db.prepare(`SELECT a.id,a.symbol,count(*) visible_pieces,
       sum(CASE WHEN coalesce(f.status,'available')='available' THEN 1 ELSE 0 END) stock_pieces,
@@ -337,7 +338,7 @@ function catalogPage(ctx) {
   const current = trialGroupSelected
     ? (trialGroupBalance.visible_pieces>0?{id:'trials',symbol:'Próby',...trialGroupBalance,isTrialGroup:true}:null)
     : Number.isSafeInteger(rawArticleId) && rawArticleId > 0 ? articleBalances(ctx.db,'',{includeTrials:false}).find(a => a.id === rawArticleId) : null;
-  const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Symbol lub opis artykułu" aria-label="Szukaj artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="warehouse-search-results"></label><p class="muted small">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia. Przy kilku słowach każde musi pasować.</p><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
+  const search = `<form method="get" action="/warehouse" class="warehouse-search" data-warehouse-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(q)}" placeholder="Symbol lub opis artykułu" aria-label="Szukaj artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="warehouse-search-results"></label><p class="muted small">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter, spacje i polskie znaki nie mają znaczenia.</p><div class="warehouse-search-results-wrap" id="warehouse-search-results" data-warehouse-search-results>${articleSearchResults(ctx, q)}</div></form>`;
   let selectedView = '';
   if (current) {
     const bales = current.isTrialGroup ? registeredTrialBales(ctx.db,trialSort) : registeredBales(ctx.db, current.id);
@@ -488,11 +489,11 @@ function shipmentCorrectionDocumentLinks(ctx, shipment) {
 }
 
 function shipmentCorrectionSearchResults(db, shipments, q) {
-  const terms=String(q||'').trim().split(/\s+/).map(normalizeSearch).filter(Boolean);
+  const query=normalizeSearch(q);
   const matches=shipments.map(shipment=>{
     const items=shipmentArticles(db,shipment.id);
     const fields=[shipmentNo(shipment),shipment.shipment_date,date(shipment.shipment_date),String(shipment.shipment_year),...items.flatMap(item=>[articleNo(shipment,item),item.symbol,item.finishing_plant_name||''])].map(normalizeSearch);
-    return {shipment,items,match:terms.every(term=>fields.some(field=>field.includes(term)))};
+    return {shipment,items,match:!query||fields.join(' ').includes(query)};
   }).filter(result=>result.match);
   return `<div class="warehouse-search-results" role="listbox" aria-label="Pasujące wysyłki">${matches.map(({shipment,items})=>`<a id="shipment-correction-option-${shipment.id}" role="option" aria-selected="false" href="/shipments/correct?shipment_id=${shipment.id}" class="warehouse-article-option"><strong>Wysyłka ${shipmentNo(shipment)} · ${date(shipment.shipment_date)}</strong><span>${items.map(item=>`${V.esc(articleNo(shipment,item))} ${V.esc(item.symbol)}`).join(' · ')||'Bez specyfikacji'}</span></a>`).join('')||'<p class="muted small">Brak pasujących zamkniętych wysyłek.</p>'}</div>`;
 }
@@ -517,15 +518,14 @@ function shipmentsPage(ctx) {
   const canPrepare = editableRoles.includes(ctx.req.user.role);
   const create = canPrepare ? `<form method="post" action="/shipments/create">${hidden('csrf',ctx.req.session.csrf)}<button class="primary">+ Przygotuj wysyłkę</button></form>` : '';
   const correct = managerRoles.includes(ctx.req.user.role) ? `<a class="button shipment-correction-launch" href="/shipments/correct">Koryguj wysyłkę</a>` : '';
-  const searchReady = normalizeSearch(q).length >= 1;
-  const searchTerms = searchReady ? q.split(/\s+/).map(normalizeSearch).filter(Boolean) : [];
+  const searchQuery = normalizeSearch(q);
   const rows = shipments.filter(s => {
     const items = shipmentArticles(ctx.db,s.id);
     if (year && String(s.shipment_year) !== year) return false;
     if (from && s.shipment_date < from || to && s.shipment_date > to) return false;
     const statusText = s.status==='closed' ? 'Zamknięta' : s.status==='draft' ? 'W przygotowaniu' : 'Anulowana';
     const searchFields = [shipmentNo(s), s.shipment_date, date(s.shipment_date), String(s.shipment_year), statusText, ...items.flatMap(item => [articleNo(s,item), item.symbol, item.finishing_plant_name || ''])].map(normalizeSearch);
-    return !searchTerms.length || searchTerms.every(term => searchFields.some(field => field.includes(term)));
+    return !searchQuery || searchFields.join(' ').includes(searchQuery);
   }).map(s => {
     const items = shipmentArticles(ctx.db,s.id);
     const itemRows = s.status==='cancelled'?'':[...items.map(item => `<li><a href="/shipments/${s.id}/wz/${item.id}" target="_blank" rel="noopener">${articleNo(s,item)} ${V.esc(item.symbol)}</a> · ${item.bale_count} szt · ${money(item.weight_kg)} kg${item.finishing_plant_name?` · <span class="plant-chip ${plantColor(item.finishing_plant_id)}">${V.esc(item.finishing_plant_name)}</span>`:''}</li>`),...(s.status==='closed'?shipmentCorrectionDocumentLinks(ctx,s):[])].join('');
@@ -533,7 +533,7 @@ function shipmentsPage(ctx) {
     const remove=managerRoles.includes(ctx.req.user.role)&&s.status!=='closed'?`<a class="shipment-delete-button shipment-delete-link" href="/shipments/${s.id}/delete" title="Usuń wysyłkę" aria-label="Usuń wysyłkę ${shipmentNo(s)}">×</a>`:'';
     return `<tr data-live-result-row><td><a class="item-title" href="/shipments/${s.id}">${shipmentNo(s)}</a></td><td>${date(s.shipment_date)}</td><td><span class="badge ${s.status==='closed'?'approved':s.status==='draft'?'submitted':'archived'}">${s.status==='closed'?`Zamknięta · ${V.datepl(s.closed_at)}`:s.status==='draft'?'W przygotowaniu':'Anulowana'}</span></td><td>${s.article_count}</td><td>${s.bale_count}</td><td>${money(s.weight_kg)} kg</td><td><details><summary>Dokumenty</summary><ul class="shipment-doc-list">${itemRows||'<li>Brak artykułów.</li>'}</ul></details></td><td class="shipment-delete-cell"><div class="shipment-row-actions">${print}${remove}</div></td></tr>`;
   }).join('');
-  const filters = `<form method="get" action="/shipments" class="shipment-list-filters" data-live-search><label class="shipment-list-search">Szukaj<input type="search" name="q" value="${V.esc(q)}" placeholder="Nr wysyłki, artykuł lub wykończalnia" autocomplete="off" aria-label="Szukaj wysyłek"></label><label>Rok<select name="year"><option value="">Wszystkie lata</option>${years.map(value => `<option value="${V.esc(value)}"${year===value?' selected':''}>${V.esc(value)}</option>`).join('')}</select></label><label>Data od<input type="date" name="date_from" value="${V.esc(from)}"></label><label>Data do<input type="date" name="date_to" value="${V.esc(to)}"></label><a class="button" href="/shipments">Wyczyść</a><p class="muted small shipment-list-filter-hint">Szukamy po numerze wysyłki, statusie, symbolu artykułu i wykończalni. Wielkość liter i polskie znaki nie mają znaczenia; przy kilku słowach każde musi pasować.</p></form>`;
+  const filters = `<form method="get" action="/shipments" class="shipment-list-filters" data-live-search><label class="shipment-list-search">Szukaj<input type="search" name="q" value="${V.esc(q)}" placeholder="Nr wysyłki, artykuł lub wykończalnia" autocomplete="off" aria-label="Szukaj wysyłek"></label><label>Rok<select name="year"><option value="">Wszystkie lata</option>${years.map(value => `<option value="${V.esc(value)}"${year===value?' selected':''}>${V.esc(value)}</option>`).join('')}</select></label><label>Data od<input type="date" name="date_from" value="${V.esc(from)}"></label><label>Data do<input type="date" name="date_to" value="${V.esc(to)}"></label><a class="button" href="/shipments">Wyczyść</a><p class="muted small shipment-list-filter-hint">Szukamy po numerze wysyłki, statusie, symbolu artykułu i wykończalni. Wielkość liter, spacje i polskie znaki nie mają znaczenia.</p></form>`;
   const body = `<div class="pagehead"><div><span class="eyebrow">MAGAZYN</span><h1>Wysyłki</h1><p class="muted">Przygotuj transport, przypisz belki i zamknij wysyłkę po sprawdzeniu.</p></div><div class="shipment-list-actions">${create}${correct}</div></div>${filters}<div class="panel scroll" data-live-results><table class="listing compact"><thead><tr><th>Nr wysyłki</th><th>Data</th><th>Status</th><th>Artykuły</th><th>Belki</th><th>Masa</th><th>Specyfikacje</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="8">${shipments.length?'Brak wysyłek dla wybranych filtrów.':'Nie ma jeszcze wysyłek.'}</td></tr>`}</tbody></table></div>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Wysyłka · Marand',body});
 }
@@ -650,7 +650,7 @@ function shipmentSelectionPage(ctx, shipment) {
   const articleId = Number(ctx.url.searchParams.get('article_id') || editingSpecification?.article_id || 0);
   const selectedArticle = articles.find(a=>a.id===articleId);
   const articleForm = `<form method="get" action="/shipments/${shipment.id}/select" class="shipment-select-article" data-shipment-live-search><label>Szukaj artykułu<input name="q" value="${V.esc(editingSpecification?.symbol||q)}" placeholder="Wpisz symbol artykułu" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${q?'true':'false'}" aria-controls="shipment-search-results"${editingSpecification?' readonly':''}></label><input type="hidden" name="article_id" value="${selectedArticle?selectedArticle.id:''}">${editingSpecification?hidden('specification_id',editingSpecification.id):''}<div id="shipment-search-results" class="warehouse-search-results-wrap" data-shipment-search-results>${q&&!editingSpecification?shipmentArticleSearchResults(articles,shipment.id,0,selectedArticle?.id||0):''}</div></form>`;
-  const selectionToolbar = `<div class="shipment-selection-toolbar">${articleForm}</div><p class="muted small shipment-select-hint">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter i polskie znaki nie mają znaczenia.</p>`;
+  const selectionToolbar = `<div class="shipment-selection-toolbar">${articleForm}</div><p class="muted small shipment-select-hint">Wpisz co najmniej 1 znak. Szukamy w symbolu i opisie; wielkość liter, spacje i polskie znaki nie mają znaczenia.</p>`;
   let availableRows = '<tr><td colspan="9">Wybierz artykuł, aby zobaczyć dostępne belki.</td></tr>';
   const selectedBales=editingSpecification?shipmentBales(ctx.db,editingSpecification.id):[];
   const selectedBaleIds=new Set(selectedBales.map(b=>b.local_id));

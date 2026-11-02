@@ -58,7 +58,8 @@ async function handle(ctx) {
   if ((p === '/' || p === '/articles') && req.method === 'GET') {
     const params = [], where = ['a.archived_at IS NULL','a.purged_at IS NULL'];
     const q = (url.searchParams.get('q') || '').trim();
-    for(const word of q.split(/\s+/).filter(Boolean)) { where.push('search_text(a.symbol || \' \' || a.description) LIKE ?'); params.push(`%${ctx.normalize(word).replace(/[\\%_]/g,'\\$&')}%`); }
+    const normalizedQuery=ctx.normalize(q);
+    if(normalizedQuery) { where.push('search_text(a.symbol || \' \' || a.description) LIKE ?'); params.push(`%${normalizedQuery.replace(/[\\%_]/g,'\\$&')}%`); }
     const sort = url.searchParams.get('sort') || 'newest';
     const order = {newest:'a.created_at DESC,a.id DESC',oldest:'a.created_at,a.id',updated:'updated DESC,a.id DESC',symbol:'a.symbol_key,a.id'}[sort] || 'a.created_at DESC,a.id DESC';
     const clause = where.length ? `WHERE ${where.map(w=>w.includes('LIKE') ? w+" ESCAPE '\\'" : w).join(' AND ')}` : '';

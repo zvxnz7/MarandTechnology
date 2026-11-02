@@ -1102,9 +1102,10 @@ function route(req, res) {
     catch (error) { return json(res, error.status || 500, { error: error.message }); }
   }
   if(req.method==='GET'&&url.pathname==='/api/catalog/search'){
-    const q=String(url.searchParams.get('q')||'').trim().replace(/[\\%_]/g,'\\$&');
+    const q=String(url.searchParams.get('q')||'').trim().replace(/\s+/g,'').replace(/[\\%_]/g,'\\$&');
+    const compact=column=>`replace(replace(replace(replace(replace(coalesce(${column},''),' ',''),char(9),''),char(10),''),char(13),''),char(160),'')`;
     const rows=q?db.prepare(`SELECT central_id id,symbol,central_description description FROM articles WHERE central_managed=1 AND central_active=1
-      AND (symbol LIKE ? ESCAPE '\\' COLLATE NOCASE OR central_description LIKE ? ESCAPE '\\' COLLATE NOCASE OR CAST(central_id AS TEXT) LIKE ?) ORDER BY symbol COLLATE NOCASE LIMIT 50`).all(`%${q}%`,`%${q}%`,`%${q}%`):[];
+      AND (${compact('symbol')} LIKE ? ESCAPE '\\' COLLATE NOCASE OR ${compact('central_description')} LIKE ? ESCAPE '\\' COLLATE NOCASE OR CAST(central_id AS TEXT) LIKE ?) ORDER BY symbol COLLATE NOCASE LIMIT 50`).all(`%${q}%`,`%${q}%`,`%${q}%`):[];
     return json(res,200,{articles:rows,syncedAt:centralCatalogStatus()});
   }
   if (req.method === 'DELETE') {
