@@ -391,6 +391,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-add-batch-form button{white-space:nowrap}
 .finishing-order-notes-view{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}
 .finishing-row-actions{white-space:nowrap;text-align:right!important;vertical-align:middle!important}
+.finishing-orders-list td,.finishing-orders-list td .badge{font-size:13px}
+.finishing-order-pm{font-size:inherit;font-weight:750;color:inherit}
+.finishing-order-pm:hover{color:var(--red)}
+.finishing-order-lot{font-size:inherit;font-weight:750}
 .finishing-row-action{display:inline-grid;place-items:center;width:34px;height:34px;margin-left:5px;border:1px solid #d8dde2;border-radius:7px;background:#fff;color:#42576a;vertical-align:middle}
 .finishing-row-action:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
 .finishing-row-action svg{width:18px;height:18px}
