@@ -395,6 +395,12 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-pm{font-size:inherit;font-weight:750;color:inherit}
 .finishing-order-pm:hover{color:var(--red)}
 .finishing-order-lot{font-size:inherit;font-weight:750}
+.finishing-order-lot-list{display:grid;gap:6px;min-width:155px}
+.finishing-order-lot-entry{display:grid;gap:3px;justify-items:start}
+.finishing-order-lot-entry>small{color:var(--muted);font-size:11px}
+.finishing-order-lot-inline{display:flex;align-items:center;gap:5px;max-width:230px}
+.finishing-order-lot-inline input{width:138px;min-width:0;padding:6px 8px;font-size:12px}
+.finishing-order-lot-inline button{padding:6px 9px;font-size:12px;white-space:nowrap}
 .finishing-row-action{display:inline-grid;place-items:center;width:34px;height:34px;margin-left:5px;border:1px solid #d8dde2;border-radius:7px;background:#fff;color:#42576a;vertical-align:middle}
 .finishing-row-action:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
 .finishing-row-action svg{width:18px;height:18px}
