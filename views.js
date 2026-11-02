@@ -43,10 +43,11 @@ function yarnShares(rows = []) {
     const yarn = Yarn.fields(row);
     const dtex = Number(Yarn.decimal(yarn.dtex));
     const threads = Number(row.threads);
+    const runIn = Number(String(row.run_in || '').trim().replace(',', '.'));
     const hasSecond = Boolean(yarn.secondMaterial || yarn.secondDtex || yarn.secondFilaments || yarn.secondProcess);
     const secondDtex = hasSecond ? Number(Yarn.decimal(yarn.secondDtex)) : 0;
-    if (!Number.isFinite(threads) || threads <= 0 || !Number.isFinite(dtex) || dtex <= 0 || (hasSecond && (!Number.isFinite(secondDtex) || secondDtex <= 0))) return null;
-    return threads * (dtex + secondDtex);
+    if (!Number.isFinite(threads) || threads <= 0 || !Number.isFinite(dtex) || dtex <= 0 || !Number.isFinite(runIn) || runIn <= 0 || (hasSecond && (!Number.isFinite(secondDtex) || secondDtex <= 0))) return null;
+    return threads * (dtex + secondDtex) * runIn;
   });
   const total = weights.reduce((sum, weight) => sum + (weight || 0), 0);
   if (!total || weights.some(weight => weight === null)) return rows.map(() => '—');
