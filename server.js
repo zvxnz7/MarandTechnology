@@ -10,6 +10,7 @@ const { promisify } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const V = require('./views');
 const Yarn = require('./modules/yarn');
+const Threading = require('./modules/threading');
 const ArchiveCleanup = require('./modules/archive-cleanup');
 const SourceImport = require('./modules/source-import');
 const FinishingImport = require('./modules/finishing-import');
@@ -48,6 +49,7 @@ db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
 migrateDraftThreadCounts();
 migrateDraftYarnStructures();
+migrateSpecThreading();
 function recoverInterruptedSourceImport() {
   const markerPath = path.join(DATA, 'maintenance.json');
   const marker = readJsonIfExists(markerPath);
@@ -183,7 +185,7 @@ function normalizedThreadCount(value) {
   return Number.isSafeInteger(product)&&product>0?String(product):null;
 }
 function migrateDraftThreadCounts() {
-  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
+  const rows=db.prepare("SELECT id,article_id,symbol,payload FROM records WHERE kind IN ('spec','trial') AND (state='draft' OR (kind='spec' AND state='approved'))").all();
   const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
   let changedRecords=0,changedValues=0,unresolved=0;
   transaction(()=>{
@@ -200,10 +202,10 @@ function migrateDraftThreadCounts() {
       changedRecords++;
     }
   });
-  if(changedRecords||unresolved)console.log(`Robocze specyfikacje i warianty prób — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
+  if(changedRecords||unresolved)console.log(`Specyfikacje robocze i zatwierdzone oraz warianty prób — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
 }
 function migrateDraftYarnStructures() {
-  const rows=db.prepare("SELECT id,article_id,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
+  const rows=db.prepare("SELECT id,article_id,payload FROM records WHERE kind IN ('spec','trial') AND (state='draft' OR (kind='spec' AND state='approved'))").all();
   const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
   let changedRecords=0,changedValues=0,unresolved=0;
   transaction(()=>{
@@ -223,7 +225,27 @@ function migrateDraftYarnStructures() {
       changedRecords++;
     }
   });
-  if(changedRecords)console.log(`Oznaczenia przędzy — ustrukturyzowano ${changedValues} w ${changedRecords} wpisach roboczych; ${unresolved} niejednoznacznych zapisów pozostawiono bez zmian.`);
+  if(changedRecords)console.log(`Oznaczenia przędzy — ustrukturyzowano ${changedValues} w ${changedRecords} specyfikacjach roboczych/zatwierdzonych i wariantach prób; ${unresolved} niejednoznacznych zapisów pozostawiono bez zmian.`);
+}
+function migrateSpecThreading() {
+  const rows=db.prepare("SELECT id,article_id,kind,payload FROM records WHERE (kind='spec' AND state IN ('draft','approved')) OR (kind='trial' AND state='draft')").all();
+  const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
+  let changedRecords=0,changedValues=0,unresolved=0;
+  transaction(()=>{
+    for(const row of rows){
+      const payload=parsePayload(row),changes=[];
+      for(const gb of payload.gb||[]){
+        const before=String(gb.threading||'').trim(),after=Threading.parse(before);
+        if(after&&after!==before){gb.threading=after;changes.push({gb:gb.number,from:before,to:after});changedValues++;}
+        else if(before&&!after)unresolved++;
+      }
+      if(!changes.length)continue;
+      update.run(dump(payload),now(),row.id);
+      audit(null,'Zamieniono nawleczenie na zapis tekstowy',row.id,JSON.stringify(changes),row.article_id);
+      changedRecords++;
+    }
+  });
+  if(changedRecords||unresolved)console.log(`Nawleczenie — zamieniono ${changedValues} zapisów w ${changedRecords} specyfikacjach roboczych/zatwierdzonych i wariantach prób; ${unresolved} nieczytelnych zapisów pozostawiono do ręcznej weryfikacji.`);
 }
 function auditProjectChange(user, projectId, action, detail) {
   const records = db.prepare(`SELECT pa.article_id,
@@ -287,6 +309,7 @@ function parseForm(form, old) {
     const structuredYarn = Yarn.compose(row);
     row.yarn = structuredYarn || row.yarn_legacy;
     if (structuredYarn) row.yarn_legacy = '';
+    row.threading = Threading.parse(row.threading) || row.threading;
     if (Object.entries(row).some(([k,v]) => k !== 'number' && v)) {
       if (row.threads && !/^\d+$/.test(row.threads)) fail(400, 'Wpisz liczbę nici na jeden szal jako jedną liczbę całkowitą. Zapis typu 3*450 lub 3x450 najpierw przelicz i wpisz wynik.');
       row.number = (old.gb?.length ? row.number : '') || old.gb?.[i]?.number || String(Math.max(0,...(old.gb||[]).map(g=>Number(g.number))) + i - (old.gb||[]).length + 1);
@@ -294,8 +317,8 @@ function parseForm(form, old) {
       if (numbers.has(row.number)) fail(400, 'Numer GB nie może się powtarzać.');
       numbers.add(row.number);
       const oldThreading = old.gb?.find(g => String(g.number) === row.number)?.threading || '';
-      if (row.threading && !/^[|.]+$/.test(row.threading) && row.threading !== oldThreading) {
-        fail(400, 'Nawleczenie może zawierać wyłącznie pozycje pełne (|) i puste (.).');
+      if (row.threading && !Threading.parse(row.threading) && row.threading !== oldThreading) {
+        fail(400, 'Wpisz nawleczenie jako tekst, np. „2 pełne, 3 puste”.');
       }
       v.gb.push(row);
     }
@@ -317,7 +340,7 @@ function validateReady(row) {
   if (v.gb.some(g => g.yarn_filaments && (!/^\d+$/.test(g.yarn_filaments) || Number(g.yarn_filaments) < 1))) fail(400, 'Liczba filamentów musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
   if (v.gb.some(g => (g.yarn2_material || g.yarn2_dtex || g.yarn2_filaments || g.yarn2_process) && (!g.yarn_material || !Yarn.decimal(g.yarn_dtex) || !g.yarn2_material || !Yarn.decimal(g.yarn2_dtex)))) fail(400, 'Uzupełnij pierwszy składnik oraz rodzaj włókna i grubość w dtex drugiego składnika przędzy.');
   if (v.gb.some(g => g.yarn2_filaments && (!/^\d+$/.test(g.yarn2_filaments) || Number(g.yarn2_filaments) < 1))) fail(400, 'Liczba filamentów drugiego składnika musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
-  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !/^[|.]+$/.test(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici na jeden szal, wrobienie, nawleczenie złożone z pozycji pełnych (|) i pustych (.) oraz raport dla każdej używanej GB.');
+  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !Threading.parse(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici na jeden szal, wrobienie, nawleczenie tekstowe (np. „2 pełne, 3 puste”) oraz raport dla każdej używanej GB.');
 }
 function signedCookie(session) {
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
