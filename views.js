@@ -175,13 +175,10 @@ function threadingEditor(index, value) {
 }
 function yarnEditor(index, row) {
   const values = Yarn.fields(row);
-  const preview = Yarn.compose(values) || (values.legacy ? `Zapis historyczny: ${values.legacy}` : 'Podgląd uzupełni się po wpisaniu włókna i grubości.');
   const component = (prefix, value) => `<div class="yarn-fields">${field('Rodzaj przędzy', `gb_${index}_${prefix}material`, value.material, { list: 'yarn-fiber-options', maxlength: 10, placeholder: 'PES, PA 6.6…', title: 'Maksymalnie 10 znaków.' })}${field('dtex', `gb_${index}_${prefix}dtex`, value.dtex, { inputmode: 'decimal', pattern: '[0-9]+([,.][0-9]+)?', maxlength: 4, placeholder: '56', title: 'Grubość w dtex, maksymalnie 4 znaki.' })}${field('f', `gb_${index}_${prefix}filaments`, value.filaments, { inputmode: 'numeric', pattern: '[0-9]+', maxlength: 3, placeholder: '13', title: 'Liczba filamentów, maksymalnie 3 cyfry; 1 wyświetli się jako mono.' })}${field('Ozn.', `gb_${index}_${prefix}process`, value.process, { list: 'yarn-process-options', maxlength: 24, placeholder: 'FDY / SD / BR', title: 'Oznaczenie procesu i połysku przędzy.' })}</div>`;
   const second = { material: values.secondMaterial, dtex: values.secondDtex, filaments: values.secondFilaments, process: values.secondProcess };
-  const secondPreview = Yarn.compose({ secondMaterial: second.material, secondDtex: second.dtex, secondFilaments: second.filaments, secondProcess: second.process });
   const secondHidden = hidden(`gb_${index}_yarn2_material`, second.material) + hidden(`gb_${index}_yarn2_dtex`, second.dtex) + hidden(`gb_${index}_yarn2_filaments`, second.filaments) + hidden(`gb_${index}_yarn2_process`, second.process);
-  const existingSecond = secondPreview ? `<small class="muted">Zapisany drugi składnik: ${esc(secondPreview)}</small>` : '';
-  return `<div class="yarn-editor" data-yarn-editor>${hidden(`gb_${index}_yarn_legacy`, values.legacy)}${component('yarn_', values)}${secondHidden}${existingSecond}<small data-yarn-preview>${esc(preview)}</small></div>`;
+  return `<div class="yarn-editor" data-yarn-editor>${hidden(`gb_${index}_yarn_legacy`, values.legacy)}${component('yarn_', values)}${secondHidden}</div>`;
 }
 function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const tech = TECH.map(([k, label]) => field(label, `tech_${k}`, (v.tech || {})[k] || '')).join('');
