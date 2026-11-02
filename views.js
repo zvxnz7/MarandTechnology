@@ -38,20 +38,46 @@ const PROJECT_STATUS_CLASS = { in_progress: 'status-progress', to_knitter: 'stat
 function esc(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
-function yarnShares(rows = []) {
-  const weights = rows.map(row => {
-    const yarn = Yarn.fields(row);
-    const dtex = Number(Yarn.decimal(yarn.dtex));
-    const threads = Number(row.threads);
-    const runIn = Number(String(row.run_in || '').trim().replace(',', '.'));
-    const hasSecond = Boolean(yarn.secondMaterial || yarn.secondDtex || yarn.secondFilaments || yarn.secondProcess);
-    const secondDtex = hasSecond ? Number(Yarn.decimal(yarn.secondDtex)) : 0;
-    if (!Number.isFinite(threads) || threads <= 0 || !Number.isFinite(dtex) || dtex <= 0 || !Number.isFinite(runIn) || runIn <= 0 || (hasSecond && (!Number.isFinite(secondDtex) || secondDtex <= 0))) return null;
-    return threads * (dtex + secondDtex) * runIn;
+function yarnContributions(row) {
+  const yarn = Yarn.fields(row);
+  const threads = Number(row.threads);
+  const runIn = Number(String(row.run_in || '').trim().replace(',', '.'));
+  if (!Number.isFinite(threads) || threads <= 0 || !Number.isFinite(runIn) || runIn <= 0) return null;
+  const components = [{ material: yarn.material, dtex: yarn.dtex }];
+  const hasSecond = Boolean(yarn.secondMaterial || yarn.secondDtex || yarn.secondFilaments || yarn.secondProcess);
+  if (hasSecond) components.push({ material: yarn.secondMaterial, dtex: yarn.secondDtex });
+  const multiplier = threads * runIn;
+  const contributions = components.map(component => {
+    const material = String(component.material || '').trim().replace(/\s+/g, ' ').toUpperCase();
+    const dtex = Number(Yarn.decimal(component.dtex));
+    if (!material || !Number.isFinite(dtex) || dtex <= 0) return null;
+    return { material, weight: multiplier * dtex };
   });
-  const total = weights.reduce((sum, weight) => sum + (weight || 0), 0);
-  if (!total || weights.some(weight => weight === null)) return rows.map(() => '—');
-  return weights.map(weight => `${Math.round(weight / total * 100).toLocaleString('pl-PL')}%`);
+  return contributions.some(value => value === null) ? null : contributions;
+}
+function integerPercentages(weights) {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  if (!total) return [];
+  const exact = weights.map(weight => weight / total * 100);
+  const rounded = exact.map(Math.floor);
+  let remainder = 100 - rounded.reduce((sum, value) => sum + value, 0);
+  const order = exact.map((value, index) => ({ index, fraction: value - rounded[index] })).sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (let index = 0; remainder > 0; index++, remainder--) rounded[order[index % order.length].index]++;
+  return rounded;
+}
+function yarnShares(rows = []) {
+  const contributions = rows.map(yarnContributions);
+  const weights = contributions.map(parts => parts?.reduce((sum, part) => sum + part.weight, 0) ?? null);
+  if (!weights.length || weights.some(weight => weight === null)) return rows.map(() => '—');
+  return integerPercentages(weights).map(value => `${value}%`);
+}
+function yarnComposition(rows = []) {
+  const contributions = rows.map(yarnContributions);
+  if (!contributions.length || contributions.some(parts => parts === null)) return '—';
+  const weights = new Map();
+  for (const parts of contributions) for (const part of parts) weights.set(part.material, (weights.get(part.material) || 0) + part.weight);
+  const sorted = [...weights.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return integerPercentages(sorted.map(([, weight]) => weight)).map((value, index) => `${value}% ${sorted[index][0]}`).join(' · ');
 }
 const INSTRUCTION_FORMAT = 'marand-instructions-v1';
 const INSTRUCTION_SIZES = [12, 14, 16, 18, 20, 24, 28, 32];
@@ -243,6 +269,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   aiNotice = aiNotice || r.ai_generated_notice || v.ai_generated_notice || '';
   if (aiNotice) flashes = [...flashes, { category: 'warning', message: aiNotice }];
   const tech = TECH.map(([k, label]) => `<div><span>${esc(label)}</span><strong>${esc((v.tech || {})[k] || '—')}</strong></div>`).join('');
+  const composition = yarnComposition(v.gb);
   const shares = yarnShares(v.gb);
   const gbTable = v.gb.length ? v.gb.map((row, index) => `<tr>${GB_DISPLAY.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : k === 'yarn_share' ? shares[index] : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB_DISPLAY.length}">Brak danych GB.</td></tr>`;
   const raw = RAW_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.raw || {})[k] || '—')}</dd>`).join('');
@@ -264,7 +291,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   return layout({ user, csrf, flashes, title: `${r.symbol} · Marand`, body: `<a class="breadcrumb" href="${r.article_id ? `/articles/${r.article_id}` : `/projects/${r.project_id}`}">← ${esc(r.article_id ? r.symbol : r.project_name)}</a>${archivedNotice}<div class="pagehead"><div><span class="eyebrow">${r.kind === 'trial' ? 'PRÓBA / WARIANT' : 'WARUNKI DZIANIA'}</span><h1>${esc(r.symbol)}</h1><span class="badge ${esc(r.state)}">${esc(STATE[r.state])}${r.version ? ` · wersja ${r.version}` : ''}</span> ${r.project_trial_number ? `<span class="muted">Nr projektu ${esc(r.project_trial_number)}</span>` : ''}</div><div class="actions">${actionButtons}</div></div>
 <div class="metadata"><span>Data źródłowa: <b>${esc(v.date || 'niepodana')}</b></span><span>Utworzono w bazie: ${datepl(r.created_at)}</span><span>Aktualizacja: ${datepl(r.updated_at)}</span>${r.base_id ? `<a href="/records/${r.base_id}">Wpis bazowy #${r.base_id}</a>` : ''}</div>
 ${r.state === 'approved' ? `<div class="notice success"><strong>${r.active_spec === r.id ? 'Obowiązująca specyfikacja' : 'Historyczna zatwierdzona specyfikacja'}</strong> · zatwierdzono ${datepl(r.approved_at)}<p>${esc(r.review_note)}</p></div>` : ''}${v.source_note ? `<div class="notice warning">${esc(v.source_note)}</div>` : ''}
-<div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><div class="metric-grid">${tech}</div></div>
+<div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><p><strong>Skład % przędzy:</strong> ${esc(composition)}</p><div class="metric-grid">${tech}</div></div>
 <div class="sectionhead"><h2>Ustawienia GB</h2></div><div class="panel scroll"><table class="listing compact"><thead><tr>${GB_DISPLAY.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${gbTable}</tbody></table></div>
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2><p class="preline">${esc(v.knitter_notes || '—')}</p></section>${review}
 <div class="two-col"><section class="panel padded"><h2>Parametry dzianiny surowej</h2><dl>${raw}</dl><p class="preline">${esc(v.raw_comments || '')}</p></section><section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted small">Dane opcjonalne.</p><dl>${targets}</dl>${v.finished_comments ? `<h3>Komentarz do dzianiny wykończonej</h3><p class="preline">${esc(v.finished_comments)}</p>` : ''}</section></div>${finishes}
