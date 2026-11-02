@@ -81,6 +81,18 @@ document.querySelectorAll('[data-finishing-recipe-copy-button]').forEach(button=
  });
  update();
 });
+document.querySelectorAll('.finishing-recipe-form').forEach(form=>{
+ const symbol=form.querySelector('[data-article-symbol]'),composition=form.querySelector('[data-article-composition]');
+ let map={};try{map=JSON.parse(form.querySelector('[data-article-composition-map]')?.textContent||'{}');}catch{}
+ if(!symbol||!composition)return;
+ let lastAuto=composition.value;
+ const fill=()=>{
+  const value=map[symbol.value.trim()];
+  if(value&&(composition.value.trim()===''||composition.value===lastAuto)){composition.value=value;lastAuto=value;composition.dispatchEvent(new Event('input',{bubbles:true}));}
+  else if(!value&&composition.value===lastAuto){composition.value='';lastAuto='';composition.dispatchEvent(new Event('input',{bubbles:true}));}
+ };
+ symbol.addEventListener('input',fill);symbol.addEventListener('change',fill);fill();
+});
 document.querySelectorAll('[data-finishing-batch-form]').forEach(form=>{
  const meters=form.elements.meters_list,weights=form.elements.weights_list,preview=form.querySelector('[data-finishing-bale-preview]');
  const parse=input=>input.value.split(/[+\n\r;]+/).map(part=>part.trim()).filter(Boolean);

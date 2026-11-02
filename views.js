@@ -22,7 +22,7 @@ const TARGET_METRICS = [
   ['sample_batch', 'Wzorcowa partia z wykańczalni'],
 ];
 const GB = [
-  ['number', 'GB'], ['yarn', 'Rodzaj przędzy'], ['pattern', 'Raport ogniw wzorujących'], ['threads', 'nici na 1 szal'],
+  ['number', 'GB'], ['yarn', 'Rodzaj przędzy'], ['share', 'Udział %'], ['pattern', 'Raport ogniw wzorujących'], ['threads', 'nici na 1 szal'],
   ['run_in', 'mm/rack'], ['threading', 'Nawleczenie'],
 ];
 const FINISH = [
@@ -71,6 +71,12 @@ function yarnComposition(rows = []) {
   for (const parts of contributions) for (const part of parts) weights.set(part.material, (weights.get(part.material) || 0) + part.weight);
   const sorted = [...weights.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   return integerPercentages(sorted.map(([, weight]) => weight)).map((value, index) => `${value}% ${sorted[index][0]}`).join(' · ');
+}
+function yarnSharePercentages(rows = []) {
+  const contributions = rows.map(yarnContributions);
+  if (!contributions.length || contributions.some(parts => parts === null)) return rows.map(() => '—');
+  const weights = contributions.map(parts => parts.reduce((sum, part) => sum + part.weight, 0));
+  return integerPercentages(weights).map(value => `${value}%`);
 }
 const INSTRUCTION_FORMAT = 'marand-instructions-v1';
 const INSTRUCTION_SIZES = [12, 14, 16, 18, 20, 24, 28, 32];
@@ -230,7 +236,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const gbRows = Array.from({ length: gbCount }, (_, i) => {
     const row = v.gb[i] || {};
     const number = row.number || String(Math.max(0,...v.gb.map(g=>Number(g.number))) + i - v.gb.length + 1);
-    const values = GB.filter(([k]) => !['number', 'threading', 'yarn'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='threads'?{inputmode:'numeric',pattern:'[0-9]+',title:'Wpisz liczbę nici na jeden szal. Nie używaj zapisów typu 3*450 ani 3x450.'}:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + threadingEditor(i, row.threading || 'pełne');
+    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='threads'?{inputmode:'numeric',pattern:'[0-9]+',title:'Wpisz liczbę nici na jeden szal. Nie używaj zapisów typu 3*450 ani 3x450.'}:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + threadingEditor(i, row.threading || 'pełne');
     return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${yarnEditor(i,row)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div></div></section>`;
   }).join('');
   const targetGrid = `<strong>Parametr</strong><strong>Wartość</strong>${TARGET_METRICS.map(([k, label]) => `<label for="target_${k}">${esc(label)}</label><input id="target_${k}" name="targets_${k}" value="${esc((v.targets || {})[k] || '')}"${k === 'sample_batch' ? ' maxlength="150"' : ' maxlength="10"'}>`).join('')}`;
@@ -263,7 +269,8 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   if (aiNotice) flashes = [...flashes, { category: 'warning', message: aiNotice }];
   const tech = TECH.map(([k, label]) => `<div><span>${esc(label)}</span><strong>${esc((v.tech || {})[k] || '—')}</strong></div>`).join('');
   const composition = yarnComposition(v.gb);
-  const gbTable = v.gb.length ? v.gb.map(row => `<tr>${GB.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB.length}">Brak danych GB.</td></tr>`;
+  const shares = yarnSharePercentages(v.gb);
+  const gbTable = v.gb.length ? v.gb.map((row, index) => `<tr>${GB.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : k === 'share' ? shares[index] : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB.length}">Brak danych GB.</td></tr>`;
   const raw = RAW_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.raw || {})[k] || '—')}</dd>`).join('');
   const targets = TARGET_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.targets || {})[k] || '—')}</dd>`).join('');
   const finishes = v.finished.length ? `<section class="panel padded"><h2>Warianty wykańczania / wyniki</h2>${v.finished.map((f, i) => `<h3>${esc(f.name || `Wariant ${i + 1}`)}</h3><p>Gramatura: ${esc(f.weight || '—')} g/m² · Szerokość: ${esc(f.width || '—')} cm · Pk: ${esc(f.pk || '—')} · Pr: ${esc(f.pr || '—')} · Dystans: ${esc(f.thickness || '—')}</p><p class="preline">${esc(f.finish || '')} ${esc(f.comments || '')}</p>`).join('')}</section>` : '';
@@ -283,7 +290,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   return layout({ user, csrf, flashes, title: `${r.symbol} · Marand`, body: `<a class="breadcrumb" href="${r.article_id ? `/articles/${r.article_id}` : `/projects/${r.project_id}`}">← ${esc(r.article_id ? r.symbol : r.project_name)}</a>${archivedNotice}<div class="pagehead"><div><span class="eyebrow">${r.kind === 'trial' ? 'PRÓBA / WARIANT' : 'WARUNKI DZIANIA'}</span><h1>${esc(r.symbol)}</h1><span class="badge ${esc(r.state)}">${esc(STATE[r.state])}${r.version ? ` · wersja ${r.version}` : ''}</span> ${r.project_trial_number ? `<span class="muted">Nr projektu ${esc(r.project_trial_number)}</span>` : ''}</div><div class="actions">${actionButtons}</div></div>
 <div class="metadata"><span>Data źródłowa: <b>${esc(v.date || 'niepodana')}</b></span><span>Utworzono w bazie: ${datepl(r.created_at)}</span><span>Aktualizacja: ${datepl(r.updated_at)}</span>${r.base_id ? `<a href="/records/${r.base_id}">Wpis bazowy #${r.base_id}</a>` : ''}</div>
 ${r.state === 'approved' ? `<div class="notice success"><strong>${r.active_spec === r.id ? 'Obowiązująca specyfikacja' : 'Historyczna zatwierdzona specyfikacja'}</strong> · zatwierdzono ${datepl(r.approved_at)}<p>${esc(r.review_note)}</p></div>` : ''}${v.source_note ? `<div class="notice warning">${esc(v.source_note)}</div>` : ''}
-<div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><p><strong>Skład % przędzy:</strong> ${esc(composition)}</p><div class="metric-grid">${tech}</div></div>
+<div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><p><strong>Skład surowcowy:</strong> ${esc(composition)}</p><div class="metric-grid">${tech}</div></div>
 <div class="sectionhead"><h2>Ustawienia GB</h2></div><div class="panel scroll"><table class="listing compact"><thead><tr>${GB.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${gbTable}</tbody></table></div>
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2><p class="preline">${esc(v.knitter_notes || '—')}</p></section>${review}
 <div class="two-col"><section class="panel padded"><h2>Parametry dzianiny surowej</h2><dl>${raw}</dl><p class="preline">${esc(v.raw_comments || '')}</p></section><section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted small">Dane opcjonalne.</p><dl>${targets}</dl>${v.finished_comments ? `<h3>Komentarz do dzianiny wykończonej</h3><p class="preline">${esc(v.finished_comments)}</p>` : ''}</section></div>${finishes}
@@ -399,4 +406,4 @@ function updatePage({ user, csrf, flashes, current, latest, status, repo, canUpd
   return layout({ user, csrf, flashes, title: 'Aktualizacje · Marand', body: `<a class="breadcrumb" href="/">← Artykuły i projekty</a><div class="pagehead"><div><span class="eyebrow">ADMINISTRACJA</span><h1>Aktualizacje programu</h1><p class="muted">Wersja zainstalowana: ${esc(current)}</p></div></div><div class="panel padded"><h2>Źródło aktualizacji</h2><p>${repo ? `Repozytorium GitHub: <strong>${esc(repo)}</strong>` : 'Repozytorium GitHub nie jest skonfigurowane.'}</p>${latestInfo}${updateError ? `<div class="notice warning">${esc(updateError)}</div>` : ''}${statusInfo}${updateForm}${refresh}<p class="muted small">Po każdym wypchnięciu zmian na main GitHub przygotowuje wydanie. Aktualizacja sprawdza sumy SHA-256, wykonuje kopię bazy i w razie problemu przywraca poprzedni program. Dane pozostają osobno.</p></div>` });
 }
 
-module.exports = { TECH, RAW_METRICS, TARGET_METRICS, GB, FINISH, STATE, PROJECT_STATUS, LOGO_CACHE_VERSION, esc, datepl, todayInput, instructionsText, layout, errorPage, loginPage, homePage, projectPage, editPage, recordPage, issuePage, issueConfirmPage, cardPage, confirmArchiveRecordPage, confirmArchiveProjectPage, confirmDeleteStagePage, confirmDeleteCommentPage, confirmDeleteStageCommentPage, confirmRemoveProjectArticlePage, confirmArchiveArticlePage, confirmPurgeArticlePage, archivePage, confirmRestoreImportPage, sourceImportPage, updatePage };
+module.exports = { TECH, RAW_METRICS, TARGET_METRICS, GB, FINISH, STATE, PROJECT_STATUS, LOGO_CACHE_VERSION, esc, datepl, todayInput, yarnComposition, yarnSharePercentages, instructionsText, layout, errorPage, loginPage, homePage, projectPage, editPage, recordPage, issuePage, issueConfirmPage, cardPage, confirmArchiveRecordPage, confirmArchiveProjectPage, confirmDeleteStagePage, confirmDeleteCommentPage, confirmDeleteStageCommentPage, confirmRemoveProjectArticlePage, confirmArchiveArticlePage, confirmPurgeArticlePage, archivePage, confirmRestoreImportPage, sourceImportPage, updatePage };
