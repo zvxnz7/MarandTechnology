@@ -323,6 +323,7 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
+    if (row.run_in.length > 6) fail(400, 'Wartość mm/rack może mieć maksymalnie 6 znaków.');
     row.yarn_material = formText(form, `gb_${i}_yarn_material`);
     if (row.yarn_material.length > 10) fail(400, 'Rodzaj przędzy może mieć maksymalnie 10 znaków.');
     const yarnDtex = formText(form, `gb_${i}_yarn_dtex`);
@@ -376,7 +377,7 @@ function validateReady(row) {
   if (v.gb.some(g => g.yarn_filaments && (!/^\d+$/.test(g.yarn_filaments) || Number(g.yarn_filaments) < 1))) fail(400, 'Liczba filamentów musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
   if (v.gb.some(g => (g.yarn2_material || g.yarn2_dtex || g.yarn2_filaments || g.yarn2_process) && (!g.yarn_material || !Yarn.decimal(g.yarn_dtex) || !g.yarn2_material || !Yarn.decimal(g.yarn2_dtex)))) fail(400, 'Uzupełnij pierwszy składnik oraz rodzaj włókna i grubość w dtex drugiego składnika przędzy.');
   if (v.gb.some(g => g.yarn2_filaments && (!/^\d+$/.test(g.yarn2_filaments) || Number(g.yarn2_filaments) < 1))) fail(400, 'Liczba filamentów drugiego składnika musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
-  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !Threading.parse(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici na jeden szal, wrobienie, nawleczenie tekstowe (np. „2 pełne, 3 puste”) oraz raport dla każdej używanej GB.');
+  if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !Threading.parse(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici na jeden szal, wartość mm/rack, nawleczenie tekstowe (np. „2 pełne, 3 puste”) oraz raport dla każdej używanej GB.');
 }
 function signedCookie(session) {
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
