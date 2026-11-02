@@ -1095,14 +1095,13 @@ async function handle(req, res) {
         const article=db.prepare('SELECT * FROM articles WHERE id=?').get(articleId);
         if(!article||article.archived_at||article.purged_at)fail(400,'Wybierz aktywny artykuł.');
         if(db.prepare('SELECT 1 FROM project_stage_articles WHERE stage_id=? AND article_id=?').get(stageId,articleId))fail(409,'Ten artykuł jest już przypisany do tego etapu.');
-        const stamp=now(),payload=blank();payload.symbol=article.symbol;payload.number=current.trial_number||'';payload.date=todayWarsaw();
-        const rid=Number(db.prepare("INSERT INTO records(project_id,article_id,kind,symbol,number,payload,created_at,updated_at,expected_active) VALUES(?,?,'trial',?,?,?,?,?,?)").run(pid,articleId,article.symbol,current.trial_number||'',dump(payload),stamp,stamp,article.active_spec).lastInsertRowid);
-        db.prepare('INSERT INTO project_stage_articles(stage_id,article_id,record_id,created_at) VALUES(?,?,?,?)').run(stageId,articleId,rid,stamp);
+        const stamp=now();
+        db.prepare('INSERT INTO project_stage_articles(stage_id,article_id,record_id,created_at) VALUES(?,?,NULL,?)').run(stageId,articleId,stamp);
         db.prepare('UPDATE project_stages SET updated_at=? WHERE id=?').run(stamp,stageId);
         db.prepare('UPDATE projects SET updated_at=? WHERE id=?').run(stamp,pid);
-        audit(req.user,'Dodano artykuł do etapu próby',rid,JSON.stringify({stage:stage.stage_no,article:article.symbol}));
+        audit(req.user,'Dodano artykuł do etapu próby',null,JSON.stringify({stage:stage.stage_no,article:article.symbol}),articleId);
       });
-      return redirect(req,res,`/projects/${pid}`,'Dodano artykuł do etapu.');
+      return redirect(req,res,`/projects/${pid}`,'Artykuł został przypisany do etapu.');
     }
 
     const projectArchiveMatch = p.match(/^\/projects\/(\d+)\/(delete|restore)$/);
@@ -1156,7 +1155,7 @@ async function handle(req, res) {
       const cards = db.prepare('SELECT c.*,u.name author FROM cards c JOIN records r ON r.id=c.record_id JOIN users u ON u.id=c.created_by WHERE r.project_id=? OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=? AND pa.article_id=r.article_id)) ORDER BY c.id DESC').all(id,id);
       const stages=db.prepare('SELECT s.* FROM project_stages s WHERE s.project_id=? ORDER BY s.stage_no').all(id);
       const byStage=new Map(stages.map(stage=>[stage.id,[]]));
-      const stageArticles=db.prepare('SELECT sa.stage_id,sa.article_id,sa.record_id,a.symbol,a.active_spec,a.archived_at,a.purged_at,r.payload,r.state,r.archived_at record_archived_at FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id LEFT JOIN records r ON r.id=sa.record_id JOIN project_stages s ON s.id=sa.stage_id WHERE s.project_id=? ORDER BY s.stage_no,a.symbol_key,a.id').all(id);
+      const stageArticles=db.prepare('SELECT sa.stage_id,sa.article_id,sa.record_id,a.symbol,a.active_spec,a.archived_at,a.purged_at,coalesce(r.payload,active.payload) payload,r.state,r.archived_at record_archived_at FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id LEFT JOIN records r ON r.id=sa.record_id LEFT JOIN records active ON active.id=a.active_spec JOIN project_stages s ON s.id=sa.stage_id WHERE s.project_id=? ORDER BY s.stage_no,a.symbol_key,a.id').all(id);
       for(const article of stageArticles)byStage.get(article.stage_id)?.push(article);
       for(const stage of stages)stage.articles=byStage.get(stage.id)||[];
       const commentsByStage=new Map(stages.map(stage=>[stage.id,[]]));
