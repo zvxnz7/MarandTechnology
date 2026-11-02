@@ -47,6 +47,7 @@ const db = new DatabaseSync(DB_PATH, { timeout: 15000, enableForeignKeyConstrain
 db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=15000;');
 require('./modules/database').migrate(db, DB_PATH);
 migrateDraftThreadCounts();
+migrateDraftYarnStructures();
 function recoverInterruptedSourceImport() {
   const markerPath = path.join(DATA, 'maintenance.json');
   const marker = readJsonIfExists(markerPath);
@@ -200,6 +201,29 @@ function migrateDraftThreadCounts() {
     }
   });
   if(changedRecords||unresolved)console.log(`Robocze specyfikacje i warianty prób — przeliczono ${changedValues} wartości w ${changedRecords} wpisach; ${unresolved} nietypowych wartości pozostawiono do sprawdzenia.`);
+}
+function migrateDraftYarnStructures() {
+  const rows=db.prepare("SELECT id,article_id,payload FROM records WHERE kind IN ('spec','trial') AND state='draft'").all();
+  const update=db.prepare('UPDATE records SET payload=?,revision=revision+1,updated_at=? WHERE id=?');
+  let changedRecords=0,changedValues=0,unresolved=0;
+  transaction(()=>{
+    for(const row of rows){
+      const payload=parsePayload(row),changes=[];
+      for(const gb of payload.gb||[]){
+        if(gb.yarn_material||gb.yarn_dtex||gb.yarn_filaments||gb.yarn_process||gb.yarn2_material||gb.yarn2_dtex)continue;
+        const before=String(gb.yarn||'').trim(),parsed=Yarn.parseLegacy(before);
+        if(!parsed){if(before)unresolved++;continue;}
+        Object.assign(gb,{yarn_material:parsed.material,yarn_dtex:parsed.dtex,yarn_filaments:parsed.filaments,yarn_process:parsed.process});
+        gb.yarn=Yarn.compose(parsed);
+        changes.push({gb:gb.number,from:before,to:gb.yarn});changedValues++;
+      }
+      if(!changes.length)continue;
+      update.run(dump(payload),now(),row.id);
+      audit(null,'Ustrukturyzowano oznaczenie przędzy',row.id,JSON.stringify(changes),row.article_id);
+      changedRecords++;
+    }
+  });
+  if(changedRecords)console.log(`Oznaczenia przędzy — ustrukturyzowano ${changedValues} w ${changedRecords} wpisach roboczych; ${unresolved} niejednoznacznych zapisów pozostawiono bez zmian.`);
 }
 function auditProjectChange(user, projectId, action, detail) {
   const records = db.prepare(`SELECT pa.article_id,

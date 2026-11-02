@@ -29,7 +29,8 @@ function fields(row = {}) {
   return parsed ? { ...parsed, secondMaterial: '', secondDtex: '', secondFilaments: '', secondProcess: '', legacy: '' } : { material: '', dtex: '', filaments: '', process: '', secondMaterial: '', secondDtex: '', secondFilaments: '', secondProcess: '', legacy: row.yarn || '' };
 }
 
-function compose({ material = '', dtex = '', filaments = '', process = '' } = {}) {
+function compose(values = {}) {
+  const { material = '', dtex = '', filaments = '', process = '', secondMaterial = '', secondDtex = '', secondFilaments = '', secondProcess = '' } = values;
   const part = (fiberValue, dtexValue, filamentValue, processValue) => {
     const fiber = String(fiberValue || '').trim(), weight = decimal(dtexValue);
     if (!fiber || !weight) return '';
@@ -40,7 +41,7 @@ function compose({ material = '', dtex = '', filaments = '', process = '' } = {}
     return [fiber, `${weight} dtex`, filamentLabel, String(processValue || '').trim().toUpperCase()].filter(Boolean).join(' · ');
   };
   const first = part(material, dtex, filaments, process);
-  const second = part(arguments[0]?.secondMaterial, arguments[0]?.secondDtex, arguments[0]?.secondFilaments, arguments[0]?.secondProcess);
+  const second = part(secondMaterial, secondDtex, secondFilaments, secondProcess);
   return [first, second].filter(Boolean).join(' + ');
 }
 
