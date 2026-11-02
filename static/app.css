@@ -367,8 +367,13 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-notes-content{min-height:120px;padding:12px;outline:none;font-size:16px;font-weight:400;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-notes-content:focus{box-shadow:inset 0 0 0 2px #e7afb0}
 .finishing-notes-content:empty:before{content:'Wpisz uwagi dodatkowe…';color:#8a8f95;pointer-events:none}
-.finishing-production-check{width:min(760px,calc(100vw - 28px));max-width:760px}
-.finishing-production-check .dialog-body{display:grid;gap:8px;max-height:65vh;overflow:auto}
+.finishing-production-check{width:min(640px,calc(100vw - 28px));max-width:640px;max-height:90vh;padding:0;overflow:hidden}
+.finishing-production-check[open]{display:flex;flex-direction:column}
+.finishing-production-check .dialog-head{flex:none;padding:16px 20px}
+.finishing-production-check .dialog-body{display:grid;align-content:start;gap:8px;max-height:65vh;overflow:auto;padding:18px 20px}
+.finishing-production-check .actions{display:flex;flex:none;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--line);background:#fafbfc}
+.finishing-production-check .actions button{max-width:100%}
+.finishing-production-check-empty{margin:0 0 4px;padding:13px 15px;border-left:3px solid #9aa2aa;border-radius:4px;background:#f3f5f6;color:var(--muted);font-size:14px}
 .finishing-production-check-row{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);gap:12px;padding:9px 11px;border-radius:6px;background:#f5f7f8;font-size:13px}
 .finishing-production-check-row>span{overflow-wrap:anywhere}
 .finishing-production-check-row.is-ok{background:#eaf5ed;color:#245f38}
@@ -376,6 +381,26 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-lot-form{display:grid;gap:14px}
 .finishing-lot-form label{margin:0}
 .finishing-lot-form .actions{justify-content:flex-end}
+.finishing-order-batches .sectionhead{margin:0 0 14px}
+.finishing-order-batches .sectionhead h2{margin:0}
+.finishing-batch-add{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.finishing-batch-add>summary{margin:0;color:#29445d}
+.finishing-batch-add>p{margin:10px 0;font-size:13px}
+.finishing-add-batch-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:end;gap:10px 14px}
+.finishing-add-batch-form label{min-width:0;margin:0}
+.finishing-add-batch-form button{white-space:nowrap}
+.finishing-order-notes-view{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}
+.finishing-row-actions{white-space:nowrap;text-align:right!important;vertical-align:middle!important}
+.finishing-row-action{display:inline-grid;place-items:center;width:34px;height:34px;margin-left:5px;border:1px solid #d8dde2;border-radius:7px;background:#fff;color:#42576a;vertical-align:middle}
+.finishing-row-action:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
+.finishing-row-action svg{width:18px;height:18px}
+.finishing-row-action.is-receive{color:#246b4a;border-color:#c9e1d1;background:#f1f8f3}
+.finishing-row-action.is-receive:hover{border-color:#83bd97;background:#e6f4e9}
+.finishing-row-action.is-delete{font-size:22px;font-weight:600;color:#aa282c;background:#fff5f4}
+.finishing-row-action.is-delete:hover{border-color:#d49a9c;background:#fce9e8}
+@media(max-width:520px){.finishing-production-check .dialog-head{padding:14px 16px}.finishing-production-check .dialog-body{padding:16px;max-height:60vh}.finishing-production-check-row{grid-template-columns:minmax(0,1fr);gap:2px}.finishing-production-check .actions{flex-direction:column-reverse;align-items:stretch;padding:12px 16px}.finishing-production-check .actions button{width:100%}}
+@media(max-width:760px){.finishing-add-batch-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.finishing-add-batch-form{grid-template-columns:1fr}}
 .finishing-trial-badge{display:inline-flex;align-items:center;margin-left:8px;padding:3px 9px;border-radius:999px;background:#fff1d6;color:#865700;font-size:11px;font-weight:750;line-height:1.4;text-transform:uppercase;vertical-align:middle}
 .finishing-recipe-identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px}
 .finishing-recipe-identity-grid label,.finishing-recipe-section>label{margin:0}
