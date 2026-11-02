@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS finishing_receipts(
   finished_meters REAL NOT NULL DEFAULT 0 CHECK(finished_meters >= 0),
   actual_color TEXT NOT NULL DEFAULT '',
   actual_stiffening TEXT NOT NULL DEFAULT '',
+  color_status TEXT NOT NULL DEFAULT '' CHECK(color_status IN ('','ok','not_ok')),
+  stiffening_status TEXT NOT NULL DEFAULT '' CHECK(stiffening_status IN ('','ok','not_ok')),
   actual_width_cm REAL,
   actual_grammage REAL,
   rubbing_status TEXT NOT NULL DEFAULT '' CHECK(rubbing_status IN ('','ok','not_ok')),
@@ -144,8 +146,8 @@ CREATE TABLE IF NOT EXISTS finishing_return_bales(
   id INTEGER PRIMARY KEY,
   receipt_id INTEGER NOT NULL REFERENCES finishing_receipts(id) ON DELETE CASCADE,
   sequence INTEGER NOT NULL,
-  meters REAL NOT NULL CHECK(meters > 0),
-  weight_kg REAL NOT NULL CHECK(weight_kg > 0),
+  meters REAL CHECK(meters IS NULL OR meters > 0),
+  weight_kg REAL CHECK(weight_kg IS NULL OR weight_kg > 0),
   UNIQUE(receipt_id,sequence)
 );
 CREATE INDEX IF NOT EXISTS finishing_return_bales_receipt ON finishing_return_bales(receipt_id,sequence);

@@ -337,26 +337,56 @@ function migrateV14(db) {
     db.exec('PRAGMA user_version=14; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
 }
+function migrateV15(db) {
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  if(version>=15)return;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const receiptColumns=new Set(db.prepare("PRAGMA table_info('finishing_receipts')").all().map(column=>column.name));
+    if(!receiptColumns.has('color_status'))db.exec("ALTER TABLE finishing_receipts ADD COLUMN color_status TEXT NOT NULL DEFAULT '' CHECK(color_status IN ('','ok','not_ok'))");
+    if(!receiptColumns.has('stiffening_status'))db.exec("ALTER TABLE finishing_receipts ADD COLUMN stiffening_status TEXT NOT NULL DEFAULT '' CHECK(stiffening_status IN ('','ok','not_ok'))");
+    const baleColumns=db.prepare("PRAGMA table_info('finishing_return_bales')").all();
+    const meters=baleColumns.find(column=>column.name==='meters'),weight=baleColumns.find(column=>column.name==='weight_kg');
+    if(meters?.notnull||weight?.notnull){
+      db.exec(`CREATE TABLE finishing_return_bales_next(
+        id INTEGER PRIMARY KEY,
+        receipt_id INTEGER NOT NULL REFERENCES finishing_receipts(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        meters REAL CHECK(meters IS NULL OR meters > 0),
+        weight_kg REAL CHECK(weight_kg IS NULL OR weight_kg > 0),
+        UNIQUE(receipt_id,sequence)
+      );
+      INSERT INTO finishing_return_bales_next(id,receipt_id,sequence,meters,weight_kg)
+        SELECT id,receipt_id,sequence,meters,weight_kg FROM finishing_return_bales;
+      DROP TABLE finishing_return_bales;
+      ALTER TABLE finishing_return_bales_next RENAME TO finishing_return_bales;
+      CREATE INDEX finishing_return_bales_receipt ON finishing_return_bales(receipt_id,sequence);`);
+    }
+    db.exec('PRAGMA user_version=15; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>14)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===14) { db.exec(schema); return; }
-  if(version===13) { migrateV14(db); return; }
-  if(version===12) { migrateV13(db); migrateV14(db); return; }
-  if(version===11) { migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); return; }
+  if(version>15)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===15) { db.exec(schema); return; }
+  if(version===14) { migrateV15(db); return; }
+  if(version===13) { migrateV14(db); migrateV15(db); return; }
+  if(version===12) { migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===11) { migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -395,5 +425,6 @@ function migrate(db, dbPath) {
   migrateV12(db);
   migrateV13(db);
   migrateV14(db);
+  migrateV15(db);
 }
 module.exports = { migrate };
