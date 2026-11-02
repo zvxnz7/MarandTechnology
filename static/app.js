@@ -9,6 +9,7 @@ document.querySelectorAll('[data-print-page]').forEach(button=>button.addEventLi
 }));
 document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  const orderTypeInputs=[...form.querySelectorAll('[name="order_type"]')],plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]'),recipeSearch=form.querySelector('[data-finishing-recipe-search]'),recipeResults=form.querySelector('[data-finishing-recipe-results]'),recipeSelected=form.querySelector('[data-finishing-recipe-selected]'),recipeEditShortcut=form.querySelector('[data-finishing-recipe-edit-shortcut]'),selectedRecipeDetails=form.querySelector('[data-finishing-selected-recipe]'),selectedRecipeText=form.querySelector('[data-finishing-selected-recipe-text]'),source=form.querySelector('[data-finishing-source]'),sourceDetails=form.querySelector('[data-finishing-source-details]');
+ const checkDialog=document.querySelector('[data-finishing-production-check]'),checkContent=checkDialog?.querySelector('[data-finishing-production-check-content]'),checkConfirm=checkDialog?.querySelector('[data-finishing-production-check-confirm]'),confirmValue=form.elements.namedItem('confirm_last_production'),submitButton=form.querySelector('[type="submit"]');
  let recipeTimer=null,recipeController=null,sourceController=null,activeRecipeIndex=-1;
  const recipeOptions=()=>[...recipeResults.querySelectorAll('[data-finishing-recipe-option]')];
  const setActiveRecipe=index=>{
@@ -34,7 +35,7 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  };
  const searchRecipes=async()=>{
   const query=recipeSearch.value.trim();recipeController?.abort();recipeController=null;
-  if(query.length<2){recipeResults.replaceChildren();recipeSearch.setAttribute('aria-expanded','false');return;}
+  if(query.length<1){recipeResults.replaceChildren();recipeSearch.setAttribute('aria-expanded','false');return;}
   recipeController=new AbortController();const params=new URLSearchParams({q:query,plant_id:plant.value||''});
   try{const response=await fetch(`${recipeSearch.dataset.searchUrl}&${params}`,{headers:{'X-Requested-With':'fetch'},signal:recipeController.signal});if(!response.ok)throw new Error();recipeResults.innerHTML=await response.text();activeRecipeIndex=-1;recipeSearch.removeAttribute('aria-activedescendant');recipeSearch.setAttribute('aria-expanded',String(Boolean(recipeResults.querySelector('[data-finishing-recipe-option]'))));}
   catch(error){if(error.name!=='AbortError'){recipeResults.textContent='Nie udało się wyszukać receptur.';recipeSearch.setAttribute('aria-expanded','false');}}
@@ -60,7 +61,27 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  recipeResults.addEventListener('click',event=>{const option=event.target.closest('[data-finishing-recipe-option]');if(option)applyRecipe(option);});
  plant.addEventListener('change',()=>{if(recipe.value&&recipe.dataset.plant&&recipe.dataset.plant!==plant.value){clearRecipe();recipeSearch.value='';}clearTimeout(recipeTimer);recipeTimer=setTimeout(searchRecipes,120);});
  source.addEventListener('change',loadSource);orderTypeInputs.forEach(input=>input.addEventListener('change',sync));
- form.addEventListener('submit',event=>{const raw=orderTypeInputs.find(input=>input.checked)?.value==='raw_sale';if(!raw&&!recipe.value){event.preventDefault();recipeSearch.setCustomValidity('Wybierz recepturę z wyników wyszukiwania.');recipeSearch.reportValidity();}else recipeSearch.setCustomValidity('');});
+ const addCheckRow=(label,value,highlight='')=>{const row=document.createElement('div');row.className=`finishing-production-check-row${highlight?` ${highlight}`:''}`;const title=document.createElement('strong'),text=document.createElement('span');title.textContent=label;text.textContent=value||'—';row.append(title,text);checkContent.appendChild(row);};
+ const showCheck=async()=>{
+  checkConfirm.disabled=true;checkContent.replaceChildren();const loading=document.createElement('p');loading.textContent='Sprawdzam dane ostatniej produkcji…';checkContent.appendChild(loading);checkDialog.showModal();
+  const params=new URLSearchParams({partial:'last-production',shipment_article_id:source.value,recipe_id:recipe.value||''});
+  try{
+   const response=await fetch(`${form.dataset.productionCheckUrl.split('?')[0]}?${params}`,{headers:{'X-Requested-With':'fetch'}}),data=await response.json();checkContent.replaceChildren();
+   if(!response.ok)throw new Error(data.error||'Nie udało się pobrać informacji o ostatniej produkcji.');
+   if(!data.found){const note=document.createElement('p');note.className='muted';note.textContent='Brak zapisanej wcześniejszej produkcji tego symbolu dzianiny.';checkContent.appendChild(note);}
+   else{addCheckRow('Ostatnia produkcja',data.pm);addCheckRow('Data',data.date);addCheckRow('Gramatura',data.grammage);addCheckRow('Ocena gramatury',data.grammageResult,data.grammageResult?.startsWith('OK,')?'is-ok':data.grammageResult?.startsWith('Poza')?'is-warning':'');addCheckRow('Kolor uzyskany',data.color);addCheckRow('Ocena koloru',data.colorResult,data.colorResult==='Kolor zgodny'?'is-ok':data.colorResult==='Kolor różni się od receptury'?'is-warning':'');addCheckRow('Komentarze',data.comments);addCheckRow('LOT z poprzedniej produkcji',data.previousLot||'Brak');}
+   addCheckRow('LOT z wybranego PM',data.currentLot);addCheckRow('Porównanie LOT-u',data.lotComparison,data.lotComparison==='Ten sam LOT'?'is-ok':data.lotComparison==='LOT się zmienił'?'is-warning':'');checkConfirm.disabled=false;
+  }catch(error){checkContent.replaceChildren();const note=document.createElement('p');note.className='notice warning';note.textContent=error.message;checkContent.appendChild(note);}
+ };
+ form.addEventListener('submit',event=>{
+  const raw=orderTypeInputs.find(input=>input.checked)?.value==='raw_sale';
+  if(!raw&&!recipe.value){event.preventDefault();recipeSearch.setCustomValidity('Wybierz recepturę z wyników wyszukiwania.');recipeSearch.reportValidity();return;}
+  recipeSearch.setCustomValidity('');
+  if(confirmValue?.value==='1')return;
+  event.preventDefault();showCheck();
+ });
+ checkConfirm?.addEventListener('click',()=>{if(checkConfirm.disabled)return;confirmValue.value='1';form.requestSubmit(submitButton);});
+ checkDialog?.querySelectorAll('[data-finishing-production-check-close],[data-finishing-production-check-cancel]').forEach(button=>button.addEventListener('click',()=>checkDialog.close()));
  document.addEventListener('click',event=>{if(!form.contains(event.target))closeRecipeResults();});
  sync();
 });
@@ -283,7 +304,7 @@ if(sourceImportUpload){
    const archiveSection=document.querySelector('[data-import-archive-section]'),confirmation=document.querySelector('[data-import-confirmation]');
    if(report.package_type==='finishing'){
     list('[data-import-existing]',[`Receptury wykańczania: ${existing.finishing_recipes}`,`Zlecenia wykańczania: ${existing.finishing_orders}`,`Partie: ${existing.finishing_batches}`,`Przyjęcia: ${existing.finishing_receipts}`]);
-    list('[data-import-incoming]',[`Receptury: ${incoming.finishing_recipes}`,`Zlecenia wykańczania: ${incoming.finishing_orders}`,`Partie wykończalnicze: ${incoming.finishing_batches}`,`Przyjęcia: ${incoming.finishing_receipts}`,`Wiersze belek z indywidualnymi metrami i kg: ${incoming.returned_bales}`]);
+    list('[data-import-incoming]',[`Receptury: ${incoming.finishing_recipes}`,`Zlecenia wykańczania: ${incoming.finishing_orders}`,`Partie wykańczalnicze: ${incoming.finishing_batches}`,`Przyjęcia: ${incoming.finishing_receipts}`,`Wiersze belek z indywidualnymi metrami i kg: ${incoming.returned_bales}`]);
     list('[data-import-archive]',[]);list('[data-import-preserved]',report.preserved);archiveSection.hidden=true;
     document.querySelector('[data-import-ai-notice]').textContent=report.ai_notice;
     const conflictBox=document.querySelector('[data-import-conflict-box]'),conflicts=document.querySelector('[data-import-conflicts]');conflicts.replaceChildren();for(const conflict of report.conflicts){const item=document.createElement('li');item.textContent=[conflict.symbol,conflict.message].filter(Boolean).join(': ');conflicts.appendChild(item);}conflictBox.hidden=report.conflicts.length===0;

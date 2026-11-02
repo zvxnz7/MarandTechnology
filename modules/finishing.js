@@ -76,7 +76,7 @@ function pieceListView(pieces,summary='Sztuki w zleceniu') {
 }
 function sourceDetailsView(db,source) {
   const pieces=sourcePieces(db,source.shipment_article_id),totalWeight=pieces.reduce((sum,piece)=>sum+Number(piece.weight_kg||0),0);
-  return `<div class="finishing-source-summary"><strong>${V.esc(source.symbol)}</strong><span>WZ ${shipmentNo({sequence:source.shipment_sequence,shipment_year:source.shipment_year})} · spec. ${articleNo({sequence:source.shipment_sequence},{sequence:source.article_sequence})} · ${pieces.length} szt · ${money(totalWeight)} kg · ${V.datepl(source.shipment_date)}</span></div>${pieceListView(pieces)}`;
+  return `<div class="finishing-source-summary"><strong>PM ${articleNo({sequence:source.shipment_sequence},{sequence:source.article_sequence})} · ${V.esc(source.symbol)}</strong><span>${pieces.length} szt · ${money(totalWeight)} kg · WZ ${shipmentNo({sequence:source.shipment_sequence,shipment_year:source.shipment_year})} · ${V.datepl(source.shipment_date)}</span></div>${pieceListView(pieces)}`;
 }
 function orderPiecesView(db,order) {
   if(!order.shipment_article_id)return '';
@@ -205,13 +205,13 @@ function orderStatus(db,orderId) {
   const order=db.prepare('SELECT status FROM finishing_orders WHERE id=?').get(orderId);
   if(!order)return;
   if(order.status==='raw_sale'||order.status==='cancelled')return;
-  const batches=db.prepare('SELECT id,closed_at FROM finishing_batches WHERE order_id=?').all(orderId);
+  const batches=db.prepare('SELECT id,closed_at,finishing_lot FROM finishing_batches WHERE order_id=?').all(orderId);
   const receiptCount=db.prepare('SELECT count(*) n FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=?').get(orderId).n;
-  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':receiptCount?'partial':'sent';
+  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':receiptCount?'partial':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
   db.prepare('UPDATE finishing_orders SET status=?,updated_at=? WHERE id=?').run(status,new Date().toISOString().replace(/\.\d{3}Z$/,'Z'),orderId);
 }
 function orderStatusLabel(status) {
-  return {draft:'Do wysłania',sent:'W wykończalni',partial:'Częściowo przyjęta',received:'Przyjęta',raw_sale:'Sprzedaż surowej',cancelled:'Anulowana'}[status]||status;
+  return {draft:'W drodze',sent:'W farbiarni',partial:'Częściowo przyjęta',received:'Przyjęta',raw_sale:'Sprzedaż surowej',cancelled:'Anulowana'}[status]||status;
 }
 function orderTypeLabel(type) {
   return {standard:'Wykończenie standard',raw_sale:'Sprzedaż surowej',trial:'Próba'}[type]||'Wykończenie standard';
@@ -219,6 +219,38 @@ function orderTypeLabel(type) {
 function statusBadge(status) {
   const cls={draft:'submitted',sent:'status-finishing',partial:'status-finishing',received:'approved',raw_sale:'archived',cancelled:'archived'}[status]||'submitted';
   return `<span class="badge ${cls}">${V.esc(orderStatusLabel(status))}</span>`;
+}
+function lastProductionPreview(db,source,recipe) {
+  const currentLots=[...new Set(sourcePieces(db,source.shipment_article_id).map(piece=>String(piece.lot||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
+  const previous=db.prepare(`SELECT o.id,o.source_shipment_no,o.source_shipment_date,o.recipe_snapshot,o.target_color,o.target_grammage,
+      s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
+      r.received_at,r.actual_grammage,r.actual_color,r.notes receipt_notes,b.yarn_lot,b.notes batch_notes,o.notes order_notes
+    FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id JOIN finishing_orders o ON o.id=b.order_id
+    LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
+    WHERE upper(replace(o.raw_symbol,' ',''))=upper(replace(?,' ','')) AND o.status NOT IN ('cancelled','raw_sale') AND r.finished_pieces>0
+    ORDER BY r.received_at DESC,r.id DESC LIMIT 1`).get(source.symbol);
+  const lotParts=value=>String(value||'').split(/[,;]+/).map(part=>normalizeSearch(part)).filter(Boolean).sort();
+  const compareLots=(current,previousLot)=>{
+    if(!current.length||!String(previousLot||'').trim())return 'Brak danych LOT do porównania';
+    return current.join('|')===lotParts(previousLot).join('|')?'Ten sam LOT':'LOT się zmienił';
+  };
+  const currentLot=currentLots.join(', ')||'Brak LOT-u w PM';
+  if(!previous)return {found:false,currentLot};
+  let snapshot={};try{snapshot=JSON.parse(previous.recipe_snapshot||'{}')}catch{}
+  const details=recipe?readRecipeDetails(recipe):(snapshot.details||{}),expectedGrammage=recipe?.target_grammage??snapshot.targetGrammage??null;
+  const actualGrammage=previous.actual_grammage;
+  let grammageResult='Brak danych do oceny gramatury';
+  if(actualGrammage!==null&&actualGrammage!==undefined&&expectedGrammage!==null&&expectedGrammage!==undefined){
+    const min=Number(expectedGrammage)-Number(details.grammageMinus||0),max=Number(expectedGrammage)+Number(details.grammagePlus||0);
+    grammageResult=Number(actualGrammage)>=min&&Number(actualGrammage)<=max?`OK, w tolerancji ${qty(min)}–${qty(max)} g/m²`:`Poza tolerancją ${qty(min)}–${qty(max)} g/m²`;
+  }
+  const expectedColor=recipe?.target_color||'';
+  let colorResult='Brak koloru docelowego';
+  if(expectedColor&&previous.actual_color)colorResult=normalizeSearch(expectedColor)===normalizeSearch(previous.actual_color)?'Kolor zgodny':'Kolor różni się od receptury';
+  else if(previous.actual_color)colorResult=`Brak koloru docelowego (uzyskano: ${previous.actual_color})`;
+  const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(value=>String(value||'').trim()).filter(Boolean);
+  const pm=previous.article_sequence?`PM ${articleNo({sequence:previous.shipment_sequence},{sequence:previous.article_sequence})}`:`PM ${previous.source_shipment_no||'—'}`;
+  return {found:true,pm,date:V.datepl(previous.received_at),grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,color:previous.actual_color||'Brak wpisu',colorResult,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison:compareLots(currentLots,previous.yarn_lot)};
 }
 function header({user,csrf,flashes,title,body}) { return V.layout({user,csrf,flashes,title:`${title} · Wykańczanie`,body}); }
 function navTabs(active) {
@@ -233,7 +265,7 @@ function shipmentOptions(db,selectedId=0) {
       AND NOT EXISTS(SELECT 1 FROM finishing_orders fo WHERE fo.shipment_article_id=sa.id)
       AND EXISTS(SELECT 1 FROM shipment_bales active_sb WHERE active_sb.shipment_article_id=sa.id AND active_sb.removed_at IS NULL)
     GROUP BY sa.id ORDER BY s.shipment_year DESC,s.sequence DESC,sa.sequence DESC`).all();
-  return rows.map(row=>`<option value="${row.id}" data-plant="${row.finishing_plant_id||''}"${Number(selectedId)===row.id?' selected':''}>${shipmentNo({sequence:row.shipment_sequence,shipment_year:row.shipment_year})} · spec. ${articleNo({sequence:row.shipment_sequence,shipment_year:row.shipment_year},{sequence:row.article_sequence})} · ${V.esc(row.symbol)} · ${row.raw_bales} szt · ${money(row.raw_weight_kg)} kg · ${V.datepl(row.shipment_date)}</option>`).join('');
+  return rows.map(row=>`<option value="${row.id}" data-plant="${row.finishing_plant_id||''}"${Number(selectedId)===row.id?' selected':''}>PM ${articleNo({sequence:row.shipment_sequence},{sequence:row.article_sequence})} · ${V.esc(row.symbol)} · ${row.raw_bales} szt · ${money(row.raw_weight_kg)} kg · WZ ${shipmentNo({sequence:row.shipment_sequence,shipment_year:row.shipment_year})} · ${V.datepl(row.shipment_date)}</option>`).join('');
 }
 function orderForm(ctx, selectedSource=0) {
   const db=ctx.db,source=selectedSource&&!shipmentSpecUsed(db,selectedSource)?sourceSpec(db,selectedSource):null,plantList=plants(db);
@@ -243,9 +275,10 @@ function orderForm(ctx, selectedSource=0) {
   const recipePicker=`<div class="finishing-recipe-picker"><div class="finishing-recipe-search-row"><div class="finishing-recipe-search-control"><label for="finishing-recipe-search">Receptura wykańczania</label><div class="finishing-recipe-search-box"><input id="finishing-recipe-search" type="search" role="combobox" data-finishing-recipe-search data-search-url="/finishing/orders/new?partial=recipes" autocomplete="off" placeholder="Wpisz nazwę lub symbol receptury" aria-autocomplete="list" aria-expanded="false" aria-controls="finishing-recipe-results"><div id="finishing-recipe-results" class="finishing-recipe-live-results" data-finishing-recipe-results role="listbox" aria-label="Pasujące receptury"></div></div></div><div class="finishing-recipe-search-actions"><a class="finishing-recipe-edit-shortcut" href="/finishing/recipes" target="_blank" rel="noopener" data-finishing-recipe-edit-shortcut aria-label="Otwórz bibliotekę receptur do edycji" title="Otwórz bibliotekę receptur do edycji"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5 4 4M4 20l4.2-.9L19 8.3 15.7 5 4.9 15.8 4 20Z"/></svg></a><a class="finishing-recipe-add-shortcut" href="/finishing/recipes/new" target="_blank" rel="noopener" aria-label="Dodaj nową recepturę" title="Dodaj nową recepturę"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>Nowa receptura</span></a></div></div><input type="hidden" name="recipe_id" data-finishing-recipe><p class="finishing-recipe-selected" data-finishing-recipe-selected aria-live="polite"></p><details class="finishing-selected-recipe" data-finishing-selected-recipe hidden><summary>Podgląd receptury wykańczania</summary><pre class="preline" data-finishing-selected-recipe-text></pre></details></div>`;
   const orderTypes=`<div class="finishing-order-type-inline" role="radiogroup" aria-label="Rodzaj zlecenia"><label class="finishing-order-type-option"><input type="radio" name="order_type" value="standard" checked><span class="finishing-type-check" aria-hidden="true"></span><strong>Wykończenie standard</strong></label><label class="finishing-order-type-option"><input type="radio" name="order_type" value="raw_sale"><span class="finishing-type-check" aria-hidden="true"></span><strong>Sprzedaż surowej</strong></label><label class="finishing-order-type-option"><input type="radio" name="order_type" value="trial"><span class="finishing-type-check" aria-hidden="true"></span><strong>Próba</strong></label></div>`;
   const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Nowe zlecenie wykańczania</h1><p class="muted">Utwórz czytelne zlecenie z pozycją PM, recepturą i kompletem informacji dla wykończalni.</p></div></div>
-    <form method="post" action="/finishing/orders" class="panel padded finishing-form" data-finishing-order-form data-source-url="/finishing/orders/new?partial=source">${hidden('csrf',ctx.req.session.csrf)}
+    <form method="post" action="/finishing/orders" class="panel padded finishing-form" data-finishing-order-form data-source-url="/finishing/orders/new?partial=source" data-production-check-url="/finishing/orders/new?partial=last-production">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_last_production','')}
     <section class="finishing-order-section"><header class="finishing-order-section-heading"><span>01</span><div><h2>Specyfikacja i sztuki</h2><p>Wybierz PM z zamkniętej WZ. Sztuki zostaną załadowane do zlecenia.</p></div></header><label>PM ze specyfikacji wysyłkowej / WZ<select name="shipment_article_id" data-finishing-source required><option value="">Wybierz PM z WZ</option>${shipmentOptions(db,eligibleSource?.shipment_article_id||0)}</select></label><div class="finishing-source-details" data-finishing-source-details aria-live="polite">${sourceDetails}</div>${orderTypes}</section>
-    <section class="finishing-order-section finishing-order-details"><header class="finishing-order-section-heading"><span>02</span><div><h2>Dane zlecenia</h2><p>Receptura wykańczania, wykończalnia, klient i symbol handlowy.</p></div></header>${recipePicker}<div class="finishing-order-data-grid"><label>Wykończalnia<select name="finishing_plant_id" data-finishing-plant><option value="">Wybierz wykończalnię</option>${plantList.map(plant=>`<option value="${plant.id}"${eligibleSource?.finishing_plant_id===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label><label>Klient (opcjonalnie)<input name="client_name" list="finishing-clients" maxlength="200"><datalist id="finishing-clients">${clientOptions}</datalist></label><label>Symbol handlowy<input name="trade_symbol" maxlength="200" data-finishing-trade-symbol></label><label class="finishing-additional-notes">Uwagi dodatkowe<textarea name="notes" maxlength="3000" placeholder="Dodatkowe informacje dla wykończalni…"></textarea></label></div></section><div class="finishing-form-actions"><button type="submit" class="primary finishing-order-submit">Utwórz zlecenie</button></div></form>`;
+    <section class="finishing-order-section finishing-order-details"><header class="finishing-order-section-heading"><span>02</span><div><h2>Dane zlecenia</h2><p>Receptura wykańczania, wykończalnia, klient i symbol handlowy.</p></div></header>${recipePicker}<div class="finishing-order-data-grid"><label>Wykończalnia<select name="finishing_plant_id" data-finishing-plant><option value="">Wybierz wykończalnię</option>${plantList.map(plant=>`<option value="${plant.id}"${eligibleSource?.finishing_plant_id===plant.id?' selected':''}>${V.esc(plant.name)}</option>`).join('')}</select></label><label>Klient (opcjonalnie)<input name="client_name" list="finishing-clients" maxlength="200"><datalist id="finishing-clients">${clientOptions}</datalist></label><label>Symbol handlowy<input name="trade_symbol" maxlength="200" data-finishing-trade-symbol></label><label class="finishing-additional-notes">Uwagi dodatkowe<textarea name="notes" maxlength="3000" placeholder="Dodatkowe informacje dla wykończalni…"></textarea></label></div></section><div class="finishing-form-actions"><button type="submit" class="primary finishing-order-submit">Utwórz zlecenie</button></div></form>
+    <dialog class="form-dialog finishing-production-check" data-finishing-production-check aria-labelledby="finishing-production-check-title"><div class="dialog-head"><strong id="finishing-production-check-title">Ostatnia produkcja</strong><button type="button" class="dialog-close" data-finishing-production-check-close aria-label="Zamknij">×</button></div><div class="dialog-body" data-finishing-production-check-content><p>Sprawdzam dane ostatniej produkcji…</p></div><div class="actions"><button type="button" data-finishing-production-check-cancel>Wróć do zlecenia</button><button type="button" class="primary" data-finishing-production-check-confirm disabled>Potwierdź i utwórz zlecenie</button></div></dialog>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Nowe zlecenie',body});
 }
 function recipeSearchView(db,query,plantId=0) {
@@ -265,24 +298,30 @@ function ordersPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim(),status=String(ctx.url.searchParams.get('status')||'');
   const filters=['draft','sent','partial','received','raw_sale','cancelled'];
   const all=ctx.db.prepare(`SELECT o.*,fp.name finishing_plant_name,
-      count(DISTINCT b.id) batch_count,coalesce(sum(b.sent_pieces),0) sent_pieces,
-      coalesce(sum((SELECT coalesce(sum(r.finished_pieces),0) FROM finishing_receipts r WHERE r.batch_id=b.id)),0) finished_pieces,
+      s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
+      min(b.sent_at) sent_at,count(DISTINCT b.id) batch_count,
+      count(DISTINCT CASE WHEN trim(coalesce(b.finishing_lot,''))<>'' THEN b.id END) lot_batch_count,
+      count(DISTINCT r.id) receipt_count,
       coalesce((SELECT count(*) FROM finishing_incidents i WHERE i.order_id=o.id AND i.status='open'),0) open_incidents
     FROM finishing_orders o LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id
-    LEFT JOIN finishing_batches b ON b.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC,o.id DESC`).all();
+    LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
+    LEFT JOIN finishing_batches b ON b.order_id=o.id LEFT JOIN finishing_receipts r ON r.batch_id=b.id
+    GROUP BY o.id ORDER BY o.created_at DESC,o.id DESC`).all();
   const query=normalizeSearch(q);
-  const rows=all.filter(order=>(!status||order.status===status)&&(!query||[order.source_shipment_no,order.raw_symbol,order.client_name,order.trade_symbol,order.finishing_plant_name].map(normalizeSearch).join(' ').includes(query))).map(order=>{
-    const canDelete=editableRoles.includes(ctx.req.user.role)&&order.batch_count===0&&['draft','raw_sale','cancelled'].includes(order.status);
-    return `<tr><td><a class="item-title" href="/finishing/orders/${order.id}">#${order.id} · ${V.esc(order.raw_symbol)}</a><small class="finishing-subline">${V.esc(order.source_shipment_no||'Zlecenie historyczne')}${order.trade_symbol?` · ${V.esc(order.trade_symbol)}`:''}</small></td><td>${V.esc(order.client_name||'—')}</td><td>${V.esc(order.finishing_plant_name||'—')}</td><td>${statusBadge(order.status)}<small class="finishing-order-type-label">${V.esc(orderTypeLabel(order.order_type))}</small>${order.open_incidents?` <span class="badge archived">Problemy: ${order.open_incidents}</span>`:''}</td><td>${order.batch_count}</td><td>${order.sent_pieces} / ${order.finished_pieces} szt</td><td>${V.datepl(order.updated_at)}</td><td class="row-actions">${canDelete?`<a class="delete-x" href="/finishing/orders/${order.id}/delete" aria-label="Usuń zlecenie wykańczania ${order.id}" title="Usuń zlecenie">×</a>`:''}</td></tr>`;
+  const rows=all.filter(order=>(!status||order.status===status)&&(!query||[order.source_shipment_no,order.raw_symbol,order.client_name,order.trade_symbol,order.finishing_plant_name,order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:''].map(normalizeSearch).join(' ').includes(query))).map(order=>{
+    const canDelete=editableRoles.includes(ctx.req.user.role)&&order.receipt_count===0&&order.lot_batch_count===0&&['draft','raw_sale','cancelled'].includes(order.status);
+    const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+    return `<tr><td>${V.datepl(order.sent_at||order.created_at)}</td><td>${V.esc(order.finishing_plant_name||'—')}</td><td><strong>${V.esc(order.raw_symbol)}</strong></td><td>${V.esc(order.client_name||'—')}</td><td>${V.esc(order.trade_symbol||'—')}</td><td><a class="item-title" href="/finishing/orders/${order.id}">${V.esc(pm)}</a><small class="finishing-subline">WZ ${V.esc(order.source_shipment_no||'—')}</small></td><td>${statusBadge(order.status)}${order.open_incidents?` <span class="badge archived">Problemy: ${order.open_incidents}</span>`:''}${canDelete?` <a class="delete-x" href="/finishing/orders/${order.id}/delete" aria-label="Usuń zlecenie ${V.esc(pm)}" title="Usuń zlecenie">×</a>`:''}</td></tr>`;
   }).join('');
-  const body=`${navTabs('orders')}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Zlecenia wykańczania</h1><p class="muted">Wybierz specyfikację WZ, recepturę i klienta, a potem rejestruj partie wysłane do wykończalni.</p></div><a class="button primary" href="/finishing/orders/new">+ Nowe zlecenie</a></div>
-    <form method="get" action="/finishing/orders" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input type="search" name="q" value="${V.esc(q)}" placeholder="Wysyłka, symbol, klient, wykończalnia"></label><label>Status<select name="status"><option value="">Wszystkie</option>${filters.map(value=>`<option value="${value}"${status===value?' selected':''}>${orderStatusLabel(value)}</option>`).join('')}</select></label><button class="primary">Filtruj</button><a class="button" href="/finishing/orders">Wyczyść</a></form>
-    <div class="panel scroll"><table class="listing compact"><thead><tr><th>Specyfikacja</th><th>Klient</th><th>Wykończalnia</th><th>Status</th><th>Partie</th><th>Wysłano / odebrano</th><th>Aktualizacja</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="8">${all.length?'Brak zleceń dla wybranych filtrów.':'Brak zleceń wykańczania.'}</td></tr>`}</tbody></table></div>`;
+  const body=`${navTabs('orders')}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Zlecenia wykańczania</h1><p class="muted">Zlecenie oznacza wyjście PM do farbiarni. Dalsze przyjęcia dopiszesz w szczegółach.</p></div><a class="button primary" href="/finishing/orders/new">+ Nowe zlecenie</a></div>
+    <form method="get" action="/finishing/orders" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input type="search" name="q" value="${V.esc(q)}" placeholder="Data wysyłki, farbiarnia, symbol, klient, symbol handlowy, PM"></label><label>Status<select name="status"><option value="">Wszystkie</option>${filters.map(value=>`<option value="${value}"${status===value?' selected':''}>${orderStatusLabel(value)}</option>`).join('')}</select></label><button class="primary">Filtruj</button><a class="button" href="/finishing/orders">Wyczyść</a></form>
+    <div class="panel scroll"><table class="listing compact"><thead><tr><th>Data wysyłki</th><th>Farbiarnia</th><th>Symbol dzianiny (surowej)</th><th>Klient</th><th>Symbol handlowy</th><th>PM</th><th>Status</th></tr></thead><tbody>${rows||`<tr><td colspan="7">${all.length?'Brak zleceń dla wybranych filtrów.':'Brak zleceń wykańczania.'}</td></tr>`}</tbody></table></div>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Zlecenia wykańczania',body});
 }
 function deleteOrderConfirmPage(ctx,order) {
   const cancelUrl='/finishing/orders';
-  const body=`${navTabs('orders')}<a class="breadcrumb" href="${cancelUrl}">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Usuń zlecenie wykańczania</h1></div></div><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Potwierdź usunięcie zlecenia</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><p>Wybrane zlecenie:</p><h2 class="delete-confirm-object">#${order.id} · ${V.esc(order.raw_symbol)} · ${V.esc(order.client_name||'—')}</h2><p>Usunięte zostanie tylko to zlecenie. Można usuwać wyłącznie zlecenia bez zarejestrowanych partii. Rejestr audytowy pozostanie zachowany.</p><form method="post" action="/finishing/orders/${order.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_order','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Usuń zlecenie #${order.id}</button></form></div></dialog>`;
+  const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+  const body=`${navTabs('orders')}<a class="breadcrumb" href="${cancelUrl}">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Usuń zlecenie wykańczania</h1></div></div><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Potwierdź usunięcie zlecenia</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><p>Wybrane zlecenie:</p><h2 class="delete-confirm-object">${V.esc(pm)} · ${V.esc(order.raw_symbol)} · ${V.esc(order.client_name||'—')}</h2><p>Można usunąć zlecenie tylko przed wpisaniem LOT-u z farbiarni i przed zarejestrowaniem przyjęcia. Rejestr audytowy pozostanie zachowany.</p><form method="post" action="/finishing/orders/${order.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_order','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Usuń ${V.esc(pm)}</button></form></div></dialog>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Usuń zlecenie',body});
 }
 function labelPage(ctx,receiptId) {
@@ -305,12 +344,13 @@ function orderPage(ctx,id) {
   const incidents=db.prepare(`SELECT i.*,u.name author,ru.name resolver FROM finishing_incidents i LEFT JOIN users u ON u.id=i.created_by LEFT JOIN users ru ON ru.id=i.resolved_by WHERE i.order_id=? ORDER BY i.id DESC`).all(id);
   let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
   const recipeNotesPrint=snapshot.notes?`<h2>Uwagi dodatkowe do receptury</h2><div class="recipe-notes">${recipeNotesHtml(snapshot.notes)}</div>`:'';
-  const source=order.shipment_sequence?`${shipmentNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year})} · spec. ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:order.source_shipment_no||'Historia';
+  const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+  const source=order.source_shipment_no||'—';
   const piecesBody=orderPiecesView(db,order);
   const canEdit=editableRoles.includes(ctx.req.user.role)&&!['cancelled','raw_sale'].includes(order.status);
-  const canAddBatch=canEdit&&!['received'].includes(order.status);
-  const batchRows=batches.map(batch=>`<tr><td><strong>${V.esc(batch.finishing_lot||`Partia #${batch.id}`)}</strong></td><td>${V.datepl(batch.sent_at)}</td><td>${batch.sent_pieces} szt · ${money(batch.raw_weight_kg)} kg</td><td>${V.esc(batch.yarn_lot||'—')}</td><td>${batch.finished_pieces} szt · ${qty(batch.finished_meters)} mb · ${money(batch.finished_weight_kg)} kg</td><td>${batch.closed_at?'<span class="badge approved">Zamknięta</span>':batch.receipt_count?'<span class="badge submitted">Częściowy powrót</span>':'<span class="badge status-finishing">W wykończalni</span>'}</td><td><a href="#batch-${batch.id}">Otwórz</a></td></tr>`).join('');
-  const batchForms=canAddBatch?`<details class="panel padded finishing-batch-add" open><summary><strong>Dodaj wyjście partii do wykończalni</strong></summary><form method="post" action="/finishing/orders/${id}/batches" class="form-grid">${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="sent_at" value="${V.todayInput()}" required></label><label>Numer partii / LOT z wykończalni<input name="finishing_lot" maxlength="120"></label><label>Wysłane szt. surowe<input type="number" name="sent_pieces" min="0" step="1" required></label><label>Wysłana masa surowa kg<input name="raw_weight_kg" inputmode="decimal" required></label><label>LOT przędzy<input name="yarn_lot" maxlength="250"></label><label>Uwagi<input name="notes" maxlength="500"></label><button class="primary">Dodaj wyjście</button></form></details>`:'';
+  const lotBatch=batches.find(batch=>!String(batch.finishing_lot||'').trim())||batches[0];
+  const lotControl=canEdit&&lotBatch&&!['received'].includes(order.status)?`<button type="button" data-open-dialog="finishing-lot-dialog">${lotBatch.finishing_lot?'Edytuj LOT farbiarni':'Uzupełnij LOT farbiarni'}</button>`:`<span class="muted">LOT farbiarni: ${V.esc(lotBatch?.finishing_lot||'do uzupełnienia')}</span>`;
+  const lotDialog=canEdit&&lotBatch?`<dialog id="finishing-lot-dialog" class="form-dialog finishing-lot-dialog"><div class="dialog-head"><strong>Numer partii z farbiarni</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Wyjście PM ${V.esc(order.raw_symbol)} zostało już zapisane. Podaj numer LOT otrzymany z farbiarni.</p><form method="post" action="/finishing/orders/${id}/lot" class="finishing-lot-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',lotBatch.id)}<label>Numer partii z farbiarni<input name="finishing_lot" maxlength="120" value="${V.esc(lotBatch.finishing_lot||'')}" required autofocus></label><div class="actions"><button type="button" data-close-dialog>Wróć</button><button class="primary">Zapisz LOT</button></div></form></div></dialog>`:'';
   const receiptViews=batches.map(batch=>{
     const recent=receipts.filter(receipt=>receipt.batch_id===batch.id);
     const rows=recent.map(receipt=>`<tr><td>${V.datepl(receipt.received_at)}</td><td>${receipt.raw_pieces_received} szt. surowe</td><td>${receipt.finished_pieces} belek · ${qty(receipt.meters_sum)} mb · ${money(receipt.finished_weight_kg)} kg</td><td>${V.esc(receipt.rubbing_status==='ok'?'OK':receipt.rubbing_status==='not_ok'?'Nie OK':'—')}</td><td>${V.esc(receipt.notes||'—')}</td><td>${receipt.bale_count?`<a class="button" href="/finishing/receipts/${receipt.id}/labels">Etykiety</a>`:'<span class="muted small">Brak wymiarów pojedynczych belek</span>'}</td></tr>`).join('');
@@ -320,10 +360,10 @@ function orderPage(ctx,id) {
   const incidentForm=canEdit?`<form method="post" action="/finishing/orders/${id}/incidents" class="form-grid finishing-incident-form">${hidden('csrf',ctx.req.session.csrf)}<label>Rodzaj problemu<select name="incident_type"><option value="lost">Zagubiona belka</option><option value="wrong_order">Pomyłka w zamówieniu</option><option value="correction">Poprawa / zwrot</option><option value="count_difference">Różnica ilości</option><option value="other">Inne</option></select></label><label>Opis<input name="description" maxlength="1000" required></label><button class="button danger">Zapisz problem</button></form>`:'';
   const recipeBody=`<details class="panel padded"><summary>Receptura zapisana przy zleceniu</summary><p><strong>${V.esc(snapshot.name||'—')}</strong> · ${V.esc(snapshot.finishingPlant||order.finishing_plant_name||'')}</p><pre class="preline finishing-recipe-text">${V.esc(snapshot.recipeText||'')}</pre>${snapshot.notes?`<div class="preline finishing-recipe-card-notes">${recipeNotesHtml(snapshot.notes)}</div>`:''}</details>`;
   const cancel=canEdit&&!['received'].includes(order.status)?`<form method="post" action="/finishing/orders/${id}/cancel" class="finishing-inline-form">${hidden('csrf',ctx.req.session.csrf)}<button class="danger">Anuluj zlecenie</button></form>`:'';
-  const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">${statusBadge(order.status)} <span class="finishing-order-type-label">${V.esc(orderTypeLabel(order.order_type))}</span></span><h1>Zlecenie #${order.id} · ${V.esc(order.raw_symbol)}</h1><p class="muted">WZ ${V.esc(source)} · ${V.esc(order.client_name||'—')} · ${V.esc(order.trade_symbol||'—')} · ${V.esc(order.finishing_plant_name||'—')}</p><p>Parametry zadane: ${V.esc(order.target_color||'—')} · usztywnienie ${V.esc(order.target_stiffening||'—')} · ${V.esc(order.target_width_cm??'—')} cm · ${V.esc(order.target_grammage??'—')} g/m²</p>${order.notes?`<p class="preline"><strong>Uwagi dodatkowe:</strong> ${V.esc(order.notes)}</p>`:''}</div><div class="actions"><a class="button" href="/finishing/orders/${id}/print" target="_blank">Drukuj zlecenie</a>${cancel}</div></div>${piecesBody}${recipeBody}
-    <section class="panel padded"><div class="sectionhead"><h2>Wyjścia i partie wykończalnicze</h2><span>${batches.length} partii</span></div><div class="panel scroll"><table class="listing compact"><thead><tr><th>LOT</th><th>Data wyjścia</th><th>Surowe wysłane</th><th>LOT przędzy</th><th>Odebrano gotowe</th><th>Stan</th><th></th></tr></thead><tbody>${batchRows||'<tr><td colspan="7">Nie dodano jeszcze wyjścia partii.</td></tr>'}</tbody></table></div></section>${batchForms}<div class="sectionhead"><h2>Przyjęcia zwrotów</h2></div>${receiptViews||'<div class="panel padded muted">Dodaj wyjście, aby zarejestrować powrót z wykończalni.</div>'}
+  const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">${statusBadge(order.status)} <span class="finishing-order-type-label">${V.esc(orderTypeLabel(order.order_type))}</span></span><h1>${V.esc(pm)} · ${V.esc(order.raw_symbol)}</h1><p class="muted">Data wysyłki: ${V.datepl(lotBatch?.sent_at||order.created_at)} · WZ ${V.esc(source)} · ${V.esc(order.client_name||'—')} · ${V.esc(order.trade_symbol||'—')} · ${V.esc(order.finishing_plant_name||'—')}</p>${order.notes?`<p class="preline"><strong>Uwagi dodatkowe:</strong> ${V.esc(order.notes)}</p>`:''}</div><div class="actions"><a class="button" href="/finishing/orders/${id}/print" target="_blank">Drukuj zlecenie</a>${lotControl}${cancel}</div></div>${piecesBody}${recipeBody}${lotDialog}
+    ${batches.length?`<div class="sectionhead"><h2>Przyjęcia z farbiarni</h2></div>${receiptViews}`:`<div class="panel padded muted">Nie utworzono wyjścia do farbiarni.</div>`}
     <section class="panel padded finishing-incidents"><h2>Problemy i wyjaśnienia</h2>${incidentForm}<ul>${incidentRows||'<li>Nie zapisano problemów.</li>'}</ul></section>`;
-  return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Zlecenie ${order.id}`,body});
+  return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:pm,body});
 }
 function receiptsPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim();
@@ -448,9 +488,9 @@ function parseList(value,label) {
   return parts.map((part,index)=>validatePositiveNumber(part,`${label}, pozycja ${index+1}`));
 }
 function updateOrderStatus(ctx,orderId) {
-  const batches=ctx.db.prepare('SELECT closed_at FROM finishing_batches WHERE order_id=?').all(orderId);
+  const batches=ctx.db.prepare('SELECT closed_at,finishing_lot FROM finishing_batches WHERE order_id=?').all(orderId);
   const receiptCount=ctx.db.prepare('SELECT count(*) n FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=?').get(orderId).n;
-  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':receiptCount?'partial':'sent';
+  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':receiptCount?'partial':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
   ctx.db.prepare('UPDATE finishing_orders SET status=?,updated_at=?,updated_by=? WHERE id=?').run(status,ctx.now(),ctx.req.user.id,orderId);
 }
 
@@ -466,6 +506,12 @@ function handle(ctx) {
       if(shipmentSpecUsed(db,id))return send(req,res,409,'<p class="muted">Ta pozycja PM jest już powiązana ze zleceniem wykańczania.</p>');
       return send(req,res,200,sourceDetailsView(db,source));
     }
+    if(partial==='last-production'){
+      const shipmentArticleId=Number(url.searchParams.get('shipment_article_id')||0),source=shipmentArticleId?sourceSpec(db,shipmentArticleId):null,recipeId=Number(url.searchParams.get('recipe_id')||0),recipe=recipeId?recipeRecord(db,recipeId):null;
+      if(!source||source.status!=='closed'||shipmentSpecUsed(db,shipmentArticleId))return send(req,res,409,JSON.stringify({error:'Wybrana pozycja PM nie jest już dostępna.'}),'application/json; charset=utf-8');
+      if(recipeId&&(!recipe||!recipe.active))return send(req,res,409,JSON.stringify({error:'Wybrana receptura nie jest już dostępna.'}),'application/json; charset=utf-8');
+      return send(req,res,200,JSON.stringify(lastProductionPreview(db,source,recipe)),'application/json; charset=utf-8');
+    }
     if(partial==='recipes'){
       const requestedPlant=Number(url.searchParams.get('plant_id')||0),plantId=Number.isSafeInteger(requestedPlant)&&requestedPlant>0?requestedPlant:0;
       return send(req,res,200,recipeSearchView(db,url.searchParams.get('q')||'',plantId));
@@ -476,6 +522,7 @@ function handle(ctx) {
     role(req.user,...editableRoles);
     const orderType=String(form.order_type||'');
     if(!['standard','raw_sale','trial'].includes(orderType))fail(400,'Wybierz rodzaj zlecenia.');
+    if(form.confirm_last_production!=='1')fail(409,'Przed utworzeniem zlecenia zapoznaj się z podsumowaniem ostatniej produkcji i je potwierdź.');
     const rawSale=orderType==='raw_sale',requiresFinishing=!rawSale;
     const shipmentArticleId=Number(form.shipment_article_id),plantId=Number(form.finishing_plant_id),source=sourceSpec(db,shipmentArticleId),plant=plantId?db.prepare('SELECT id,name FROM finishing_plants WHERE id=? AND active=1').get(plantId):null;
     if(!source||source.status!=='closed')fail(400,'Wybierz zamkniętą specyfikację wysyłkową.');
@@ -500,7 +547,11 @@ function handle(ctx) {
       const newId=Number(result.lastInsertRowid);
       const pieceCount=saveOrderPieces(db,newId,currentSource.shipment_article_id);
       if(!pieceCount)fail(409,'Wybrana pozycja WZ nie ma już aktywnych sztuk do załadowania do zlecenia.');
-      audit(req.user,'Utworzono zlecenie wykańczania',null,JSON.stringify({orderId:newId,sourceShipmentArticleId:currentSource.shipment_article_id,recipeId,orderType}),null);
+      if(!rawSale){
+        const yarnLots=[...new Set(sourcePieces(db,currentSource.shipment_article_id).map(piece=>String(piece.lot||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl')).join(', ');
+        db.prepare('INSERT INTO finishing_batches(order_id,finishing_lot,sent_at,sent_pieces,raw_weight_kg,yarn_lot,notes,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(newId,'',V.todayInput(),currentSource.raw_bales,currentSource.raw_weight_kg,yarnLots,'',now(),req.user.id,now(),req.user.id);
+      }
+      audit(req.user,'Utworzono zlecenie jako wyjście PM do farbiarni',null,JSON.stringify({orderId:newId,sourceShipmentArticleId:currentSource.shipment_article_id,recipeId,orderType,sentPieces:currentSource.raw_bales,rawWeightKg:currentSource.raw_weight_kg}),null);
       return newId;
     });
     return redirect(req,res,rawSale?'/finishing/receipts':`/finishing/orders/${id}`,rawSale?'Zarejestrowano sprzedaż surowej dzianiny.':orderType==='trial'?'Utworzono zlecenie próbne.':'Utworzono zlecenie wykańczania.');
@@ -511,8 +562,8 @@ function handle(ctx) {
     const id=Number(orderDelete[1]),order=orderRecord(db,id);
     if(!order)fail(404,'Nie znaleziono zlecenia.');
     const ensureDeletable=current=>{
-      const batchCount=db.prepare('SELECT count(*) n FROM finishing_batches WHERE order_id=?').get(id).n;
-      if(batchCount!==0||!['draft','raw_sale','cancelled'].includes(current.status))fail(409,'Można usunąć tylko zlecenie bez zarejestrowanych partii. Zlecenie z wysyłką należy anulować, aby zachować historię.');
+      const hasLot=db.prepare("SELECT 1 FROM finishing_batches WHERE order_id=? AND trim(finishing_lot)<>'' LIMIT 1").get(id),receiptCount=db.prepare('SELECT count(*) n FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=?').get(id).n;
+      if(hasLot||receiptCount||!['draft','raw_sale','cancelled'].includes(current.status))fail(409,'Można usunąć tylko zlecenie bez numeru LOT z farbiarni i bez przyjęć. Zlecenie już przekazane do farbiarni należy anulować, aby zachować historię.');
     };
     if(req.method==='GET'){
       ensureDeletable(order);
@@ -530,11 +581,18 @@ function handle(ctx) {
       return redirect(req,res,'/finishing/orders','Usunięto zlecenie wykańczania.');
     }
   }
-  const orderMatch=p.match(/^\/finishing\/orders\/(\d+)(?:\/(print|batches|incidents|cancel))?$/);
+  const orderMatch=p.match(/^\/finishing\/orders\/(\d+)(?:\/(print|batches|lot|incidents|cancel))?$/);
   if(orderMatch){
     const id=Number(orderMatch[1]),action=orderMatch[2],order=orderRecord(db,id);
     if(!order)fail(404,'Nie znaleziono zlecenia.');
     if(action==='print'&&req.method==='GET')return receiptPage(ctx,id);
+    if(action==='lot'&&req.method==='POST'){
+      role(req.user,...editableRoles);if(['received','raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już edytować.');
+      const batchId=Number(form.batch_id),lot=text(form,'finishing_lot',120),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=? AND order_id=?').get(batchId,id);
+      if(!batch)fail(400,'Nie znaleziono wyjścia PM dla tego zlecenia.');if(!lot)fail(400,'Wpisz numer partii otrzymany z farbiarni.');
+      transaction(()=>{db.prepare('UPDATE finishing_batches SET finishing_lot=?,updated_at=?,updated_by=? WHERE id=?').run(lot,now(),req.user.id,batchId);updateOrderStatus(ctx,id);audit(req.user,'Uzupełniono LOT partii w farbiarni',null,JSON.stringify({orderId:id,batchId,finishingLot:lot}),null);});
+      return redirect(req,res,`/finishing/orders/${id}`,'Zapisano LOT. Status zlecenia zmienił się na „W farbiarni”.');
+    }
     if(action==='batches'&&req.method==='POST'){
       role(req.user,...editableRoles);if(['received','raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już wysyłać.');
       const sentAt=text(form,'sent_at',10),sentPieces=integer(form.sent_pieces);

@@ -367,6 +367,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-notes-content{min-height:120px;padding:12px;outline:none;font-size:16px;font-weight:400;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-notes-content:focus{box-shadow:inset 0 0 0 2px #e7afb0}
 .finishing-notes-content:empty:before{content:'Wpisz uwagi dodatkowe…';color:#8a8f95;pointer-events:none}
+.finishing-production-check{width:min(760px,calc(100vw - 28px));max-width:760px}
+.finishing-production-check .dialog-body{display:grid;gap:8px;max-height:65vh;overflow:auto}
+.finishing-production-check-row{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);gap:12px;padding:9px 11px;border-radius:6px;background:#f5f7f8;font-size:13px}
+.finishing-production-check-row>span{overflow-wrap:anywhere}
+.finishing-production-check-row.is-ok{background:#eaf5ed;color:#245f38}
+.finishing-production-check-row.is-warning{background:#fff1e9;color:#8b3e1d}
+.finishing-lot-form{display:grid;gap:14px}
+.finishing-lot-form label{margin:0}
+.finishing-lot-form .actions{justify-content:flex-end}
 .finishing-trial-badge{display:inline-flex;align-items:center;margin-left:8px;padding:3px 9px;border-radius:999px;background:#fff1d6;color:#865700;font-size:11px;font-weight:750;line-height:1.4;text-transform:uppercase;vertical-align:middle}
 .finishing-recipe-identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px}
 .finishing-recipe-identity-grid label,.finishing-recipe-section>label{margin:0}
