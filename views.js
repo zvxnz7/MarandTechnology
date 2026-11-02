@@ -25,7 +25,6 @@ const GB = [
   ['number', 'GB'], ['yarn', 'Rodzaj przędzy'], ['pattern', 'Raport ogniw wzorujących'], ['threads', 'nici na 1 szal'],
   ['run_in', 'mm/rack'], ['threading', 'Nawleczenie'],
 ];
-const GB_DISPLAY = [...GB.slice(0, 2), ['yarn_share', 'Udział przędzy (%)'], ...GB.slice(2)];
 const FINISH = [
   ['name', 'Nazwa'], ['weight', 'Gramatura (g/m²)'], ['width', 'Szerokość (cm)'], ['pk', 'Pk'], ['pr', 'Pr'],
   ['thickness', 'Dystans / grubość (mm)'], ['finish', 'Wykańczanie / usztywnienie'], ['comments', 'Komentarz'],
@@ -64,12 +63,6 @@ function integerPercentages(weights) {
   const order = exact.map((value, index) => ({ index, fraction: value - rounded[index] })).sort((a, b) => b.fraction - a.fraction || a.index - b.index);
   for (let index = 0; remainder > 0; index++, remainder--) rounded[order[index % order.length].index]++;
   return rounded;
-}
-function yarnShares(rows = []) {
-  const contributions = rows.map(yarnContributions);
-  const weights = contributions.map(parts => parts?.reduce((sum, part) => sum + part.weight, 0) ?? null);
-  if (!weights.length || weights.some(weight => weight === null)) return rows.map(() => '—');
-  return integerPercentages(weights).map(value => `${value}%`);
 }
 function yarnComposition(rows = []) {
   const contributions = rows.map(yarnContributions);
@@ -270,8 +263,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   if (aiNotice) flashes = [...flashes, { category: 'warning', message: aiNotice }];
   const tech = TECH.map(([k, label]) => `<div><span>${esc(label)}</span><strong>${esc((v.tech || {})[k] || '—')}</strong></div>`).join('');
   const composition = yarnComposition(v.gb);
-  const shares = yarnShares(v.gb);
-  const gbTable = v.gb.length ? v.gb.map((row, index) => `<tr>${GB_DISPLAY.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : k === 'yarn_share' ? shares[index] : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB_DISPLAY.length}">Brak danych GB.</td></tr>`;
+  const gbTable = v.gb.length ? v.gb.map(row => `<tr>${GB.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB.length}">Brak danych GB.</td></tr>`;
   const raw = RAW_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.raw || {})[k] || '—')}</dd>`).join('');
   const targets = TARGET_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.targets || {})[k] || '—')}</dd>`).join('');
   const finishes = v.finished.length ? `<section class="panel padded"><h2>Warianty wykańczania / wyniki</h2>${v.finished.map((f, i) => `<h3>${esc(f.name || `Wariant ${i + 1}`)}</h3><p>Gramatura: ${esc(f.weight || '—')} g/m² · Szerokość: ${esc(f.width || '—')} cm · Pk: ${esc(f.pk || '—')} · Pr: ${esc(f.pr || '—')} · Dystans: ${esc(f.thickness || '—')}</p><p class="preline">${esc(f.finish || '')} ${esc(f.comments || '')}</p>`).join('')}</section>` : '';
@@ -292,7 +284,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
 <div class="metadata"><span>Data źródłowa: <b>${esc(v.date || 'niepodana')}</b></span><span>Utworzono w bazie: ${datepl(r.created_at)}</span><span>Aktualizacja: ${datepl(r.updated_at)}</span>${r.base_id ? `<a href="/records/${r.base_id}">Wpis bazowy #${r.base_id}</a>` : ''}</div>
 ${r.state === 'approved' ? `<div class="notice success"><strong>${r.active_spec === r.id ? 'Obowiązująca specyfikacja' : 'Historyczna zatwierdzona specyfikacja'}</strong> · zatwierdzono ${datepl(r.approved_at)}<p>${esc(r.review_note)}</p></div>` : ''}${v.source_note ? `<div class="notice warning">${esc(v.source_note)}</div>` : ''}
 <div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><p><strong>Skład % przędzy:</strong> ${esc(composition)}</p><div class="metric-grid">${tech}</div></div>
-<div class="sectionhead"><h2>Ustawienia GB</h2></div><div class="panel scroll"><table class="listing compact"><thead><tr>${GB_DISPLAY.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${gbTable}</tbody></table></div>
+<div class="sectionhead"><h2>Ustawienia GB</h2></div><div class="panel scroll"><table class="listing compact"><thead><tr>${GB.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${gbTable}</tbody></table></div>
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2><p class="preline">${esc(v.knitter_notes || '—')}</p></section>${review}
 <div class="two-col"><section class="panel padded"><h2>Parametry dzianiny surowej</h2><dl>${raw}</dl><p class="preline">${esc(v.raw_comments || '')}</p></section><section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted small">Dane opcjonalne.</p><dl>${targets}</dl>${v.finished_comments ? `<h3>Komentarz do dzianiny wykończonej</h3><p class="preline">${esc(v.finished_comments)}</p>` : ''}</section></div>${finishes}
 <section class="panel padded"><h2>Etapy prób i komentarze</h2><p class="preline">${esc(v.stages || '—')}</p><p class="preline">${esc(v.comments || '')}</p></section>${photoPanel}${copyActions}
