@@ -250,7 +250,7 @@ function orderForm(ctx, selectedSource=0) {
 }
 function recipeSearchView(db,query,plantId=0) {
   const terms=String(query||'').trim().split(/\s+/).map(normalizeSearch).filter(Boolean);
-  if(!terms.length||terms.some(term=>term.length<2))return '<p class="finishing-recipe-search-hint">Wpisz co najmniej 2 znaki każdego szukanego hasła, np. symbol i kolor.</p>';
+  if(!terms.length)return '<p class="finishing-recipe-search-hint">Wpisz co najmniej 1 znak, np. fragment symbolu lub koloru.</p>';
   const matches=recipes(db,plantId).map(recipe=>({recipe,tradeSymbol:recipeTradeSymbol(recipe)})).filter(({recipe,tradeSymbol})=>{
     const details=readRecipeDetails(recipe),fields=[recipe.name,recipe.raw_symbol,tradeSymbol,recipe.recipe_text,recipe.target_color,details.rawMaterial,recipe.notes].map(normalizeSearch);
     return terms.every(term=>fields.some(field=>field.includes(term)));
