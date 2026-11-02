@@ -388,17 +388,6 @@ document.querySelectorAll('[data-instruction-editor]').forEach(editor=>{
 });
 const gbList=document.querySelector('[data-gb-list]');
 const gbRows=()=>gbList?[...gbList.querySelectorAll('[data-gb-index]')]:[];
-const syncYarn=editor=>{
- const read=(prefix,suffix)=>editor.querySelector(`[name$="_${prefix}${suffix}"]`)?.value.trim()||'';
- const component=prefix=>{
-  const material=read(prefix,'material'),dtex=read(prefix,'dtex').replace(',','.'),filaments=read(prefix,'filaments'),process=read(prefix,'process').toUpperCase();
-  const count=/^\d+$/.test(filaments)&&Number(filaments)>0?(Number(filaments)===1?'mono':`${Number(filaments)}f`):'';
-  return material&&/^\d+(?:\.\d+)?$/.test(dtex)?[material,`${dtex} dtex`,count,process].filter(Boolean).join(' · '):'';
- };
- const parts=[component('yarn_'),component('yarn2_')].filter(Boolean);
- const preview=editor.querySelector('[data-yarn-preview]');
- if(preview)preview.textContent=parts.length?parts.join(' + '):(read('yarn_','legacy')?`Zapis historyczny: ${read('yarn_','legacy')}`:'Podgląd uzupełni się po wpisaniu włókna i grubości.');
-};
 const updateGbRows=()=>{
   const rows=gbRows();
   rows.forEach((row,index)=>{
@@ -419,7 +408,8 @@ if(gbList)gbList.addEventListener('click',event=>{
     const selected=new Set(tokens.filter(code=>codes.includes(code)));
     const extras=tokens.filter(code=>!codes.includes(code));
     const code=yarnCode.dataset.yarnCode;
-    if(selected.has(code))selected.delete(code);else selected.add(code);
+    const group=code==='FDY'||code==='DTY'?['FDY','DTY']:['FD','SD','BR'];
+    if(!selected.has(code)){group.forEach(item=>selected.delete(item));selected.add(code);}
     input.value=[...codes.filter(item=>selected.has(item)),...extras].join(' ');
     picker.querySelectorAll('[data-yarn-code]').forEach(button=>{
       const active=selected.has(button.dataset.yarnCode);
@@ -443,12 +433,10 @@ if(addGB)addGB.addEventListener('click',()=>{
   if(number>32){alert('Osiągnięto maksymalne oznaczenie GB32.');return;}
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
   next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'&&c.name.endsWith('_number')?String(number):'';c.classList.remove('inherited-value');});
-  next.querySelectorAll('[data-yarn-code]').forEach(button=>{button.setAttribute('aria-pressed','false');button.classList.remove('selected');});
-  const yarnPreview=next.querySelector('[data-yarn-preview]');if(yarnPreview)yarnPreview.textContent='Podgląd uzupełni się po wpisaniu włókna i grubości.';
-  next.querySelector('.yarn-second-component')?.removeAttribute('open');
+  next.querySelectorAll('[data-yarn-code]').forEach(button=>{const active=button.dataset.yarnCode==='FDY'||button.dataset.yarnCode==='SD';button.setAttribute('aria-pressed',String(active));button.classList.toggle('selected',active);});
+  const processInput=next.querySelector('input[name$="_yarn_process"]');if(processInput)processInput.value='FDY SD';
   list.appendChild(next);updateGbRows();dirty=true;next.querySelector('input:not([type=hidden])').focus();
 });
-if(gbList)gbList.addEventListener('input',event=>{const editor=event.target.closest('[data-yarn-editor]');if(editor)syncYarn(editor);});
 document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('submit',async event=>{
  event.preventDefault();const status=form.querySelector('[data-photo-status]'),button=form.querySelector('button');button.disabled=true;
  try{
