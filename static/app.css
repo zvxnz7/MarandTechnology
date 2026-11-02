@@ -17,15 +17,14 @@
 @media print{.sidebar,.topbar,.breadcrumb,.no-print,.warehouse-search,.warehouse-bulk-status{display:none!important}.workspace{margin:0!important}.workspace main{max-width:none!important;margin:0!important;padding:0!important}.pagehead{margin-bottom:8px}.panel{border:0;overflow:visible}.warehouse-selected .panel{overflow:visible!important}.warehouse-note-form input,.warehouse-note-status{display:none!important}.print-only{display:inline!important}.listing{width:100%;font-size:8pt;table-layout:auto}.listing thead{display:table-header-group}.listing th,.listing td{padding:3px 4px!important;border:1px solid #bbb!important;max-width:none;white-space:normal;overflow-wrap:anywhere}.listing tr{break-inside:avoid;page-break-inside:avoid}.shipment-print-report{max-width:none;border:0;padding:0}.shipment-print-heading{margin-bottom:10px}body{background:white;color:#000;font-size:9pt}@page{size:A4 portrait;margin:8mm}}
 @media print{.warehouse-pagehead{display:none!important}.warehouse-print-timestamp{display:block!important;white-space:nowrap;align-self:flex-start;padding-top:5px;font-size:9pt;color:#555}.warehouse-selected-head{align-items:flex-start}}
 .gb-fields-scroll{overflow-x:auto}
-.gb-fields{display:grid;grid-template-columns:58px minmax(180px,1fr) minmax(240px,1.5fr) repeat(2,minmax(125px,.8fr)) minmax(360px,max-content) 34px;gap:12px;align-items:end;min-width:1250px}
+.gb-fields{display:grid;grid-template-columns:58px minmax(350px,1.7fr) minmax(190px,1fr) repeat(2,minmax(100px,.6fr)) minmax(300px,max-content) 30px;gap:10px;align-items:end;min-width:1320px}
 .gb-fields h3{margin:0 0 14px;align-self:end}
 .gb-delete-x{align-self:center;margin:0 0 6px;padding:0;border:0;background:transparent;color:#b3262b;font-size:23px;line-height:1;min-width:28px}.gb-delete-x:hover{border:0;background:transparent;color:#7f171b}.gb-delete-x[hidden]{display:none}
 .gb-fields label{margin:0;font-size:12px;min-width:0}
 .gb-fields label input{display:block;margin-top:5px;padding:8px 9px;font-size:13px}
 .gb-fields label input{width:100%;max-width:none}
-.gb-fields{grid-template-columns:58px minmax(430px,1.8fr) minmax(220px,1.1fr) repeat(2,minmax(125px,.65fr)) minmax(360px,max-content) 34px;min-width:1500px}
 .yarn-editor{min-width:0}
-.yarn-fields{display:grid;grid-template-columns:minmax(130px,1.2fr) minmax(100px,.8fr) minmax(88px,.7fr) minmax(110px,.9fr);gap:8px;align-items:end}
+.yarn-fields{display:grid;grid-template-columns:minmax(100px,1.2fr) minmax(56px,.55fr) minmax(50px,.45fr) minmax(100px,.9fr);gap:6px;align-items:end}
 .yarn-fields label{font-size:11px}
 .yarn-fields label input{padding:8px;font-size:12px}
 .yarn-editor>small{display:block;min-height:18px;margin-top:5px;color:var(--muted);font-size:11px;font-weight:400}

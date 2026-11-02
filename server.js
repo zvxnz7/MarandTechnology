@@ -323,7 +323,8 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
-    row.yarn_material = formText(form, `gb_${i}_yarn_material`).slice(0, 40);
+    row.yarn_material = formText(form, `gb_${i}_yarn_material`);
+    if (row.yarn_material.length > 10) fail(400, 'Rodzaj przędzy może mieć maksymalnie 10 znaków.');
     const yarnDtex = formText(form, `gb_${i}_yarn_dtex`);
     if (yarnDtex && (yarnDtex.length > 4 || !Yarn.decimal(yarnDtex))) fail(400, 'Grubość w dtex musi być dodatnią liczbą o maksymalnie 4 znakach.');
     row.yarn_dtex = Yarn.decimal(yarnDtex);
@@ -331,7 +332,8 @@ function parseForm(form, old) {
     if (filaments && (filaments.length > 3 || !/^\d+$/.test(filaments) || Number(filaments) < 1)) fail(400, 'Liczba f musi być dodatnią liczbą całkowitą o maksymalnie 3 cyfrach. Wpisz 1 dla mono.');
     row.yarn_filaments = filaments ? String(Number(filaments)) : '';
     row.yarn_process = formText(form, `gb_${i}_yarn_process`).slice(0, 24).toUpperCase();
-    row.yarn2_material = formText(form, `gb_${i}_yarn2_material`).slice(0, 40);
+    row.yarn2_material = formText(form, `gb_${i}_yarn2_material`);
+    if (row.yarn2_material.length > 10) fail(400, 'Rodzaj drugiego składnika przędzy może mieć maksymalnie 10 znaków.');
     const yarn2Dtex = formText(form, `gb_${i}_yarn2_dtex`);
     if (yarn2Dtex && (yarn2Dtex.length > 4 || !Yarn.decimal(yarn2Dtex))) fail(400, 'Grubość drugiego składnika w dtex musi być dodatnią liczbą o maksymalnie 4 znakach.');
     row.yarn2_dtex = Yarn.decimal(yarn2Dtex);
