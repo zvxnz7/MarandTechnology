@@ -22,7 +22,7 @@ function parse(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   if (/^[|.]+$/.test(raw)) return describe(raw);
-  const normalized = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalized = raw.toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const pattern = /(\d+)\s*(pelne|pelnych|pelna|pelny|puste|pustych|pusta|pusty)/g;
   let cursor = 0;
   let sequence = '';
