@@ -409,6 +409,26 @@ const updateGbRows=()=>{
   });
 };
 if(gbList)gbList.addEventListener('click',event=>{
+  const yarnCode=event.target.closest('[data-yarn-code]');
+  if(yarnCode){
+    const picker=yarnCode.closest('[data-yarn-process-picker]');
+    const input=picker?.querySelector('input[type="hidden"]');
+    if(!input)return;
+    const codes=[...picker.querySelectorAll('[data-yarn-code]')].map(button=>button.dataset.yarnCode);
+    const tokens=input.value.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+    const selected=new Set(tokens.filter(code=>codes.includes(code)));
+    const extras=tokens.filter(code=>!codes.includes(code));
+    const code=yarnCode.dataset.yarnCode;
+    if(selected.has(code))selected.delete(code);else selected.add(code);
+    input.value=[...codes.filter(item=>selected.has(item)),...extras].join(' ');
+    picker.querySelectorAll('[data-yarn-code]').forEach(button=>{
+      const active=selected.has(button.dataset.yarnCode);
+      button.setAttribute('aria-pressed',String(active));
+      button.classList.toggle('selected',active);
+    });
+    dirty=true;
+    return;
+  }
   const remove=event.target.closest('[data-remove-gb]');
   if(!remove)return;
   const row=remove.closest('[data-gb-index]');
@@ -423,6 +443,7 @@ if(addGB)addGB.addEventListener('click',()=>{
   if(number>32){alert('Osiągnięto maksymalne oznaczenie GB32.');return;}
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
   next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'&&c.name.endsWith('_number')?String(number):'';c.classList.remove('inherited-value');});
+  next.querySelectorAll('[data-yarn-code]').forEach(button=>{button.setAttribute('aria-pressed','false');button.classList.remove('selected');});
   const yarnPreview=next.querySelector('[data-yarn-preview]');if(yarnPreview)yarnPreview.textContent='Podgląd uzupełni się po wpisaniu włókna i grubości.';
   next.querySelector('.yarn-second-component')?.removeAttribute('open');
   list.appendChild(next);updateGbRows();dirty=true;next.querySelector('input:not([type=hidden])').focus();
