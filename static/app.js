@@ -388,6 +388,17 @@ document.querySelectorAll('[data-instruction-editor]').forEach(editor=>{
 });
 const gbList=document.querySelector('[data-gb-list]');
 const gbRows=()=>gbList?[...gbList.querySelectorAll('[data-gb-index]')]:[];
+const syncYarn=editor=>{
+ const read=(prefix,suffix)=>editor.querySelector(`[name$="_${prefix}${suffix}"]`)?.value.trim()||'';
+ const component=prefix=>{
+  const material=read(prefix,'material'),dtex=read(prefix,'dtex').replace(',','.'),filaments=read(prefix,'filaments'),process=read(prefix,'process').toUpperCase();
+  const count=/^\d+$/.test(filaments)&&Number(filaments)>0?(Number(filaments)===1?'mono':`${Number(filaments)}f`):'';
+  return material&&/^\d+(?:\.\d+)?$/.test(dtex)?[material,`${dtex} dtex`,count,process].filter(Boolean).join(' · '):'';
+ };
+ const parts=[component('yarn_'),component('yarn2_')].filter(Boolean);
+ const preview=editor.querySelector('[data-yarn-preview]');
+ if(preview)preview.textContent=parts.length?parts.join(' + '):(read('yarn_','legacy')?`Zapis historyczny: ${read('yarn_','legacy')}`:'Podgląd uzupełni się po wpisaniu włókna i grubości.');
+};
 const threadingMarkup=(index,full)=>{
  const position=index+1,state=full?'full':'empty',label=full?'pełna':'pusta',wrap=document.createElement('span'),toggle=document.createElement('button'),remove=document.createElement('button');
  wrap.className='threading-position';
@@ -433,8 +444,11 @@ if(addGB)addGB.addEventListener('click',()=>{
   const next=rows[0].cloneNode(true);next.dataset.gbIndex=rows.length;next.dataset.gbNumber=number;next.querySelector('h3').textContent='GB'+number;
   next.querySelectorAll('input,textarea').forEach(c=>{c.name=c.name.replace(/^gb_\d+_/,`gb_${rows.length}_`);c.value=c.type==='hidden'&&c.name.endsWith('_number')?String(number):c.name.endsWith('_threading')?'|':'';c.classList.remove('inherited-value');});
   const threadingEditor=next.querySelector('[data-threading-editor]'),threadingPositions=next.querySelector('[data-threading-positions]');threadingPositions.replaceChildren(threadingMarkup(0,true));next.querySelector('[data-threading-display]').textContent='|';const legacy=next.querySelector('[data-threading-legacy]');if(legacy){legacy.hidden=true;legacy.textContent='';}syncThreading(threadingEditor);
+  const yarnPreview=next.querySelector('[data-yarn-preview]');if(yarnPreview)yarnPreview.textContent='Podgląd uzupełni się po wpisaniu włókna i grubości.';
+  next.querySelector('.yarn-second-component')?.removeAttribute('open');
   list.appendChild(next);updateGbRows();dirty=true;next.querySelector('input:not([type=hidden])').focus();
 });
+if(gbList)gbList.addEventListener('input',event=>{const editor=event.target.closest('[data-yarn-editor]');if(editor)syncYarn(editor);});
 document.querySelectorAll('[data-photo]').forEach(form=>form.addEventListener('submit',async event=>{
  event.preventDefault();const status=form.querySelector('[data-photo-status]'),button=form.querySelector('button');button.disabled=true;
  try{

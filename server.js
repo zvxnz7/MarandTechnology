@@ -9,6 +9,7 @@ const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const V = require('./views');
+const Yarn = require('./modules/yarn');
 const ArchiveCleanup = require('./modules/archive-cleanup');
 const SourceImport = require('./modules/source-import');
 const FinishingImport = require('./modules/finishing-import');
@@ -242,6 +243,26 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
+    row.yarn_material = formText(form, `gb_${i}_yarn_material`).slice(0, 40);
+    const yarnDtex = formText(form, `gb_${i}_yarn_dtex`);
+    if (yarnDtex && !Yarn.decimal(yarnDtex)) fail(400, 'Grubość przędzy musi być dodatnią liczbą w dtex.');
+    row.yarn_dtex = Yarn.decimal(yarnDtex);
+    const filaments = formText(form, `gb_${i}_yarn_filaments`);
+    if (filaments && (!/^\d+$/.test(filaments) || Number(filaments) < 1)) fail(400, 'Liczba filamentów musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
+    row.yarn_filaments = filaments ? String(Number(filaments)) : '';
+    row.yarn_process = formText(form, `gb_${i}_yarn_process`).slice(0, 24).toUpperCase();
+    row.yarn2_material = formText(form, `gb_${i}_yarn2_material`).slice(0, 40);
+    const yarn2Dtex = formText(form, `gb_${i}_yarn2_dtex`);
+    if (yarn2Dtex && !Yarn.decimal(yarn2Dtex)) fail(400, 'Grubość drugiego składnika przędzy musi być dodatnią liczbą w dtex.');
+    row.yarn2_dtex = Yarn.decimal(yarn2Dtex);
+    const filaments2 = formText(form, `gb_${i}_yarn2_filaments`);
+    if (filaments2 && (!/^\d+$/.test(filaments2) || Number(filaments2) < 1)) fail(400, 'Liczba filamentów drugiego składnika musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
+    row.yarn2_filaments = filaments2 ? String(Number(filaments2)) : '';
+    row.yarn2_process = formText(form, `gb_${i}_yarn2_process`).slice(0, 24).toUpperCase();
+    row.yarn_legacy = formText(form, `gb_${i}_yarn_legacy`).slice(0, 150);
+    const structuredYarn = Yarn.compose(row);
+    row.yarn = structuredYarn || row.yarn_legacy;
+    if (structuredYarn) row.yarn_legacy = '';
     if (Object.entries(row).some(([k,v]) => k !== 'number' && v)) {
       if (row.threads && !/^\d+$/.test(row.threads)) fail(400, 'Wpisz liczbę nici na jeden szal jako jedną liczbę całkowitą. Zapis typu 3*450 lub 3x450 najpierw przelicz i wpisz wynik.');
       row.number = (old.gb?.length ? row.number : '') || old.gb?.[i]?.number || String(Math.max(0,...(old.gb||[]).map(g=>Number(g.number))) + i - (old.gb||[]).length + 1);
@@ -268,6 +289,10 @@ function validateReady(row) {
   if (!row.symbol || !v.gb.length) fail(400, 'Uzupełnij symbol i przynajmniej jedną GB.');
   if (['machine_type', 'gauge', 'density', 'working_width'].some(k => !v.tech[k])) fail(400, 'Uzupełnij typ i podział maszyny, ścisłość oraz szerokość roboczą.');
   if (v.gb.some(g => g.threads && !/^\d+$/.test(g.threads))) fail(400, 'Wpisz liczbę nici na jeden szal jako jedną liczbę całkowitą. Zapis typu 3*450 lub 3x450 najpierw przelicz i wpisz wynik.');
+  if (v.gb.some(g => (g.yarn_material || g.yarn_dtex || g.yarn_filaments || g.yarn_process) && (!g.yarn_material || !Yarn.decimal(g.yarn_dtex)))) fail(400, 'Uzupełnij rodzaj włókna i grubość przędzy w dtex dla każdej GB.');
+  if (v.gb.some(g => g.yarn_filaments && (!/^\d+$/.test(g.yarn_filaments) || Number(g.yarn_filaments) < 1))) fail(400, 'Liczba filamentów musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
+  if (v.gb.some(g => (g.yarn2_material || g.yarn2_dtex || g.yarn2_filaments || g.yarn2_process) && (!g.yarn_material || !Yarn.decimal(g.yarn_dtex) || !g.yarn2_material || !Yarn.decimal(g.yarn2_dtex)))) fail(400, 'Uzupełnij pierwszy składnik oraz rodzaj włókna i grubość w dtex drugiego składnika przędzy.');
+  if (v.gb.some(g => g.yarn2_filaments && (!/^\d+$/.test(g.yarn2_filaments) || Number(g.yarn2_filaments) < 1))) fail(400, 'Liczba filamentów drugiego składnika musi być dodatnią liczbą całkowitą. Wpisz 1 dla mono.');
   if (v.gb.some(g => ['number', 'yarn', 'threads', 'run_in', 'threading', 'pattern'].some(k => !g[k]) || !/^[|.]+$/.test(g.threading))) fail(400, 'Uzupełnij przędzę, liczbę nici na jeden szal, wrobienie, nawleczenie złożone z pozycji pełnych (|) i pustych (.) oraz raport dla każdej używanej GB.');
 }
 function signedCookie(session) {
