@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const Yarn = require('./modules/yarn');
+const Threading = require('./modules/threading');
 const LOGO_CACHE_VERSION = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'static', 'logo.jpg'))).digest('hex').slice(0, 16);
 
 const TECH = [
@@ -170,7 +171,7 @@ function metricInputs(v, group, metrics) {
   return metrics.map(([k, label]) => field(label, `${group}_${k}`, (v[group] || {})[k] || '', { className: 'compact-value', maxlength: 10 })).join('');
 }
 function threadingEditor(index, value) {
-  return field('Nawleczenie', `gb_${index}_threading`, value, { maxlength: 180, placeholder: '2 pełne, 3 puste', title: 'Opisz kolejno grupy nitek pełnych i pustych, np. 2 pełne, 3 puste.' });
+  return field('Nawleczenie', `gb_${index}_threading`, Threading.parse(value) || value, { maxlength: 180, placeholder: '2 pełne, 3 puste', title: 'Opisz kolejno grupy nitek pełnych i pustych, np. 2 pełne, 3 puste.' });
 }
 function yarnEditor(index, row) {
   const values = Yarn.fields(row);
