@@ -22,13 +22,13 @@ function parse(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   if (/^[|.]+$/.test(raw)) return describe(raw);
-  const normalized = raw.toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalized = raw.toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\b(?:i|oraz|plus)\b/g, ',').replace(/\s*\+\s*/g, ',');
   const pattern = /(\d+)\s*(pelne|pelnych|pelna|pelny|puste|pustych|pusta|pusty)/g;
   let cursor = 0;
   let sequence = '';
   for (const match of normalized.matchAll(pattern)) {
     const separator = normalized.slice(cursor, match.index);
-    if (cursor && !/^[\s,;/]+$/.test(separator)) return '';
+    if (cursor && !/^[\s,;/|]+$/.test(separator)) return '';
     if (!cursor && normalized.slice(0, match.index).trim()) return '';
     const count = Number(match[1]);
     if (!Number.isSafeInteger(count) || count < 1 || count > 1000) return '';
@@ -36,7 +36,7 @@ function parse(value) {
     sequence += (isFull ? '|' : '.').repeat(count);
     cursor = match.index + match[0].length;
   }
-  if (!sequence || !/^[\s,;/]*$/.test(normalized.slice(cursor))) return '';
+  if (!sequence || !/^[\s,;/|]*$/.test(normalized.slice(cursor))) return '';
   return describe(sequence);
 }
 

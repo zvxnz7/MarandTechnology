@@ -51,7 +51,7 @@ function yarnShares(rows = []) {
   });
   const total = weights.reduce((sum, weight) => sum + (weight || 0), 0);
   if (!total || weights.some(weight => weight === null)) return rows.map(() => '—');
-  return weights.map(weight => `${(weight / total * 100).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
+  return weights.map(weight => `${Math.round(weight / total * 100).toLocaleString('pl-PL')}%`);
 }
 const INSTRUCTION_FORMAT = 'marand-instructions-v1';
 const INSTRUCTION_SIZES = [12, 14, 16, 18, 20, 24, 28, 32];

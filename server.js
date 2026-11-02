@@ -355,7 +355,7 @@ function parseForm(form, old) {
       numbers.add(row.number);
       const oldThreading = old.gb?.find(g => String(g.number) === row.number)?.threading || '';
       if (row.threading && !Threading.parse(row.threading) && row.threading !== oldThreading) {
-        fail(400, 'Wpisz nawleczenie jako tekst, np. „2 pełne, 3 puste”.');
+        fail(400, `GB${row.number || i + 1}: nie rozpoznaję nawleczenia „${row.threading}”. Wpisz np. „2 pełne, 3 puste”.`);
       }
       v.gb.push(row);
     }
@@ -398,7 +398,7 @@ function validateReady(row) {
     else if (!/^\d+$/.test(g.threads)) fields.push('nici na 1 szal: wpisz jedną liczbę całkowitą, bez zapisu 3*450 lub 3x450');
     if (!g.run_in) fields.push('mm/rack');
     if (!g.threading) fields.push('nawleczenie (np. „2 pełne, 3 puste”)');
-    else if (!Threading.parse(g.threading)) fields.push('nawleczenie: wpisz tekst, np. „2 pełne, 3 puste”');
+    else if (!Threading.parse(g.threading)) fields.push(`nawleczenie „${g.threading}” ma nieznany format (np. „2 pełne, 3 puste”)`);
     if (fields.length) issues.push(`${gb}: ${fields.join(', ')}`);
   }
   if (issues.length) fail(400, `Nie można zatwierdzić. Popraw: ${issues.join('; ')}.`);
