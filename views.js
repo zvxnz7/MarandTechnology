@@ -22,7 +22,8 @@ const TARGET_METRICS = [
   ['sample_batch', 'Wzorcowa partia z wykańczalni'],
 ];
 const GB = [
-  ['number', 'GB'], ['yarn', 'Rodzaj przędzy'], ['share', 'Udział %'], ['pattern', 'Raport ogniw wzorujących'], ['threads', 'nici na 1 szal'],
+  ['number', 'GB'], ['yarn', 'Rodzaj przędzy'], ['share', 'Udział %'], ['pattern', 'Raport ogniw wzorujących'],
+  ['tarczowki', 'Liczba tarczówek'], ['threads_per_tarczowka', 'Nici na jednej tarczówce'], ['threads', 'Liczba nici — stary zapis'],
   ['run_in', 'mm/rack'], ['threading', 'Nawleczenie'],
 ];
 const FINISH = [
@@ -45,13 +46,21 @@ function yarnContributions(row) {
   const threadProduct = threadExpression
     ? Number(threadExpression[1].replace(',', '.')) * Number(threadExpression[2].replace(',', '.'))
     : NaN;
-  const threads = /^\d+$/.test(rawThreads)
+  const platesRaw = String(row.tarczowki ?? '').trim();
+  const threadsPerPlateRaw = String(row.threads_per_tarczowka ?? '').trim();
+  const hasSplitCount = Boolean(platesRaw || threadsPerPlateRaw);
+  const product = Number(platesRaw) * Number(threadsPerPlateRaw);
+  const splitProduct = /^\d+$/.test(platesRaw) && /^\d+$/.test(threadsPerPlateRaw) && Number.isSafeInteger(product)
+    ? product
+    : NaN;
+  const legacyThreads = /^\d+$/.test(rawThreads)
     ? Number(rawThreads)
     : plainThreads
       ? Number(plainThreads[1])
       : Number.isSafeInteger(threadProduct) && threadProduct > 0
         ? threadProduct
         : NaN;
+  const threads = hasSplitCount ? splitProduct : legacyThreads;
   const runIn = Number(String(row.run_in || '').trim().replace(',', '.'));
   if (!Number.isFinite(threads) || threads <= 0 || !Number.isFinite(runIn) || runIn <= 0) return null;
   const components = [{ material: yarn.material, dtex: yarn.dtex }];
@@ -248,8 +257,10 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const gbRows = Array.from({ length: gbCount }, (_, i) => {
     const row = v.gb[i] || {};
     const number = row.number || String(Math.max(0,...v.gb.map(g=>Number(g.number))) + i - v.gb.length + 1);
-    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='threads'?{inputmode:'numeric',pattern:'[0-9]+',title:'Wpisz liczbę nici na jeden szal. Nie używaj zapisów typu 3*450 ani 3x450.'}:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + threadingEditor(i, row.threading || 'pełne');
-    return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${yarnEditor(i,row)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div></div></section>`;
+    const numericThreadOptions={type:'number',inputmode:'numeric',pattern:'[0-9]+',min:1,step:1,title:'Wpisz dodatnią liczbę całkowitą.'};
+    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share', 'threads'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='tarczowki'||k==='threads_per_tarczowka'?numericThreadOptions:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + hidden(`gb_${i}_threads`,row.threads||'') + threadingEditor(i, row.threading || 'pełne');
+    const legacyThreadNote=row.threads&&!row.tarczowki&&!row.threads_per_tarczowka?`<p class="muted small gb-legacy-thread-count">Stary zapis: ${esc(row.threads)} nici łącznie. Uzupełnij oba pola powyżej, gdy będziesz znać podział.</p>`:'';
+    return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${yarnEditor(i,row)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div>${legacyThreadNote}</div></section>`;
   }).join('');
   const targetGrid = `<strong>Parametr</strong><strong>Wartość</strong>${TARGET_METRICS.map(([k, label]) => `<label for="target_${k}">${esc(label)}</label><input id="target_${k}" name="targets_${k}" value="${esc((v.targets || {})[k] || '')}"${k === 'sample_batch' ? ' maxlength="150"' : ' maxlength="10"'}>`).join('')}`;
   const rawGrid = `<strong>Parametr</strong><strong>Wartość</strong>${RAW_METRICS.map(([k, label]) => `<label for="raw_${k}">${esc(label)}</label><input id="raw_${k}" name="raw_${k}" value="${esc((v.raw || {})[k] || '')}" maxlength="10">`).join('')}`;
@@ -265,7 +276,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const form = `<form method="post" class="editor" data-dirty${r.base_id ? ' data-inherited-values' : ''}>${hidden('csrf', csrf)}${hidden('revision', r.revision)}
 <section class="panel padded"><h2>Artykuł i opis</h2><div class="form-grid">${field('Symbol artykułu', 'symbol', v.symbol || r.symbol, { required: 'required' })}${field('Nr projektu', 'number', r.project_trial_number || '', { readonly: 'readonly' })}${field('Data źródłowa / założenia', 'date', v.date || '', v.date ? { readonly: 'readonly' } : {})}${field('Klient', 'client', v.client || '')}</div>${descriptionField}</section>
 <section class="panel padded"><h2>Ustawienia maszyny</h2><div class="form-grid">${tech}</div></section>
-<section class="panel padded"><h2>GB — przędze i sploty</h2><p class="muted">Wybierz jedno oznaczenie z pary FDY/DTY oraz jedno z grupy FD/SD/BR. Domyślnie zaznaczone: FDY i SD. Jeden filament wyświetla się jako mono. Liczbę nici wpisz jako jedną liczbę na jeden szal; zapisy typu 3*450 i 3x450 trzeba wcześniej przeliczyć. Domyślnie GB1 i GB2. Dodaj kolejne w razie potrzeby.</p><datalist id="yarn-fiber-options"><option value="PES"></option><option value="PA"></option><option value="PA 6"></option><option value="PA 6.6"></option><option value="LYCRA"></option><option value="WEŁNA"></option></datalist><div data-gb-list>${gbRows}</div><button type="button" data-add-gb>+ Dodaj GB</button></section>
+<section class="panel padded"><h2>GB — przędze i sploty</h2><p class="muted">Wybierz jedno oznaczenie z pary FDY/DTY oraz jedno z grupy FD/SD/BR. Domyślnie zaznaczone: FDY i SD. Jeden filament wyświetla się jako mono. Wpisz liczbę tarczówek i liczbę nici na jednej tarczówce; skład liczy łączną liczbę nici jako ich iloczyn. Domyślnie GB1 i GB2. Dodaj kolejne w razie potrzeby.</p><datalist id="yarn-fiber-options"><option value="PES"></option><option value="PA"></option><option value="PA 6"></option><option value="PA 6.6"></option><option value="LYCRA"></option><option value="WEŁNA"></option></datalist><div data-gb-list>${gbRows}</div><button type="button" data-add-gb>+ Dodaj GB</button></section>
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2>${field('Uwagi dla dziewiarza', 'knitter_notes', v.knitter_notes || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Parametry dzianiny surowej</h2><div class="target-grid raw-grid">${rawGrid}</div>${field('Komentarz do dzianiny surowej', 'raw_comments', v.raw_comments || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted">Pola opcjonalne. Wartości można uzupełnić później.</p><div class="target-grid">${targetGrid}</div>${field('Komentarz do dzianiny wykończonej', 'finished_comments', v.finished_comments || '', { multiline: true })}</section>
@@ -324,9 +335,15 @@ function issueConfirmPage({ user, csrf, flashes, r, token, machine, instructions
 function cardPage({ r, v, machine, instructions, productionNotes = '', cardno, issuedAt, author, logo, printcss }) {
   const th = (items, cls = '') => `<table${cls ? ` class="${cls}"` : ''}><thead><tr>${items.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody><tr>${items.map(([k]) => `<td>${esc(k === 'machine_number' ? machine : (v.tech || {})[k] || '—')}</td>`).join('')}</tr></tbody></table>`;
   const machineSpecs = TECH.slice(0, 5).map(([key, label]) => key === 'machine_type' ? ['machine_number', 'Nr maszyny'] : [key, label]);
-  const yarnRows = (v.gb || []).map(row => `<tr>${['number', 'yarn', 'pattern', 'threads', 'run_in', 'threading'].map(k => `<td>${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : row[k] || '')}</td>`).join('')}</tr>`).join('');
+  const yarnRows = (v.gb || []).map(row => {
+    const plates=String(row.tarczowki||'').trim(),perPlate=String(row.threads_per_tarczowka||'').trim();
+    const product=Number(plates)*Number(perPlate);
+    const total=plates&&perPlate&&/^\d+$/.test(plates)&&/^\d+$/.test(perPlate)&&Number.isSafeInteger(product)?String(product):row.threads||'';
+    const cells=[row.number,Yarn.compose(Yarn.fields(row))||row.yarn||'',row.pattern,plates,perPlate,total,row.run_in,row.threading];
+    return `<tr>${cells.map(value=>`<td>${esc(value||'')}</td>`).join('')}</tr>`;
+  }).join('');
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(r.symbol)} — karta ${esc(cardno || 'podgląd')}</title><style>${printcss}</style><script defer src="/static/app.js"></script></head><body><div class="toolbar"><button data-print>Drukuj / zapisz jako PDF</button><span>${cardno ? 'Wydana karta — zachowany egzemplarz' : 'Podgląd roboczy — nie jest kartą wydaną na produkcję'}</span></div><article class="sheet"><header><div class="logo"><img src="data:image/jpeg;base64,${logo}" alt="Marand"></div><div><div class="title">WARUNKI DZIANIA · KARTA NA MASZYNĘ</div><h1>${esc(r.symbol)}</h1></div></header>${!cardno ? '<div class="draft">PODGLĄD ROBOCZY — NIE DO PRODUKCJI</div>' : ''}<div class="identity">Specyfikacja: <b>${r.version ? `v${r.version}` : 'niezatwierdzona'}</b> · Wydanie: ${datepl(issuedAt)}<br>Karta: ${esc(cardno || 'niewydana')} · Wydał(a): ${esc(author)}</div>
-${th(machineSpecs, 'machine-specs')}<h2>Parametry dzianiny surowej</h2><table><thead><tr>${RAW_METRICS.map(([,label])=>`<th>${esc(label)}</th>`).join('')}</tr></thead><tbody><tr>${RAW_METRICS.map(([k])=>`<td>${esc(v.raw?.[k] || '—')}</td>`).join('')}</tr></table>${v.raw_comments ? `<div class="notes">${esc(v.raw_comments)}</div>` : ''}<h2>Przędza, raport ogniw wzorujących i nawleczenie</h2><table class="gb"><thead><tr><th>GB</th><th>Rodzaj przędzy</th><th>Raport ogniw wzorujących</th><th>nici na 1 szal</th><th>mm/rack</th><th>Nawleczenie</th></tr></thead><tbody>${yarnRows}</tbody></table>
+${th(machineSpecs, 'machine-specs')}<h2>Parametry dzianiny surowej</h2><table><thead><tr>${RAW_METRICS.map(([,label])=>`<th>${esc(label)}</th>`).join('')}</tr></thead><tbody><tr>${RAW_METRICS.map(([k])=>`<td>${esc(v.raw?.[k] || '—')}</td>`).join('')}</tr></table>${v.raw_comments ? `<div class="notes">${esc(v.raw_comments)}</div>` : ''}<h2>Przędza, raport ogniw wzorujących i nawleczenie</h2><table class="gb"><thead><tr><th>GB</th><th>Rodzaj przędzy</th><th>Raport ogniw wzorujących</th><th>Liczba tarczówek</th><th>Nici na jednej tarczówce</th><th>Nici łącznie</th><th>mm/rack</th><th>Nawleczenie</th></tr></thead><tbody>${yarnRows}</tbody></table>
 <div class="production"><section><h2>Parametry dziania</h2><table><tr><th>Domyślna długość belki</th><td>${esc(v.tech.roll_length || '—')} m</td></tr><tr><th>Prędkość</th><td>${esc(v.tech.speed || '—')}</td></tr><tr><th>Ustawienie dystansu</th><td>${esc(v.tech.distance || '—')}</td></tr></table></section><section><h2>Polecenia do tej produkcji</h2><div class="instructions">${instructionCardHtml(instructions)}</div></section></div><h2>Uwagi dla dziewiarza</h2><div class="notes">${esc(v.knitter_notes || '—')}</div><table class="signatures"><tr><th>Podpis dziewiarza</th><td>1.</td><td>2.</td><td>3.</td></tr></table><h2>Notatki od dziewiarza</h2><div class="handnotes"></div>${productionNotes?`<h2 class="production-notes-heading">Jednorazowe instrukcje przy produkcji</h2><div class="notes production-notes-row">${esc(productionNotes)}</div>`:''}<footer>Marand · ${esc(r.symbol)} · ${esc(cardno || 'Podgląd roboczy')} · Specyfikacja ${r.version || 'robocza'}</footer></article></body></html>`;
 }
 function destructiveConfirmPage({ user, csrf, flashes, title, heading, selectedLabel, object, details, action, cancelUrl, confirmText }) {

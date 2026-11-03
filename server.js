@@ -323,6 +323,9 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
+    if (row.tarczowki && (!/^\d+$/.test(row.tarczowki) || Number(row.tarczowki) < 1)) fail(400, 'Liczba tarczówek musi być dodatnią liczbą całkowitą.');
+    if (row.threads_per_tarczowka && (!/^\d+$/.test(row.threads_per_tarczowka) || Number(row.threads_per_tarczowka) < 1)) fail(400, 'Liczba nici na jednej tarczówce musi być dodatnią liczbą całkowitą.');
+    if (row.tarczowki && row.threads_per_tarczowka && !Number.isSafeInteger(Number(row.tarczowki) * Number(row.threads_per_tarczowka))) fail(400, 'Łączna liczba nici jest zbyt duża.');
     if (row.run_in.length > 6) fail(400, 'Wartość mm/rack może mieć maksymalnie 6 znaków.');
     row.yarn_material = formText(form, `gb_${i}_yarn_material`);
     if (row.yarn_material.length > 10) fail(400, 'Rodzaj przędzy może mieć maksymalnie 10 znaków.');
@@ -348,7 +351,7 @@ function parseForm(form, old) {
     if (structuredYarn) row.yarn_legacy = '';
     row.threading = Threading.parse(row.threading) || row.threading;
     if (Object.entries(row).some(([k,v]) => k !== 'number' && v)) {
-      if (row.threads && !/^\d+$/.test(row.threads)) fail(400, 'Wpisz liczbę nici na jeden szal jako jedną liczbę całkowitą. Zapis typu 3*450 lub 3x450 najpierw przelicz i wpisz wynik.');
+      if (!row.tarczowki && !row.threads_per_tarczowka && row.threads && !/^\d+$/.test(row.threads)) fail(400, 'Stara liczba nici musi być zapisana jako liczba całkowita.');
       row.number = (old.gb?.length ? row.number : '') || old.gb?.[i]?.number || String(Math.max(0,...(old.gb||[]).map(g=>Number(g.number))) + i - (old.gb||[]).length + 1);
       if (!/^\d+$/.test(row.number) || Number(row.number) < 1 || Number(row.number) > 32) fail(400, 'Numer GB musi być liczbą od 1 do 32.');
       if (numbers.has(row.number)) fail(400, 'Numer GB nie może się powtarzać.');
@@ -390,8 +393,15 @@ function validateReady(row) {
     }
     if (g.yarn2_filaments && (!/^\d+$/.test(g.yarn2_filaments) || Number(g.yarn2_filaments) < 1)) fields.push('f drugiej przędzy musi być dodatnią liczbą całkowitą');
     if (!g.pattern) fields.push('raport ogniw wzorujących');
-    if (!g.threads) fields.push('nici na 1 szal');
-    else if (!/^\d+$/.test(g.threads)) fields.push('nici na 1 szal: wpisz jedną liczbę całkowitą, bez zapisu 3*450 lub 3x450');
+    const hasSplitThreadCount=Boolean(g.tarczowki||g.threads_per_tarczowka);
+    if (hasSplitThreadCount) {
+      if (!g.tarczowki) fields.push('liczba tarczówek');
+      else if (!/^\d+$/.test(g.tarczowki) || Number(g.tarczowki) < 1) fields.push('liczba tarczówek musi być dodatnią liczbą całkowitą');
+      if (!g.threads_per_tarczowka) fields.push('nici na jednej tarczówce');
+      else if (!/^\d+$/.test(g.threads_per_tarczowka) || Number(g.threads_per_tarczowka) < 1) fields.push('nici na jednej tarczówce muszą być dodatnią liczbą całkowitą');
+      if (g.tarczowki&&g.threads_per_tarczowka&&!Number.isSafeInteger(Number(g.tarczowki)*Number(g.threads_per_tarczowka))) fields.push('łączna liczba nici jest zbyt duża');
+    } else if (!g.threads) fields.push('liczba tarczówek i nici na jednej tarczówce');
+    else if (!/^\d+$/.test(g.threads)) fields.push('stary zapis liczby nici musi być liczbą całkowitą; uzupełnij nowe pola');
     if (!g.run_in) fields.push('mm/rack');
     if (fields.length) issues.push(`${gb}: ${fields.join(', ')}`);
   }
