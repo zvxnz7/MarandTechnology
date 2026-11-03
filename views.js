@@ -93,17 +93,17 @@ function yarnComposition(rows = []) {
   const sorted = [...weights.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   return integerPercentages(sorted.map(([, weight]) => weight)).map((value, index) => `${value}% ${sorted[index][0]}`).join(' · ');
 }
-function kgPerObr(raw = {}, tech = {}) {
+function kgPer10kObr(raw = {}, tech = {}) {
   const decimal=value=>Number(String(value??'').trim().replace(',','.'));
   const grammage=decimal(raw.weight),widthCm=decimal(raw.width),density=decimal(tech.density);
   if(!Number.isFinite(grammage)||grammage<=0||!Number.isFinite(widthCm)||widthCm<=0||!Number.isFinite(density)||density<=0)return null;
   const kgPerMeter=grammage*widthCm/100000;
-  const stitchesPerMeter=density*100;
-  const result=kgPerMeter/stitchesPerMeter;
+  const rotationsPerMeter=density*100;
+  const result=kgPerMeter*10000/rotationsPerMeter;
   return Number.isFinite(result)&&result>0?result:null;
 }
-function kgPerObrText(raw,tech) {
-  const value=kgPerObr(raw,tech);
+function kgPer10kObrText(raw,tech) {
+  const value=kgPer10kObr(raw,tech);
   return value===null?'—':new Intl.NumberFormat('pl-PL',{minimumFractionDigits:6,maximumFractionDigits:8}).format(value);
 }
 function yarnSharePercentages(rows = []) {
@@ -305,7 +305,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   if (aiNotice) flashes = [...flashes, { category: 'warning', message: aiNotice }];
   const tech = TECH.map(([k, label]) => `<div><span>${esc(label)}</span><strong>${esc((v.tech || {})[k] || '—')}</strong></div>`).join('');
   const composition = yarnComposition(v.gb);
-  const kgPerObrValue=kgPerObrText(v.raw||{},v.tech||{});
+  const kgPerObrValue=kgPer10kObrText(v.raw||{},v.tech||{});
   const shares = yarnSharePercentages(v.gb);
   const gbTable = v.gb.length ? v.gb.map((row, index) => `<tr>${GB.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : k === 'share' ? shares[index] : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${GB.length}">Brak danych GB.</td></tr>`;
   const raw = RAW_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.raw || {})[k] || '—')}</dd>`).join('');
@@ -327,7 +327,7 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   return layout({ user, csrf, flashes, title: `${r.symbol} · Marand`, body: `<a class="breadcrumb" href="${r.article_id ? `/articles/${r.article_id}` : `/projects/${r.project_id}`}">← ${esc(r.article_id ? r.symbol : r.project_name)}</a>${archivedNotice}<div class="pagehead"><div><span class="eyebrow">${r.kind === 'trial' ? 'PRÓBA / WARIANT' : 'WARUNKI DZIANIA'}</span><h1>${esc(r.symbol)}</h1><span class="badge ${esc(r.state)}">${esc(STATE[r.state])}${r.version ? ` · wersja ${r.version}` : ''}</span> ${r.project_trial_number ? `<span class="muted">Nr projektu ${esc(r.project_trial_number)}</span>` : ''}</div><div class="actions">${actionButtons}</div></div>
 <div class="metadata"><span>Data źródłowa: <b>${esc(v.date || 'niepodana')}</b></span><span>Utworzono w bazie: ${datepl(r.created_at)}</span><span>Aktualizacja: ${datepl(r.updated_at)}</span>${r.base_id ? `<a href="/records/${r.base_id}">Wpis bazowy #${r.base_id}</a>` : ''}</div>
 ${r.state === 'approved' ? `<div class="notice success"><strong>${r.active_spec === r.id ? 'Obowiązująca specyfikacja' : 'Historyczna zatwierdzona specyfikacja'}</strong> · zatwierdzono ${datepl(r.approved_at)}<p>${esc(r.review_note)}</p></div>` : ''}${v.source_note ? `<div class="notice warning">${esc(v.source_note)}</div>` : ''}
-<div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><p><strong>Skład surowcowy:</strong> ${esc(composition)}</p><p><strong>kg/obr:</strong> ${esc(kgPerObrValue)}</p><div class="metric-grid">${tech}</div></div>
+<div class="panel padded"><h2>Opis i przeznaczenie</h2><p><strong>Klient:</strong> ${esc(v.client || '—')}</p><p class="preline">${esc(v.description || 'Brak opisu.')}</p><p><strong>Skład surowcowy:</strong> ${esc(composition)}</p><p><strong>kg/10 000 obr:</strong> ${esc(kgPerObrValue)}</p><div class="metric-grid">${tech}</div></div>
 <div class="sectionhead"><h2>Ustawienia GB</h2></div><div class="panel scroll"><table class="listing compact"><thead><tr>${GB.map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${gbTable}</tbody></table></div>
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2><p class="preline">${esc(v.knitter_notes || '—')}</p></section>${review}
 <div class="two-col"><section class="panel padded"><h2>Parametry dzianiny surowej</h2><dl>${raw}</dl><p class="preline">${esc(v.raw_comments || '')}</p></section><section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted small">Dane opcjonalne.</p><dl>${targets}</dl>${v.finished_comments ? `<h3>Komentarz do dzianiny wykończonej</h3><p class="preline">${esc(v.finished_comments)}</p>` : ''}</section></div>${finishes}
@@ -356,9 +356,9 @@ function cardPage({ r, v, machine, instructions, productionNotes = '', cardno, i
     const cells=[row.number,Yarn.compose(Yarn.fields(row))||row.yarn||'',row.pattern,plates,perPlate,total,row.run_in,row.threading];
     return `<tr>${cells.map(value=>`<td>${esc(value||'')}</td>`).join('')}</tr>`;
   }).join('');
-  const composition=yarnComposition(v.gb),kgPerObrValue=kgPerObrText(v.raw||{},v.tech||{});
+  const composition=yarnComposition(v.gb),kgPerObrValue=kgPer10kObrText(v.raw||{},v.tech||{});
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(r.symbol)} — karta ${esc(cardno || 'podgląd')}</title><style>${printcss}</style><script defer src="/static/app.js"></script></head><body><div class="toolbar"><button data-print>Drukuj / zapisz jako PDF</button><span>${cardno ? 'Wydana karta — zachowany egzemplarz' : 'Podgląd roboczy — nie jest kartą wydaną na produkcję'}</span></div><article class="sheet"><header><div class="logo"><img src="data:image/jpeg;base64,${logo}" alt="Marand"></div><div><div class="title">WARUNKI DZIANIA · KARTA NA MASZYNĘ</div><h1>${esc(r.symbol)}</h1></div></header>${!cardno ? '<div class="draft">PODGLĄD ROBOCZY — NIE DO PRODUKCJI</div>' : ''}<div class="identity">Specyfikacja: <b>${r.version ? `v${r.version}` : 'niezatwierdzona'}</b> · Wydanie: ${datepl(issuedAt)}<br>Karta: ${esc(cardno || 'niewydana')} · Wydał(a): ${esc(author)}</div>
-${th(machineSpecs, 'machine-specs')}<h2>Parametry dzianiny surowej</h2><table><thead><tr>${RAW_METRICS.map(([,label])=>`<th>${esc(label)}</th>`).join('')}</tr></thead><tbody><tr>${RAW_METRICS.map(([k])=>`<td>${esc(v.raw?.[k] || '—')}</td>`).join('')}</tr></table>${v.raw_comments ? `<div class="notes">${esc(v.raw_comments)}</div>` : ''}<h2>Przędza, raport ogniw wzorujących i nawleczenie</h2><table class="gb"><thead><tr><th>GB</th><th>Rodzaj przędzy</th><th>Raport ogniw wzorujących</th><th>Liczba tarczówek</th><th>Nici na jednej tarczówce</th><th>Nici łącznie</th><th>mm/rack</th><th>Nawleczenie</th></tr></thead><tbody>${yarnRows}</tbody></table><p><strong>Skład surowcowy:</strong> ${esc(composition)} · <strong>kg/obr:</strong> ${esc(kgPerObrValue)}</p>
+${th(machineSpecs, 'machine-specs')}<h2>Parametry dzianiny surowej</h2><table><thead><tr>${RAW_METRICS.map(([,label])=>`<th>${esc(label)}</th>`).join('')}</tr></thead><tbody><tr>${RAW_METRICS.map(([k])=>`<td>${esc(v.raw?.[k] || '—')}</td>`).join('')}</tr></table>${v.raw_comments ? `<div class="notes">${esc(v.raw_comments)}</div>` : ''}<h2>Przędza, raport ogniw wzorujących i nawleczenie</h2><table class="gb"><thead><tr><th>GB</th><th>Rodzaj przędzy</th><th>Raport ogniw wzorujących</th><th>Liczba tarczówek</th><th>Nici na jednej tarczówce</th><th>Nici łącznie</th><th>mm/rack</th><th>Nawleczenie</th></tr></thead><tbody>${yarnRows}</tbody></table><p><strong>Skład surowcowy:</strong> ${esc(composition)} · <strong>kg/10 000 obr:</strong> ${esc(kgPerObrValue)}</p>
 <div class="production"><section><h2>Parametry dziania</h2><table><tr><th>Domyślna długość belki</th><td>${esc(v.tech.roll_length || '—')} m</td></tr><tr><th>Prędkość</th><td>${esc(v.tech.speed || '—')}</td></tr><tr><th>Ustawienie dystansu</th><td>${esc(v.tech.distance || '—')}</td></tr></table></section><section><h2>Polecenia do tej produkcji</h2><div class="instructions">${instructionCardHtml(instructions)}</div></section></div><h2>Uwagi dla dziewiarza</h2><div class="notes">${esc(v.knitter_notes || '—')}</div><table class="signatures"><tr><th>Podpis dziewiarza</th><td>1.</td><td>2.</td><td>3.</td></tr></table><h2>Notatki od dziewiarza</h2><div class="handnotes"></div>${productionNotes?`<h2 class="production-notes-heading">Jednorazowe instrukcje przy produkcji</h2><div class="notes production-notes-row">${esc(productionNotes)}</div>`:''}<footer>Marand · ${esc(r.symbol)} · ${esc(cardno || 'Podgląd roboczy')} · Specyfikacja ${r.version || 'robocza'}</footer></article></body></html>`;
 }
 function destructiveConfirmPage({ user, csrf, flashes, title, heading, selectedLabel, object, details, action, cancelUrl, confirmText }) {
