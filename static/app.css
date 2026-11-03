@@ -403,7 +403,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-lot-inline[data-save-state="saved"] input{border-color:#8dbb98}
 .finishing-order-lot-inline[data-save-state="error"] input{border-color:#c93237;background:#fff7f7}
 .finishing-order-add-spec-form{display:flex;align-items:center;flex:0 0 30px;margin-top:0}
-.finishing-order-add-spec-actions{display:flex;align-items:center;gap:5px;flex:none}
+.finishing-order-add-spec-actions{display:flex;align-items:center;gap:5px;flex:0 0 100%;margin-top:2px}
 .finishing-order-add-spec-actions .finishing-add-batch-form{margin:0}
 .finishing-add-spec-button{display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid #d8dde2;border-radius:6px;background:#fff;color:#42576a;cursor:pointer}
 .finishing-add-spec-button:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
