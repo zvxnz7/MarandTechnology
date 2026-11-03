@@ -2,18 +2,23 @@
 let dirty=false,submitting=false;
 const correctionParentUrl=document.body?.dataset.correctionParentUrl;
 if(correctionParentUrl&&window.opener&&!window.opener.closed){try{window.opener.location.replace(correctionParentUrl);}catch{}}
+document.querySelectorAll('[data-finishing-batch-delete]').forEach(form=>form.addEventListener('submit',event=>{
+ if(!window.confirm('Usunąć ostatnią pustą specyfikację?'))event.preventDefault();
+}));
 document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
+ const matchingRemoveForm=()=>[...form.closest('.finishing-order-lot-list')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);
+ const updateRemoveForm=()=>{const removeForm=matchingRemoveForm();if(!removeForm)return;if(lastSaved){removeForm.hidden=true;return;}const button=removeForm.querySelector('button');if(button)button.disabled=input.value.trim()!==lastSaved;};
  const save=async()=>{
   const value=input.value.trim();if(!value||value===lastSaved)return;if(saving){queued=true;return;}saving=true;
   try{
    const response=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:new URLSearchParams(new FormData(form))});
    const result=await response.json();if(!response.ok||!result.ok)throw new Error('Nie udało się zapisać numeru LOT.');
-   lastSaved=value;form.dataset.saveState='saved';input.title='Numer LOT zapisany';
+   lastSaved=value;form.dataset.saveState='saved';input.title='Numer LOT zapisany';updateRemoveForm();
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
   finally{saving=false;if(queued){queued=false;timer=setTimeout(save,150);}}
  };
- const schedule=()=>{clearTimeout(timer);if(!input.value.trim()){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,800);};
+ const schedule=()=>{clearTimeout(timer);updateRemoveForm();if(!input.value.trim()){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,800);};
  input.addEventListener('input',schedule);input.addEventListener('change',()=>{clearTimeout(timer);save();});
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);save();});
 });

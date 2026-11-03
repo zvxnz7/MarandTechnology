@@ -397,16 +397,21 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-lot{font-size:inherit;font-weight:750}
 .finishing-order-lot-list{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:190px}
 .finishing-order-lot-entry{display:flex;align-items:center;flex:0 1 auto;min-width:0;gap:6px}
-.finishing-order-lot-entry>small{color:var(--muted);font-size:11px}
 .finishing-lot-edit-button{width:30px;min-width:30px;height:30px;padding:0;margin:0;font-size:11px;font-weight:650;white-space:nowrap}
 .finishing-order-lot-inline{display:flex;align-items:center;flex:0 1 140px;width:140px;max-width:140px}
 .finishing-order-lot-inline input{width:140px;max-width:100%;min-width:0;padding:6px 8px;font-size:12px}
 .finishing-order-lot-inline[data-save-state="saved"] input{border-color:#8dbb98}
 .finishing-order-lot-inline[data-save-state="error"] input{border-color:#c93237;background:#fff7f7}
 .finishing-order-add-spec-form{display:flex;align-items:center;flex:0 0 30px;margin-top:0}
+.finishing-order-add-spec-actions{display:flex;align-items:center;gap:5px;flex:none}
+.finishing-order-add-spec-actions .finishing-add-batch-form{margin:0}
 .finishing-add-spec-button{display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid #d8dde2;border-radius:6px;background:#fff;color:#42576a;cursor:pointer}
 .finishing-add-spec-button:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
 .finishing-add-spec-button svg{width:17px;height:17px}
+.finishing-remove-spec-button{display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid #e4c4c5;border-radius:6px;background:#fff7f7;color:#a92c30;cursor:pointer}
+.finishing-remove-spec-button:hover{border-color:#cb8f92;background:#ffeded;color:#842126}
+.finishing-remove-spec-button:disabled{opacity:.45;cursor:not-allowed}
+.finishing-remove-spec-button svg{width:17px;height:17px}
 .finishing-batch-quantity-hint{grid-column:1/-1;margin:0}
 .finishing-row-action{display:inline-grid;place-items:center;width:34px;height:34px;padding:0;margin-left:5px;border:1px solid #d8dde2;border-radius:7px;background:#fff;color:#42576a;vertical-align:middle;cursor:pointer}
 .finishing-row-action:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
