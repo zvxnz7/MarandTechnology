@@ -170,7 +170,7 @@ async function handle(ctx) {
     WHERE b.article_id=? AND ${Warehouse.activeStockSql()}`).get(id);
   const currentStockView=`<div class="article-current-stock"><span>Stan bieżący</span><strong>${currentStock?.pieces??0} <small>szt</small></strong><strong>${Number(currentStock?.weight_kg??0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} <small>kg</small></strong></div>`;
   const currentRecord=db.prepare('SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,1 is_current FROM records r WHERE r.id=? AND r.archived_at IS NULL').get(a.active_spec);
-  const finishingRecipes=db.prepare("SELECT id,name,target_color,raw_symbol,recipe_details FROM finishing_recipes WHERE active=1 AND upper(replace(raw_symbol,' ',''))=upper(replace(?,' ','')) ORDER BY name COLLATE NOCASE,id").all(a.symbol);
+  const finishingRecipes=db.prepare("SELECT id,name,target_color,raw_symbol,recipe_details FROM finishing_recipes WHERE active=1 AND upper(replace(replace(replace(replace(raw_symbol,' ',''),'/', ''),'(',''),')',''))=upper(replace(replace(replace(replace(?,' ',''),'/', ''),'(',''),')','')) ORDER BY name COLLATE NOCASE,id").all(a.symbol);
   const historyCount=recordCount-(currentRecord?1:0);
   const historyRecords=db.prepare("SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,0 is_current FROM records r WHERE r.article_id=? AND r.archived_at IS NULL AND r.id<>coalesce(?,0) ORDER BY CASE WHEN r.kind='spec' AND r.state!='approved' THEN 0 WHEN r.kind='spec' THEN 1 ELSE 2 END,r.id DESC LIMIT 50 OFFSET ?").all(id,currentRecord?.id||0,(historyPage-1)*50);
   const records=[...(currentRecord?[currentRecord]:[]),...historyRecords];
