@@ -362,6 +362,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-notes-editor{overflow:hidden;border:1px solid #cfd4da;border-radius:6px;background:#fff}
 .finishing-notes-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 10px;border-bottom:1px solid #dfe2e5;background:#f3f4f5}
 .finishing-notes-toolbar button{min-width:34px;padding:5px 9px}
+.instruction-editor-toolbar button[aria-pressed="true"],.finishing-notes-toolbar button[aria-pressed="true"]{border-color:#b52b30;background:#fff0f0;color:#972126}
 .finishing-notes-toolbar label{display:flex;align-items:center;gap:6px;margin:0;font-size:12px}
 .finishing-notes-toolbar select{width:auto;min-width:76px;padding:5px 7px}
 .finishing-notes-content{min-height:120px;padding:12px;outline:none;font-size:16px;font-weight:400;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -386,8 +387,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-batch-add{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line)}
 .finishing-batch-add>summary{margin:0;color:#29445d}
 .finishing-batch-add>p{margin:10px 0;font-size:13px}
-.finishing-add-batch-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:end;gap:10px 14px}
-.finishing-add-batch-form label{min-width:0;margin:0}
+.finishing-add-batch-form{display:flex;justify-content:flex-start;margin:14px 0 0}
 .finishing-add-batch-form button{white-space:nowrap}
 .finishing-order-notes-view{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}
 .finishing-row-actions{white-space:nowrap;text-align:right!important;vertical-align:middle!important}
@@ -396,18 +396,17 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-pm:hover{color:var(--red)}
 .finishing-order-lot{font-size:inherit;font-weight:750}
 .finishing-order-lot-list{display:grid;gap:6px;min-width:155px}
-.finishing-order-lot-entry{display:grid;gap:3px;justify-items:start}
+.finishing-order-lot-entry{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .finishing-order-lot-entry>small{color:var(--muted);font-size:11px}
-.finishing-lot-edit-button{width:auto;min-width:34px;height:28px;padding:0 8px;margin-left:0;font-size:11px;font-weight:650;white-space:nowrap}
+.finishing-lot-edit-button{width:30px;min-width:30px;height:30px;padding:0;margin:0;font-size:11px;font-weight:650;white-space:nowrap}
 .finishing-order-lot-inline{display:flex;align-items:center;gap:5px;max-width:230px}
 .finishing-order-lot-inline input{width:138px;min-width:0;padding:6px 8px;font-size:12px}
-.finishing-order-lot-inline button{padding:6px 9px;font-size:12px;white-space:nowrap}
-.finishing-order-add-spec{margin-top:4px}
-.finishing-order-add-spec summary{color:#496278;font-size:11px;font-weight:600;white-space:nowrap}
-.finishing-order-add-spec-form{display:grid;grid-template-columns:75px 85px auto;align-items:end;gap:5px;margin-top:7px}
-.finishing-order-add-spec-form label{margin:0;font-size:10px}
-.finishing-order-add-spec-form input{padding:5px 6px;font-size:11px}
-.finishing-order-add-spec-form button{padding:5px 7px;font-size:11px}
+.finishing-order-lot-inline button{padding:0;font-size:12px;white-space:nowrap}
+.finishing-order-add-spec-form{display:flex;align-items:center;margin-top:6px}
+.finishing-add-spec-button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 8px;border:1px solid #d8dde2;border-radius:6px;background:#fff;color:#42576a;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}
+.finishing-add-spec-button:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
+.finishing-add-spec-button svg{width:15px;height:15px;flex:none}
+.finishing-batch-quantity-hint{grid-column:1/-1;margin:0}
 .finishing-row-action{display:inline-grid;place-items:center;width:34px;height:34px;padding:0;margin-left:5px;border:1px solid #d8dde2;border-radius:7px;background:#fff;color:#42576a;vertical-align:middle;cursor:pointer}
 .finishing-row-action:hover{border-color:#9eafbf;background:#f3f7fa;color:#1f3d55}
 .finishing-row-action svg{width:18px;height:18px}
@@ -417,8 +416,6 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-row-action.is-delete{font-size:22px;font-weight:600;color:#aa282c;background:#fff5f4}
 .finishing-row-action.is-delete:hover{border-color:#d49a9c;background:#fce9e8}
 @media(max-width:520px){.finishing-production-check .dialog-head{padding:14px 16px}.finishing-production-check .dialog-body{padding:16px;max-height:60vh}.finishing-production-check-row{grid-template-columns:minmax(0,1fr);gap:2px}.finishing-production-check .actions{flex-direction:column-reverse;align-items:stretch;padding:12px 16px}.finishing-production-check .actions button{width:100%}}
-@media(max-width:760px){.finishing-add-batch-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:520px){.finishing-add-batch-form{grid-template-columns:1fr}}
 .finishing-trial-badge{display:inline-flex;align-items:center;margin-left:8px;padding:3px 9px;border-radius:999px;background:#fff1d6;color:#865700;font-size:11px;font-weight:750;line-height:1.4;text-transform:uppercase;vertical-align:middle}
 .finishing-recipe-identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px}
 .finishing-recipe-identity-grid label,.finishing-recipe-section>label{margin:0}

@@ -195,15 +195,15 @@ function renderTouchHome() {
   $('#touch-older-heading').hidden = !previous.length;
   $('#touch-accepted-list').innerHTML = previous.length ? previous.slice(0, 80).map(row => touchBaleCard(row, false, reviewableIds.has(row.id))).join('') : '';
 }
-function touchTimeFmt(value) {
+function touchDateFmt(value) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'godzina niedostępna' : date.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(date.getTime()) ? 'data niedostępna' : date.toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 function touchBaleCard(row, latest = false, reviewable = false) {
   const review = reviewable || row.needs_check
     ? `<button type="button" class="touch-review-button ${row.needs_check ? 'marked' : ''}" data-touch-review="${escapeHtml(row.id)}" data-check="${row.needs_check ? '0' : '1'}" ${row.sync_status === 'synced' ? 'title="Oznaczenie zostanie wysłane do programu głównego"' : ''}>${row.needs_check ? '✓ Zgłoszono błędny zapis' : 'Zgłoś błędny zapis'}</button>`
     : '<span class="touch-review-locked">Oznaczanie dostępne dla 3 ostatnich belek</span>';
-  return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchTimeFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg${row.weight_source === 'calculated' ? '<small class="weight-calculated-badge">Waga wyliczona</small>' : ''}<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
+  return `<article class="touch-accepted-card ${latest ? 'touch-latest-card' : ''} ${row.needs_check ? 'needs-check' : ''}"><div class="touch-bale-main">${latest ? '<span class="touch-latest-label">OSTATNIA PRZYJĘTA</span>' : ''}<strong>${escapeHtml(row.number)} <span>·</span> ${escapeHtml(row.symbol)}</strong><small>${escapeHtml(row.machine)} · ${dateFmt(row.production_date)} · przyjęto ${touchDateFmt(row.created_at)}</small><small>${escapeHtml(row.workers.map(item => item.name).join(', '))}</small></div><span class="touch-accepted-metrics">${fmt(row.weight_kg)} kg${row.weight_source === 'calculated' ? '<small class="weight-calculated-badge">Waga wyliczona</small>' : ''}<br>${fmt(row.meters)} m</span><div class="touch-review-action">${review}</div></article>`;
 }
 function touchNextBaleNumber() {
   const machine = state.touch.machine;
@@ -580,9 +580,9 @@ async function loadSettings() {
   state.catalogWorkers = (state.data.workerCatalog || []).map(item => ({ employee_uid: item.employee_uid, name: item.name, status: item.status || 'active' }));
   state.hiddenWorkers = settingsData.hiddenWorkers || state.data.hiddenWorkers || [];
   state.catalogMachines = (state.data.machineCatalog || state.data.machines.map(code=>({code,name:state.data.machineLabels?.[code]||code}))).map(item=>({code:item.code,name:item.name}));
-  const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleString('pl-PL'):'brak udanej synchronizacji';
+  const lastSync=settingsData.centralCatalogSyncedAt?new Date(settingsData.centralCatalogSyncedAt).toLocaleDateString('pl-PL',{timeZone:'Europe/Warsaw'}):'brak udanej synchronizacji';
   $('#central-catalog-sync').textContent=`Ostatnia udana synchronizacja biblioteki: ${lastSync}. Brak połączenia nie usuwa zapisanej listy.`;
-  const workersSync=settingsData.centralWorkersSyncedAt?new Date(settingsData.centralWorkersSyncedAt).toLocaleString('pl-PL'):'lista nie była jeszcze aktualizowana';
+  const workersSync=settingsData.centralWorkersSyncedAt?new Date(settingsData.centralWorkersSyncedAt).toLocaleDateString('pl-PL',{timeZone:'Europe/Warsaw'}):'lista nie była jeszcze aktualizowana';
   $('#worker-catalog-sync').textContent=`Ostatnia aktualizacja listy pracowników: ${workersSync}.`;
   $('#sequence-year').value = state.data.today.slice(0, 4);
   if ($('#production-server-url')) $('#production-server-url').value = settingsData.productionConnection?.serverUrl || 'http://192.168.1.14:8765';
@@ -757,7 +757,7 @@ async function refreshWorkers() {
     state.catalogWorkers = result.workers.map(item => ({ employee_uid: item.employee_uid, name: item.name, status: pendingStatuses.get(item.employee_uid) || item.status || 'active' }));
     state.hiddenWorkers = result.bootstrap.hiddenWorkers || [];
     renderCatalogs();
-    $('#worker-catalog-sync').textContent = `Lista zaktualizowana: ${new Date(result.syncedAt).toLocaleString('pl-PL')}.`;
+    $('#worker-catalog-sync').textContent = `Lista zaktualizowana: ${new Date(result.syncedAt).toLocaleDateString('pl-PL',{timeZone:'Europe/Warsaw'})}.`;
     toast(`Zaktualizowano listę pracowników (${state.catalogWorkers.length}).`);
   } catch (error) {
     $('#worker-catalog-sync').textContent = error.message;
@@ -770,7 +770,7 @@ async function refreshArticles() {
   $('#central-catalog-sync').textContent = 'Pobieram aktualną listę zatwierdzonych artykułów z programu głównego…';
   try {
     const result = await api('/api/settings/articles/refresh', { method: 'POST', body: JSON.stringify({}) });
-    $('#central-catalog-sync').textContent = `Ostatnia udana synchronizacja biblioteki: ${new Date(result.syncedAt).toLocaleString('pl-PL')}.`;
+    $('#central-catalog-sync').textContent = `Ostatnia udana synchronizacja biblioteki: ${new Date(result.syncedAt).toLocaleDateString('pl-PL',{timeZone:'Europe/Warsaw'})}.`;
     if ($('#central-article-search').value.trim()) await searchCentralArticles();
     toast(`Zaktualizowano bibliotekę artykułów (${result.articles}).`);
   } catch (error) {
@@ -805,12 +805,12 @@ async function verifyProductionToken() {
 const reportStatusLabel = status => ({
   draft: 'Roboczy', approved_pending: 'Zatwierdzony, oczekuje na wysyłkę', sent: 'Wysłany', send_error: 'Błąd wysyłki',
 }[status] || 'Do wygenerowania');
-function reportDateTime(value) {
+function reportDateFmt(value) {
   if (!value) return '—';
-  return new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  return new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value));
 }
 function reportSummaryStatus(item) {
-  if (item.status === 'sent') return `<span class="report-status report-status-sent">Wysłano · ${escapeHtml(reportDateTime(item.sent_at))}</span>`;
+  if (item.status === 'sent') return `<span class="report-status report-status-sent">Wysłano · ${escapeHtml(reportDateFmt(item.sent_at))}</span>`;
   if (item.status === 'send_error') return '<span class="report-status report-status-error">Błąd wysyłki</span>';
   if (item.status) return `<span class="report-status">${escapeHtml(reportStatusLabel(item.status))}</span>`;
   return '<span class="report-status">Raport do wygenerowania</span>';
@@ -883,10 +883,10 @@ function renderDailyReportDetails(reportDate, container, report) {
   const bales = [...report.bales].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id.localeCompare(a.id));
   const rows = bales.map(bale => `<tr><td>${bale.ordinal}</td><td>${escapeHtml(bale.number)}</td><td>${escapeHtml(bale.symbol)}${bale.trial_symbol ? '<small class="trial-bale-badge">Próba</small>' : ''}</td><td>${escapeHtml(bale.machine)}</td><td>${editable ? editableReportInput(bale,'production_date',bale.production_date,'date') : dateFmt(bale.production_date)}</td><td>${editable ? editableReportInput(bale,'weight_kg',String(bale.weight_kg).replace('.',',')) : fmt(bale.weight_kg)}</td><td>${editable ? editableReportInput(bale,'meters',String(bale.meters).replace('.',',')) : fmt(bale.meters)}</td><td>${editable ? editableReportInput(bale,'errors',bale.errors) : bale.errors}</td><td>${editable ? editableReportInput(bale,'stops',bale.stops) : bale.stops}</td><td>${bale.workers.map(worker => `${escapeHtml(worker.name)} · ${fmt(worker.meters)} m`).join('<br>')}</td><td>${escapeHtml(bale.lot)}</td><td>${editable ? editableReportInput(bale,'notes',bale.notes || '') : escapeHtml(bale.notes)}</td><td>${editable ? `<button class="table-action remove-report-bale" data-id="${escapeHtml(bale.id)}">Usuń z raportu</button>` : '—'}</td></tr>`).join('');
   const statusText = report.last_error ? `<p class="report-error">${escapeHtml(report.last_error)}</p>` : report.status === 'sent'
-    ? `<p class="muted">Wysłano ${escapeHtml(reportDateTime(report.sent_at))}. Wysłanego raportu nie można zmieniać w panelu lokalnym; korekty wykonuje się w programie głównym.</p>`
+    ? `<p class="muted">Wysłano ${escapeHtml(reportDateFmt(report.sent_at))}. Wysłanego raportu nie można zmieniać w panelu lokalnym; korekty wykonuje się w programie głównym.</p>`
     : `<p class="muted">Status: ${escapeHtml(reportStatusLabel(report.status))}</p>`;
   container.classList.remove('muted');
-  container.innerHTML = `${statusText}<div class="table-wrap"><table class="daily-report-table"><thead><tr><th>Lp.</th><th>Belka</th><th>Artykuł</th><th>Maszyna</th><th>Data prod.</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział</th><th>LOT</th><th>Uwagi</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="13" class="empty">Brak belek w tym raporcie.</td></tr>'}</tbody></table></div><div class="daily-actions">${editable ? `<button type="button" class="secondary add-report-bale" data-date="${escapeHtml(reportDate)}">＋ Dopisz belkę</button><button type="button" class="primary send-report" data-date="${escapeHtml(reportDate)}">${report.status === 'send_error' || report.status === 'approved_pending' ? 'Ponów wysyłkę' : 'Zatwierdź i wyślij produkcję na serwer'}</button>` : `<button type="button" class="primary sent-report" disabled>Wysłano · ${escapeHtml(reportDateTime(report.sent_at))}</button>`}</div>`;
+  container.innerHTML = `${statusText}<div class="table-wrap"><table class="daily-report-table"><thead><tr><th>Lp.</th><th>Belka</th><th>Artykuł</th><th>Maszyna</th><th>Data prod.</th><th>kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>Dziewiarze / udział</th><th>LOT</th><th>Uwagi</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="13" class="empty">Brak belek w tym raporcie.</td></tr>'}</tbody></table></div><div class="daily-actions">${editable ? `<button type="button" class="secondary add-report-bale" data-date="${escapeHtml(reportDate)}">＋ Dopisz belkę</button><button type="button" class="primary send-report" data-date="${escapeHtml(reportDate)}">${report.status === 'send_error' || report.status === 'approved_pending' ? 'Ponów wysyłkę' : 'Zatwierdź i wyślij produkcję na serwer'}</button>` : `<button type="button" class="primary sent-report" disabled>Wysłano · ${escapeHtml(reportDateFmt(report.sent_at))}</button>`}</div>`;
   container.querySelectorAll('.daily-cell-edit').forEach(input => {
     input.addEventListener('change', () => saveInlineReportValue(reportDate,input,container));
     input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
