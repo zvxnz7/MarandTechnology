@@ -379,29 +379,64 @@ document.querySelectorAll('[data-project-article-mode]').forEach(select=>{
 });
 document.querySelectorAll('[data-open-dialog]').forEach(button=>button.addEventListener('click',()=>{
  const dialog=document.getElementById(button.dataset.openDialog);
- if(dialog&&typeof dialog.showModal==='function')dialog.showModal();
+ if(!dialog)return;
+ if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
 }));
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  const list=form.querySelector('[data-receipt-bale-list]'),template=form.querySelector('[data-receipt-bale-template]'),metersToggle=form.querySelector('[data-receipt-measure-meters]'),weightToggle=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received;
+ const summary=form.querySelector('[data-receipt-bale-summary]'),summaryError=form.querySelector('[data-receipt-summary-error]');let summaryDirty=false;
  const parse=input=>{const value=Number(String(input.value||'').replace(',','.'));return Number.isFinite(value)&&value>0?value:0;};
+ const parseTextNumber=value=>{const normalized=String(value||'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);
  const rows=()=>[...list.querySelectorAll('[data-receipt-bale-row]')];
  const addRow=(focusUnit=null)=>{const fragment=template.content.cloneNode(true),row=fragment.querySelector('[data-receipt-bale-row]');list.append(fragment);syncUnits();refresh();const target=focusUnit==='weight'?row.querySelector('[data-receipt-weight]'):row.querySelector('[data-receipt-meter]');target?.focus();return row;};
+ const parseSummary=()=>{
+  const useMeters=metersToggle.checked,useWeight=weightToggle.checked,source=summary.value.trim();
+  if(!source)return {meters:[],weights:[],error:''};
+  if(useMeters&&useWeight){
+   const pairs=source.split(/[;\n]+/).map(value=>value.trim()).filter(Boolean),meters=[],weights=[];
+   for(const pair of pairs){const match=pair.match(/^(\d+(?:[,.]\d+)?)\s*[-–]\s*(\d+(?:[,.]\d+)?)$/);if(!match)return {meters:[],weights:[],error:'Wpisuj pary jako: metry - kg; np. 110 - 12,3; 112 - 12,4.'};const meter=parseTextNumber(match[1]),weight=parseTextNumber(match[2]);if(!meter||!weight)return {meters:[],weights:[],error:'Wartości metrów i kg muszą być większe od zera.'};meters.push(meter);weights.push(weight);}
+   return {meters,weights,error:''};
+  }
+  const parts=source.split(/[;\n]+/).map(value=>value.trim()).filter(Boolean),values=[];
+  if(parts.length===1&&parts[0].includes(',')){
+   const commaParts=parts[0].split(',').map(value=>value.trim());
+   if(commaParts.every(value=>/^\d+$/.test(value)))parts.splice(0,1,...commaParts);
+  }
+  for(const part of parts){const value=parseTextNumber(part);if(!value)return {meters:[],weights:[],error:'Oddzielaj całe wartości przecinkiem, a wartości dziesiętne średnikiem lub nową linią.'};values.push(value);}
+  return {meters:useMeters?values:[],weights:useWeight?values:[],error:''};
+ };
+ const rowValues=()=>({meters:rows().map(row=>parse(row.querySelector('[data-receipt-meter]'))),weights:rows().map(row=>parse(row.querySelector('[data-receipt-weight]')))});
+ const textForValues=values=>{
+  const useMeters=metersToggle.checked,useWeight=weightToggle.checked;
+  if(useMeters&&useWeight)return values.meters.map((value,index)=>value&&values.weights[index]?`${fmt(value)} - ${fmt(values.weights[index])}`:'').filter(Boolean).join('; ');
+  const units=useMeters?values.meters:values.weights,hasDecimal=units.some(value=>value&&String(value).includes('.'));
+  return units.filter(Boolean).map(value=>hasDecimal?String(value):fmt(value)).join(hasDecimal?'; ':', ');
+ };
+ const applySummaryToRows=values=>{
+  const entries=Math.max(values.meters.length,values.weights.length,1),fragment=document.createDocumentFragment();
+  for(let index=0;index<entries;index++){const row=template.content.cloneNode(true),node=row.querySelector('[data-receipt-bale-row]');if(values.meters[index])node.querySelector('[data-receipt-meter]').value=String(values.meters[index]);if(values.weights[index])node.querySelector('[data-receipt-weight]').value=String(values.weights[index]);fragment.append(row);}
+  list.replaceChildren(fragment);syncUnits();
+ };
  const syncUnits=()=>{
   const useMeters=metersToggle.checked,useWeight=weightToggle.checked;
   form.dataset.measureMeters=String(useMeters);form.dataset.measureWeight=String(useWeight);
-  for(const row of rows())for(const [unit,enabled] of [['meters',useMeters],['weight',useWeight]]){const field=row.querySelector(`[data-receipt-unit="${unit}"]`),input=field?.querySelector('input');if(field)field.hidden=!enabled;if(input){input.disabled=!enabled;input.required=enabled;}}
+  for(const row of rows())for(const [unit,enabled] of [['meters',useMeters],['weight',useWeight]]){const field=row.querySelector(`[data-receipt-unit="${unit}"]`),input=field?.querySelector('input');if(field)field.hidden=!enabled;if(input){input.disabled=!enabled;input.required=enabled&&!summaryDirty;}}
   form.querySelectorAll('[data-receipt-unit="meters"]').forEach(el=>el.hidden=!useMeters);form.querySelectorAll('[data-receipt-unit="weight"]').forEach(el=>el.hidden=!useWeight);
   form.querySelectorAll('[data-receipt-remove]').forEach(button=>{button.disabled=rows().length<2;});
   refresh();
  };
  const refresh=()=>{
-  const useMeters=metersToggle.checked,useWeight=weightToggle.checked,current=rows();
-  const meterValues=current.map(row=>parse(row.querySelector('[data-receipt-meter]'))).filter(Boolean),weightValues=current.map(row=>parse(row.querySelector('[data-receipt-weight]'))).filter(Boolean);
+  const useMeters=metersToggle.checked,useWeight=weightToggle.checked,rowData=rowValues(),summaryData=summaryDirty?parseSummary():null;
+  const meterValues=summaryDirty?(summaryData?.meters||[]):rowData.meters.filter(Boolean),weightValues=summaryDirty?(summaryData?.weights||[]):rowData.weights.filter(Boolean);
   metersList.value=useMeters?meterValues.map(v=>String(v)).join('+'):'';weightsList.value=useWeight?weightValues.map(v=>String(v)).join('+'):'';
+  const error=summaryDirty?(summaryData?.error||(!meterValues.length&&!weightValues.length?'Dodaj wartości belek.':'')):'';
+  summaryError.textContent=error;summaryError.hidden=!error;
+  if(!summaryDirty)summary.value=textForValues(rowData);
   const meterTotal=meterValues.reduce((sum,v)=>sum+v,0),weightTotal=weightValues.reduce((sum,v)=>sum+v,0);
   form.querySelector('[data-receipt-total-meters]').textContent=useMeters&&meterValues.length?`${fmt(meterTotal)} mb`:'—';
+  form.querySelector('[data-receipt-summary-total-weight]').textContent=useWeight&&weightValues.length?`${fmt(weightTotal)} kg`:'—';
   form.querySelector('[data-receipt-total-weight]').textContent=useWeight&&weightValues.length?`${fmt(weightTotal)} kg`:'—';
   const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value);
   const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&returned>=0?rawWeight*Math.min(returned/sentPieces,1)*100000/(planGrammage*planWidth):0;
@@ -410,9 +445,9 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(!expected){loss.textContent='—';note.textContent='Do wyliczenia potrzebne są planowana gramatura, planowana szerokość i liczba odebranych sztuk surowych.';}
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Włącz pomiar mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=`${fmt(percentage)}%`;note.textContent=percentage>=0?'Strata względem teorii dla liczby odebranych sztuk. Wartość poniżej zera oznacza uzysk powyżej teorii.':'Uzysk jest wyższy od wartości teoretycznej.';}
-  const save=form.querySelector('button[type="submit"]');save.disabled=(!useMeters&&!useWeight)||!current.length||current.some(row=>(useMeters&&!parse(row.querySelector('[data-receipt-meter]')))||(useWeight&&!parse(row.querySelector('[data-receipt-weight]'))));
+  const save=form.querySelector('button[type="submit"]');save.disabled=!useMeters&&!useWeight;
  };
- list.addEventListener('input',refresh);
+ list.addEventListener('input',()=>{summaryDirty=false;syncUnits();});
  list.addEventListener('keydown',event=>{
   if(event.key!=='Enter')return;const row=event.target.closest('[data-receipt-bale-row]');if(!row)return;event.preventDefault();
   if(metersToggle.checked&&event.target.matches('[data-receipt-meter]')&&weightToggle.checked){row.querySelector('[data-receipt-weight]').focus();return;}
@@ -420,14 +455,17 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  });
  list.addEventListener('click',event=>{const button=event.target.closest('[data-receipt-remove]');if(button&&rows().length>1){button.closest('[data-receipt-bale-row]').remove();syncUnits();}});
  form.querySelector('[data-receipt-add-bale]').addEventListener('click',()=>addRow(metersToggle.checked?'meters':'weight'));
- metersToggle.addEventListener('change',syncUnits);weightToggle.addEventListener('change',syncUnits);rawPieces.addEventListener('input',refresh);
+ summary.addEventListener('input',()=>{summaryDirty=true;for(const row of rows())row.querySelectorAll('[data-receipt-unit] input').forEach(input=>input.required=false);refresh();});
+ summary.addEventListener('blur',()=>{const parsed=parseSummary();if(!parsed.error&&(parsed.meters.length||parsed.weights.length)){summaryDirty=false;applySummaryToRows(parsed);refresh();}});
+ metersToggle.addEventListener('change',()=>{summaryDirty=false;syncUnits();});weightToggle.addEventListener('change',()=>{summaryDirty=false;syncUnits();});rawPieces.addEventListener('input',refresh);
  form.addEventListener('submit',event=>{
   syncUnits();if(!metersToggle.checked&&!weightToggle.checked){event.preventDefault();alert('Wybierz pomiar w mb, kg albo oba.');return;}
+  if(summaryDirty){const parsed=parseSummary();if(parsed.error||(!parsed.meters.length&&!parsed.weights.length)){event.preventDefault();alert(parsed.error||'Dodaj wartości belek.');summary.focus();return;}metersList.value=metersToggle.checked?parsed.meters.join('+'):'';weightsList.value=weightToggle.checked?parsed.weights.join('+'):'';}
   const error=[...form.querySelectorAll('.finishing-receive-quality input[type="radio"]')].some(input=>input.required&&!form.querySelector(`[name="${input.name}"]:checked`));
   if(error){event.preventDefault();alert('Zaznacz ocenę koloru, usztywnienia i wydrapania.');return;}
-  if(!rows().length||rows().some(row=>(metersToggle.checked&&!parse(row.querySelector('[data-receipt-meter]')))||(weightToggle.checked&&!parse(row.querySelector('[data-receipt-weight]'))))){event.preventDefault();alert('Uzupełnij wybrane pomiary dla każdej belki.');}
+  if(!summaryDirty&&(!rows().length||rows().some(row=>(metersToggle.checked&&!parse(row.querySelector('[data-receipt-meter]')))||(weightToggle.checked&&!parse(row.querySelector('[data-receipt-weight]')))))){event.preventDefault();alert('Uzupełnij wybrane pomiary dla każdej belki.');}
  });
- form.closest('dialog')?.addEventListener('close',()=>{form.reset();const listItems=rows();listItems.slice(1).forEach(row=>row.remove());syncUnits();});
+ form.closest('dialog')?.addEventListener('close',()=>{form.reset();summaryDirty=false;const listItems=rows();listItems.slice(1).forEach(row=>row.remove());syncUnits();});
  syncUnits();
 });
 document.querySelectorAll('[data-show-modal]').forEach(dialog=>{
