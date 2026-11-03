@@ -39,7 +39,19 @@ function esc(value) {
 }
 function yarnContributions(row) {
   const yarn = Yarn.fields(row);
-  const threads = Number(row.threads);
+  const rawThreads = String(row.threads ?? '').trim();
+  const plainThreads = rawThreads.match(/^(\d+)\s+nici$/i);
+  const threadExpression = rawThreads.match(/^(\d+(?:[.,]\d+)?)\s*[*x×]\s*(\d+(?:[.,]\d+)?)$/i);
+  const threadProduct = threadExpression
+    ? Number(threadExpression[1].replace(',', '.')) * Number(threadExpression[2].replace(',', '.'))
+    : NaN;
+  const threads = /^\d+$/.test(rawThreads)
+    ? Number(rawThreads)
+    : plainThreads
+      ? Number(plainThreads[1])
+      : Number.isSafeInteger(threadProduct) && threadProduct > 0
+        ? threadProduct
+        : NaN;
   const runIn = Number(String(row.run_in || '').trim().replace(',', '.'));
   if (!Number.isFinite(threads) || threads <= 0 || !Number.isFinite(runIn) || runIn <= 0) return null;
   const components = [{ material: yarn.material, dtex: yarn.dtex }];

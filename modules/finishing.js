@@ -42,10 +42,10 @@ function recipeNotesHtml(value='') {
   }).join('');
 }
 function recipeNotesEditorHtml(value='') { return recipeNotesHtml(value); }
-function notesEditorField({label='Uwagi dodatkowe',ariaLabel='Uwagi dodatkowe',value='',hint='Zaznacz tekst i wybierz formatowanie.'}={}) {
+function notesEditorField({name='notes',label='Uwagi dodatkowe',ariaLabel='Uwagi dodatkowe',value='',hint='Zaznacz tekst i wybierz formatowanie.'}={}) {
   const sizes=RECIPE_NOTES_SIZES.map(size=>`<option value="${size}"${size===16?' selected':''}>${size} px</option>`).join('');
   const packed=JSON.stringify(recipeNotesData(value));
-  return `<div class="finishing-notes-editor-label"><span class="finishing-notes-field-label">${V.esc(label)}</span><div class="finishing-notes-editor" data-finishing-notes-editor><div class="finishing-notes-toolbar" role="toolbar" aria-label="Formatowanie uwag"><button type="button" data-finishing-notes-bold title="Pogrub zaznaczony tekst"><strong>B</strong></button><button type="button" data-finishing-notes-underline title="Podkreśl zaznaczony tekst"><u>U</u></button><button type="button" data-finishing-notes-italic title="Pochyl zaznaczony tekst"><em>I</em></button><label>Rozmiar<select data-finishing-notes-size>${sizes}</select></label><span class="muted small">${V.esc(hint)}</span></div><div class="finishing-notes-content" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${V.esc(ariaLabel)}" data-finishing-notes-content>${recipeNotesEditorHtml(value)}</div><input type="hidden" name="notes" value="${V.esc(packed)}" data-finishing-notes-value></div></div>`;
+  return `<div class="finishing-notes-editor-label"><span class="finishing-notes-field-label">${V.esc(label)}</span><div class="finishing-notes-editor" data-finishing-notes-editor><div class="finishing-notes-toolbar" role="toolbar" aria-label="Formatowanie uwag"><button type="button" data-finishing-notes-bold title="Pogrub zaznaczony tekst"><strong>B</strong></button><button type="button" data-finishing-notes-underline title="Podkreśl zaznaczony tekst"><u>U</u></button><button type="button" data-finishing-notes-italic title="Pochyl zaznaczony tekst"><em>I</em></button><label>Rozmiar<select data-finishing-notes-size>${sizes}</select></label><span class="muted small">${V.esc(hint)}</span></div><div class="finishing-notes-content" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${V.esc(ariaLabel)}" data-finishing-notes-content>${recipeNotesEditorHtml(value)}</div><input type="hidden" name="${V.esc(name)}" value="${V.esc(packed)}" data-finishing-notes-value></div></div>`;
 }
 const shipmentNo = row => `${String(row.sequence).padStart(2,'0')}/${row.shipment_year}`;
 const articleNo = (shipment,item) => `${String(shipment.sequence).padStart(2,'0')}-${String(item.sequence).padStart(2,'0')}`;
@@ -67,10 +67,10 @@ function sourceSpec(db,id) {
     WHERE sa.id=? GROUP BY sa.id`).get(id);
 }
 function shipmentSpecUsed(db,id) {
-  return Boolean(db.prepare('SELECT 1 FROM finishing_orders WHERE shipment_article_id=? LIMIT 1').get(id));
+  return Boolean(db.prepare("SELECT 1 FROM finishing_orders WHERE shipment_article_id=? AND status<>'cancelled' LIMIT 1").get(id));
 }
 function sourcePieces(db,id) {
-  return db.prepare(`SELECT b.bale_number,b.production_date,b.machine,b.weight_kg,b.meters,b.lot
+  return db.prepare(`SELECT b.local_id bale_local_id,b.bale_number,b.production_date,b.machine,b.weight_kg,b.meters,b.lot
     FROM shipment_bales sb JOIN production_bales b ON b.local_id=sb.bale_local_id
     WHERE sb.shipment_article_id=? AND sb.removed_at IS NULL
     ORDER BY b.production_date,b.machine COLLATE NOCASE,b.bale_number COLLATE NOCASE,sb.id`).all(id);
@@ -86,7 +86,7 @@ function sourceDetailsView(db,source) {
 }
 function orderPiecesView(db,order) {
   if(!order.shipment_article_id)return '';
-  let pieces=db.prepare('SELECT bale_number,production_date,machine,weight_kg,meters,lot FROM finishing_order_bales WHERE order_id=? ORDER BY id').all(order.id);
+  let pieces=db.prepare('SELECT bale_local_id,bale_number,production_date,machine,weight_kg,meters,lot FROM finishing_order_bales WHERE order_id=? ORDER BY id').all(order.id);
   if(!pieces.length)pieces=sourcePieces(db,order.shipment_article_id);
   return pieceListView(pieces,'Sztuki załadowane do zlecenia');
 }
@@ -270,7 +270,7 @@ function shipmentOptions(db,selectedId=0) {
     FROM shipment_articles sa JOIN shipments s ON s.id=sa.shipment_id
     JOIN articles a ON a.id=sa.article_id LEFT JOIN shipment_bales sb ON sb.shipment_article_id=sa.id AND sb.removed_at IS NULL
     LEFT JOIN production_bales b ON b.local_id=sb.bale_local_id WHERE s.status='closed'
-      AND NOT EXISTS(SELECT 1 FROM finishing_orders fo WHERE fo.shipment_article_id=sa.id)
+      AND NOT EXISTS(SELECT 1 FROM finishing_orders fo WHERE fo.shipment_article_id=sa.id AND fo.status<>'cancelled')
       AND EXISTS(SELECT 1 FROM shipment_bales active_sb WHERE active_sb.shipment_article_id=sa.id AND active_sb.removed_at IS NULL)
     GROUP BY sa.id ORDER BY s.shipment_year DESC,s.sequence DESC,sa.sequence DESC`).all();
   return rows.map(row=>`<option value="${row.id}" data-plant="${row.finishing_plant_id||''}"${Number(selectedId)===row.id?' selected':''}>PM ${articleNo({sequence:row.shipment_sequence},{sequence:row.article_sequence})} · ${V.esc(row.symbol)} · ${row.raw_bales} szt · ${money(row.raw_weight_kg)} kg · WZ ${shipmentNo({sequence:row.shipment_sequence,shipment_year:row.shipment_year})} · ${V.datepl(row.shipment_date)}</option>`).join('');
@@ -328,9 +328,9 @@ function ordersPage(ctx) {
   const query=normalizeSearch(q);
   const receiveDialogs=[];
   const rows=all.filter(order=>(!status||order.status===status)&&(!query||[order.source_shipment_no,order.raw_symbol,order.client_name,order.trade_symbol,order.finishing_plant_name,order.finishing_lots,order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:''].map(normalizeSearch).join(' ').includes(query))).map(order=>{
-    const canDelete=editableRoles.includes(ctx.req.user.role)&&order.receipt_count===0&&order.lot_batch_count===0&&['draft','raw_sale','cancelled'].includes(order.status);
+    const canDelete=editableRoles.includes(ctx.req.user.role)&&(order.status==='cancelled'||(order.receipt_count===0&&order.lot_batch_count===0&&['draft','raw_sale'].includes(order.status)));
     const canReceive=editableRoles.includes(ctx.req.user.role)&&order.open_batch_id&&!['raw_sale','cancelled','received'].includes(order.status);
-    const canEditLots=editableRoles.includes(ctx.req.user.role)&&!['received','raw_sale','cancelled'].includes(order.status);
+    const canEditLots=editableRoles.includes(ctx.req.user.role)&&!['raw_sale','cancelled'].includes(order.status);
     const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
     const batches=batchesByOrder.get(order.id)||[];
     const baseBatch=[...batches].sort((a,b)=>a.id-b.id)[0];
@@ -339,8 +339,7 @@ function ordersPage(ctx) {
     const openBatches=canReceive?batches.filter(batch=>!batch.closed_at):[];
     const lotCell=batches.length?`<div class="finishing-order-lot-list">${batches.map((batch,index)=>{
       const caption=batches.length>1?`<small>Partia ${index+1}</small>`:'';
-      if(String(batch.finishing_lot||'').trim())return `<div class="finishing-order-lot-entry">${caption}<strong class="finishing-order-lot">${V.esc(batch.finishing_lot)}</strong></div>`;
-      if(canEditLots&&!batch.closed_at)return `<div class="finishing-order-lot-entry">${caption}<form method="post" action="/finishing/orders/${order.id}/lot" class="finishing-order-lot-inline">${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',batch.id)}${hidden('return_to','orders')}<input name="finishing_lot" maxlength="120" placeholder="Nr specyfikacji" aria-label="Numer specyfikacji z farbiarni${batches.length>1?`, partia ${index+1}`:''}" required><button type="submit">Zapisz</button></form></div>`;
+      if(canEditLots)return `<div class="finishing-order-lot-entry">${caption}<form method="post" action="/finishing/orders/${order.id}/lot" class="finishing-order-lot-inline">${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',batch.id)}${hidden('return_to','orders')}<input name="finishing_lot" maxlength="120" value="${V.esc(batch.finishing_lot||'')}" placeholder="Nr specyfikacji" aria-label="Numer specyfikacji z farbiarni${batches.length>1?`, partia ${index+1}`:''}" required><button type="submit">Zapisz</button></form></div>`;
       return `<div class="finishing-order-lot-entry">${caption}<span class="muted">Do uzupełnienia</span></div>`;
     }).join('')}${canAddSpec?`<details class="finishing-order-add-spec"><summary>+ Dodaj kolejną specyfikację</summary><form method="post" action="/finishing/orders/${order.id}/batches" class="finishing-order-add-spec-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('return_to','orders')}<label>Sztuki<input name="sent_pieces" type="number" min="1" max="${baseBatch.sent_pieces}" step="1" required></label><label>Masa kg<input name="raw_weight_kg" type="number" inputmode="decimal" min="0.01" max="${V.esc(baseBatch.raw_weight_kg)}" step="0.01" required></label>${hidden('yarn_lot',baseBatch.yarn_lot||'')}<button type="submit">Dodaj</button></form></details>`:''}</div>`:'—';
     const receiveActions=eligibleToReceive.map((batch,index)=>{
@@ -359,7 +358,8 @@ function ordersPage(ctx) {
 function deleteOrderConfirmPage(ctx,order) {
   const cancelUrl='/finishing/orders';
   const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
-  const body=`${navTabs('orders')}<a class="breadcrumb" href="${cancelUrl}">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Usuń zlecenie wykańczania</h1></div></div><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Potwierdź usunięcie zlecenia</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><p>Wybrane zlecenie:</p><h2 class="delete-confirm-object">${V.esc(pm)} · ${V.esc(order.raw_symbol)} · ${V.esc(order.client_name||'—')}</h2><p>Można usunąć zlecenie tylko przed wpisaniem LOT-u z farbiarni i przed zarejestrowaniem przyjęcia. Rejestr audytowy pozostanie zachowany.</p><form method="post" action="/finishing/orders/${order.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_order','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Usuń ${V.esc(pm)}</button></form></div></dialog>`;
+  const explanation=order.status==='cancelled'?'Usunięcie skasuje kartę, zapisane przyjęcia i belki z tej karty. Specyfikacja WZ jest dostępna do ponownego wykorzystania; wpis audytowy pozostanie.':'Zlecenie można usunąć przed wpisaniem LOT-u i zapisaniem przyjęcia. Aby zwolnić specyfikację WZ, anuluj zlecenie.';
+  const body=`${navTabs('orders')}<a class="breadcrumb" href="${cancelUrl}">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Usuń zlecenie wykańczania</h1></div></div><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Potwierdź usunięcie zlecenia</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><p>Wybrane zlecenie:</p><h2 class="delete-confirm-object">${V.esc(pm)} · ${V.esc(order.raw_symbol)} · ${V.esc(order.client_name||'—')}</h2><p>${explanation} Rejestr audytowy pozostanie zachowany.</p><form method="post" action="/finishing/orders/${order.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_order','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Usuń ${V.esc(pm)}</button></form></div></dialog>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Usuń zlecenie',body});
 }
 function labelPage(ctx,receiptId) {
@@ -399,8 +399,8 @@ function orderPage(ctx,id) {
   const baseBatch=[...batches].sort((a,b)=>a.id-b.id)[0];
   const canAddBatch=canEdit&&order.order_type!=='raw_sale'&&order.status!=='received'&&receipts.length===0&&batches.length>0&&Number(baseBatch?.sent_pieces)>0;
   const lotBatch=batches.find(batch=>!String(batch.finishing_lot||'').trim())||batches[0];
-  const lotControl=canEdit&&lotBatch&&!['received'].includes(order.status)?`<button type="button" data-open-dialog="finishing-lot-dialog">${lotBatch.finishing_lot?'Edytuj LOT farbiarni':'Uzupełnij LOT farbiarni'}</button>`:`<span class="muted">LOT farbiarni: ${V.esc(lotBatch?.finishing_lot||'do uzupełnienia')}</span>`;
-  const lotDialog=canEdit&&lotBatch?`<dialog id="finishing-lot-dialog" class="form-dialog finishing-lot-dialog"><div class="dialog-head"><strong>Numer partii z farbiarni</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Wyjście PM ${V.esc(order.raw_symbol)} zostało już zapisane. Podaj numer LOT otrzymany z farbiarni.</p><form method="post" action="/finishing/orders/${id}/lot" class="finishing-lot-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',lotBatch.id)}<label>Numer partii z farbiarni<input name="finishing_lot" maxlength="120" value="${V.esc(lotBatch.finishing_lot||'')}" required autofocus></label><div class="actions"><button type="button" data-close-dialog>Wróć</button><button class="primary">Zapisz LOT</button></div></form></div></dialog>`:'';
+  const lotControl=canEdit&&lotBatch?`<button type="button" data-open-dialog="finishing-lot-dialog">${lotBatch.finishing_lot?'Edytuj LOT farbiarni':'Uzupełnij LOT farbiarni'}</button>`:`<span class="muted">LOT farbiarni: ${V.esc(lotBatch?.finishing_lot||'do uzupełnienia')}</span>`;
+  const lotDialog=canEdit&&lotBatch?`<dialog id="finishing-lot-dialog" class="form-dialog finishing-lot-dialog"><div class="dialog-head"><strong>Numer partii z farbiarni</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Numer można poprawić także po przyjęciu. Wpisz aktualny LOT z farbiarni.</p><form method="post" action="/finishing/orders/${id}/lot" class="finishing-lot-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',lotBatch.id)}<label>Numer partii z farbiarni<input name="finishing_lot" maxlength="120" value="${V.esc(lotBatch.finishing_lot||'')}" autofocus></label><div class="actions"><button type="button" data-close-dialog>Wróć</button><button class="primary">Zapisz LOT</button></div></form></div></dialog>`:'';
   const receiptDialogs=[];
   const receiptViews=batches.map(batch=>{
     const recent=receipts.filter(receipt=>receipt.batch_id===batch.id);
@@ -417,10 +417,39 @@ function orderPage(ctx,id) {
   const recipeBody=`<details class="panel padded"><summary>Receptura zapisana przy zleceniu</summary><p><strong>${V.esc(snapshot.name||'—')}</strong> · ${V.esc(snapshot.finishingPlant||order.finishing_plant_name||'')}</p><pre class="preline finishing-recipe-text">${V.esc(snapshot.recipeText||'')}</pre>${snapshot.notes?`<div class="preline finishing-recipe-card-notes">${recipeNotesHtml(snapshot.notes)}</div>`:''}</details>`;
   const orderNotes=order.notes?`<div class="finishing-order-notes-view"><strong>Uwagi dodatkowe:</strong><div class="finishing-recipe-card-notes">${recipeNotesHtml(order.notes)}</div></div>`:'';
   const cancel=canEdit&&!['received'].includes(order.status)?`<form method="post" action="/finishing/orders/${id}/cancel" class="finishing-inline-form">${hidden('csrf',ctx.req.session.csrf)}<button class="danger">Anuluj zlecenie</button></form>`:'';
-  const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">${statusBadge(order.status)} <span class="finishing-order-type-label">${V.esc(orderTypeLabel(order.order_type))}</span></span><h1>${V.esc(pm)} · ${V.esc(order.raw_symbol)}</h1><p class="muted">Data wysyłki: ${V.datepl(lotBatch?.sent_at||order.created_at)} · WZ ${V.esc(source)} · ${V.esc(order.client_name||'—')} · ${V.esc(order.trade_symbol||'—')} · ${V.esc(order.finishing_plant_name||'—')}</p>${orderNotes}</div><div class="actions"><a class="button" href="/finishing/orders/${id}/print" target="_blank">Drukuj zlecenie</a>${lotControl}${cancel}</div></div>${piecesBody}${recipeBody}${lotDialog}${batchSection}
+  const editLink=editableRoles.includes(ctx.req.user.role)&&!['cancelled','raw_sale'].includes(order.status)?`<a class="button primary" href="/finishing/orders/${id}/edit">Edytuj dane i specyfikację</a>`:'';
+  const deleteLink=order.status==='cancelled'&&editableRoles.includes(ctx.req.user.role)?`<a class="button danger" href="/finishing/orders/${id}/delete">Usuń anulowane zlecenie</a>`:'';
+  const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">${statusBadge(order.status)} <span class="finishing-order-type-label">${V.esc(orderTypeLabel(order.order_type))}</span></span><h1>${V.esc(pm)} · ${V.esc(order.raw_symbol)}</h1><p class="muted">Data wysyłki: ${V.datepl(lotBatch?.sent_at||order.created_at)} · WZ ${V.esc(source)} · ${V.esc(order.client_name||'—')} · ${V.esc(order.trade_symbol||'—')} · ${V.esc(order.finishing_plant_name||'—')}</p>${orderNotes}</div><div class="actions">${editLink}${deleteLink}<a class="button" href="/finishing/orders/${id}/print" target="_blank">Drukuj zlecenie</a>${lotControl}${cancel}</div></div>${piecesBody}${recipeBody}${lotDialog}${batchSection}
     ${batches.length?`<div class="sectionhead"><h2>Przyjęcia z farbiarni</h2></div>${receiptViews}${receiptDialogs.join('')}`:`<div class="panel padded muted">Nie utworzono wyjścia do farbiarni.</div>`}
     <section class="panel padded finishing-incidents"><h2>Problemy i wyjaśnienia</h2>${incidentForm}<ul>${incidentRows||'<li>Nie zapisano problemów.</li>'}</ul></section>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:pm,body});
+}
+function orderEditPage(ctx,order) {
+  const id=order.id,db=ctx.db;
+  let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
+  const plants=db.prepare('SELECT id,name,active FROM finishing_plants ORDER BY active DESC,name COLLATE NOCASE').all();
+  const plantOptions=plants.map(plant=>`<option value="${plant.id}"${Number(order.finishing_plant_id)===plant.id?' selected':''}>${V.esc(plant.name)}${plant.active?'':' (nieaktywna)'}</option>`).join('');
+  const source=order.shipment_article_id?sourcePieces(db,order.shipment_article_id):[];
+  const saved=db.prepare('SELECT id,bale_local_id,bale_number,production_date,machine,weight_kg,meters,lot FROM finishing_order_bales WHERE order_id=? ORDER BY id').all(id);
+  const pieces=new Map();
+  for(const piece of source)pieces.set(piece.bale_local_id,{...piece,saved:false});
+  for(const piece of saved)pieces.set(piece.bale_local_id,{...pieces.get(piece.bale_local_id),...piece,saved:true});
+  const pieceRows=[...pieces.values()].map((piece,index)=>`<fieldset class="finishing-order-edit-bale"><legend>Belka ${V.esc(piece.bale_number||index+1)}</legend>
+    <input type="hidden" name="bale_${index}_local_id" value="${V.esc(piece.bale_local_id)}"><label class="finishing-order-edit-bale-include"><input type="checkbox" name="bale_${index}_include" value="1"${piece.saved||saved.length===0?' checked':''}> Uwzględnij w zleceniu</label>
+    <div class="form-grid"><label>Numer belki<input name="bale_${index}_number" value="${V.esc(piece.bale_number||'')}" maxlength="100"></label><label>Maszyna<input name="bale_${index}_machine" value="${V.esc(piece.machine||'')}" maxlength="100"></label><label>Data produkcji<input name="bale_${index}_date" type="date" value="${V.esc(piece.production_date||'')}"></label><label>Metry<input name="bale_${index}_meters" type="number" min="0.01" step="0.01" value="${V.esc(piece.meters??'')}"></label><label>Masa kg<input name="bale_${index}_weight" type="number" min="0.01" step="0.01" value="${V.esc(piece.weight_kg??'')}"></label><label>LOT przędzy<input name="bale_${index}_lot" value="${V.esc(piece.lot||'')}" maxlength="250"></label></div></fieldset>`).join('');
+  const batches=orderBatches(db,id);
+  const batchRows=batches.map((batch,index)=>`<fieldset class="finishing-order-edit-batch"><legend>Partia ${index+1} · #${batch.id}</legend><input type="hidden" name="batch_${index}_id" value="${batch.id}">
+    <div class="form-grid"><label>Numer specyfikacji / LOT<input name="batch_${index}_lot" value="${V.esc(batch.finishing_lot||'')}" maxlength="120"></label><label>Data wysyłki<input name="batch_${index}_date" type="date" value="${V.esc(batch.sent_at||'')}"></label><label>Sztuki wysłane<input name="batch_${index}_pieces" type="number" min="0" step="1" value="${V.esc(batch.sent_pieces)}"></label><label>Masa wysłana kg<input name="batch_${index}_weight" type="number" min="0" step="0.01" value="${V.esc(batch.raw_weight_kg)}"></label><label>LOT przędzy<input name="batch_${index}_yarn_lot" value="${V.esc(batch.yarn_lot||'')}" maxlength="250"></label><label>Uwagi partii<input name="batch_${index}_notes" value="${V.esc(batch.notes||'')}" maxlength="3000"></label><label class="finishing-order-edit-bale-include"><input type="checkbox" name="batch_${index}_closed" value="1"${batch.closed_at?' checked':''}> Partia zamknięta</label></div></fieldset>`).join('');
+  const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+  const body=`${navTabs('orders')}<a class="breadcrumb" href="/finishing/orders/${id}">← Zlecenie ${V.esc(pm)}</a><div class="pagehead"><div><span class="eyebrow">EDYCJA ZLECENIA · ${statusBadge(order.status)}</span><h1>Edytuj zlecenie wykańczania</h1><p class="muted">Możesz poprawiać dane, partie i belki także po wpisaniu LOT-u lub przyjęciu. Zmiany belek dotyczą kopii zlecenia; zamknięta WZ pozostaje bez zmian.</p></div></div>
+  <form method="post" action="/finishing/orders/${id}/edit" class="panel padded finishing-order-edit-form">${hidden('csrf',ctx.req.session.csrf)}
+    <section class="finishing-order-section"><h2>Dane zlecenia</h2><div class="form-grid"><label>Symbol dzianiny<input name="raw_symbol" value="${V.esc(order.raw_symbol)}" maxlength="200" required></label><label>Symbol handlowy<input name="trade_symbol" value="${V.esc(order.trade_symbol||'')}" maxlength="200"></label><label>Klient<input name="client_name" value="${V.esc(order.client_name||'')}" maxlength="200"></label><label>Wykończalnia<select name="finishing_plant_id"><option value="">Dowolna</option>${plantOptions}</select></label><label>Kolor zadany<input name="target_color" value="${V.esc(order.target_color||'')}" maxlength="160"></label><label>Usztywnienie<input name="target_stiffening" value="${V.esc(order.target_stiffening||'')}" maxlength="2000"></label><label>Gramatura g/m²<input name="target_grammage" type="number" min="0.1" step="0.1" value="${V.esc(order.target_grammage??'')}"></label><label>Szerokość cm<input name="target_width_cm" type="number" min="0.1" step="0.1" value="${V.esc(order.target_width_cm??'')}"></label></div>${notesEditorField({label:'Uwagi do zlecenia',ariaLabel:'Uwagi do zlecenia',value:order.notes||''})}</section>
+    <section class="finishing-order-section"><h2>Receptura zapisana przy zleceniu</h2><div class="form-grid"><label>Nazwa receptury<input name="recipe_name" value="${V.esc(snapshot.name||'')}" maxlength="200"></label><label>Receptura / instrukcja<textarea name="recipe_text" rows="8" maxlength="20000">${V.esc(snapshot.recipeText||'')}</textarea></label></div>${notesEditorField({name:'recipe_notes',label:'Uwagi receptury',ariaLabel:'Uwagi receptury',value:snapshot.notes||''})}</section>
+    <section class="finishing-order-section"><h2>Specyfikacja i belki zlecenia</h2><p class="muted">Zaznacz belki uwzględnione w zleceniu i popraw ich dane. Zmiana nie modyfikuje zamkniętej specyfikacji WZ.</p>${pieceRows||'<p class="muted">Brak belek powiązanych z tą pozycją WZ.</p>'}<input type="hidden" name="bale_count" value="${pieces.size}"></section>
+    <section class="finishing-order-section"><h2>Specyfikacje i partie wykańczalni</h2>${batchRows||'<p class="muted">Brak partii.</p>'}<input type="hidden" name="batch_count" value="${batches.length}"></section>
+    <div class="actions"><a class="button" href="/finishing/orders/${id}">Wróć</a><button class="primary">Zapisz wszystkie zmiany</button></div>
+  </form>`;
+  return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Edytuj ${pm}`,body});
 }
 function receiptsPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim();
@@ -631,7 +660,10 @@ function handle(ctx) {
     if(!order)fail(404,'Nie znaleziono zlecenia.');
     const ensureDeletable=current=>{
       const hasLot=db.prepare("SELECT 1 FROM finishing_batches WHERE order_id=? AND trim(finishing_lot)<>'' LIMIT 1").get(id),receiptCount=db.prepare('SELECT count(*) n FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=?').get(id).n;
-      if(hasLot||receiptCount||!['draft','raw_sale','cancelled'].includes(current.status))fail(409,'Można usunąć tylko zlecenie bez numeru LOT z farbiarni i bez przyjęć. Zlecenie już przekazane do farbiarni należy anulować, aby zachować historię.');
+      if(current.status==='cancelled'){
+        return;
+      }
+      if(hasLot||receiptCount||!['draft','raw_sale'].includes(current.status))fail(409,'Zlecenie z numerem LOT lub przyjęciem należy najpierw anulować.');
     };
     if(req.method==='GET'){
       ensureDeletable(order);
@@ -649,13 +681,85 @@ function handle(ctx) {
       return redirect(req,res,'/finishing/orders','Usunięto zlecenie wykańczania.');
     }
   }
+  const orderEditMatch=p.match(/^\/finishing\/orders\/(\d+)\/edit$/);
+  if(orderEditMatch){
+    role(req.user,...editableRoles);
+    const id=Number(orderEditMatch[1]),order=orderRecord(db,id);
+    if(!order)fail(404,'Nie znaleziono zlecenia.');
+    if(['cancelled','raw_sale'].includes(order.status))fail(409,'Anulowanego zlecenia ani sprzedaży surowej nie można edytować.');
+    if(req.method==='GET')return send(req,res,200,orderEditPage(ctx,order));
+    if(req.method==='POST'){
+      const rawSymbol=text(form,'raw_symbol',200),tradeSymbol=text(form,'trade_symbol',200),client=text(form,'client_name',200),plantId=Number(form.finishing_plant_id)||null;
+      if(!rawSymbol)fail(400,'Wpisz symbol dzianiny.');
+      if(plantId&&!db.prepare('SELECT id FROM finishing_plants WHERE id=?').get(plantId))fail(400,'Nie znaleziono wybranej wykończalni.');
+      const targetColor=text(form,'target_color',160),targetStiffening=text(form,'target_stiffening',2000),width=number(form.target_width_cm),grammage=number(form.target_grammage);
+      if(width!==null&&width<=0)fail(400,'Szerokość musi być większa od zera.');
+      if(grammage!==null&&grammage<=0)fail(400,'Gramatura musi być większa od zera.');
+      const noteData=recipeNotesData(text(form,'notes',100000));
+      const recipeName=text(form,'recipe_name',200),recipeText=text(form,'recipe_text',20000),recipeNotes=recipeNotesData(text(form,'recipe_notes',100000));
+      let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
+      snapshot.name=recipeName;snapshot.rawSymbol=rawSymbol;snapshot.tradeSymbol=tradeSymbol;snapshot.finishingPlant=plantId?(db.prepare('SELECT name FROM finishing_plants WHERE id=?').get(plantId)?.name||''):'';
+      snapshot.recipeText=recipeText;snapshot.targetColor=targetColor;snapshot.targetStiffening=targetStiffening;snapshot.targetWidthCm=width;snapshot.targetGrammage=grammage;snapshot.notes=recipeNotes;
+
+      const sourceRows=order.shipment_article_id?sourcePieces(db,order.shipment_article_id):[];
+      const sourceIds=new Set(sourceRows.map(row=>String(row.bale_local_id)));
+      const savedIds=new Set(db.prepare('SELECT bale_local_id FROM finishing_order_bales WHERE order_id=?').all(id).map(row=>String(row.bale_local_id)));
+      const baleCount=integer(form.bale_count);
+      if(baleCount===null||baleCount<0||baleCount>500)fail(400,'Nieprawidłowa liczba belek w specyfikacji.');
+      const selectedBales=[];
+      for(let i=0;i<baleCount;i++){
+        const prefix=`bale_${i}_`,localId=text(form,`${prefix}local_id`,200);
+        if(!localId)fail(400,`Brak identyfikatora belki ${i+1}.`);
+        if(form[`${prefix}include`]!=='1')continue;
+        if(!sourceIds.has(localId)&&!savedIds.has(localId))fail(409,`Belka ${localId} nie należy do źródłowej specyfikacji tego zlecenia.`);
+        const baleNumber=text(form,`${prefix}number`,100),machine=text(form,`${prefix}machine`,100),productionDate=text(form,`${prefix}date`,10),meters=validatePositiveNumber(form[`${prefix}meters`],`Metry belki ${i+1}`),weight=validatePositiveNumber(form[`${prefix}weight`],`Masa belki ${i+1}`),lot=text(form,`${prefix}lot`,250);
+        if(!baleNumber||!validDate(productionDate))fail(400,`Uzupełnij numer i prawidłową datę belki ${i+1}.`);
+        selectedBales.push({localId,baleNumber,machine,productionDate,meters,weight,lot});
+      }
+      if(!selectedBales.length)fail(400,'Zlecenie musi zawierać co najmniej jedną belkę.');
+
+      const batchCount=integer(form.batch_count),currentBatches=db.prepare('SELECT * FROM finishing_batches WHERE order_id=? ORDER BY id').all(id);
+      if(batchCount===null||batchCount!==currentBatches.length)fail(409,'Lista partii zmieniła się. Odśwież formularz.');
+      const editedBatches=[];
+      for(let i=0;i<batchCount;i++){
+        const prefix=`batch_${i}_`,batchId=integer(form[`${prefix}id`]),current=currentBatches[i];
+        if(!current||batchId!==current.id)fail(409,'Lista partii zmieniła się. Odśwież formularz.');
+        const finishingLot=text(form,`${prefix}lot`,120),sentAt=text(form,`${prefix}date`,10),sentPieces=integer(form[`${prefix}pieces`]),rawWeight=number(form[`${prefix}weight`]),yarnLot=text(form,`${prefix}yarn_lot`,250),batchNotes=text(form,`${prefix}notes`,3000);
+        if(!validDate(sentAt)||sentPieces===null||sentPieces<0||rawWeight===null||rawWeight<0)fail(400,`Uzupełnij prawidłową datę, sztuki i masę w partii ${i+1}.`);
+        const rawReceived=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) n FROM finishing_receipts WHERE batch_id=?').get(batchId).n);
+        if(sentPieces<rawReceived)fail(409,`W partii ${i+1} wysłano mniej sztuk niż już zapisano w przyjęciach (${rawReceived}).`);
+        editedBatches.push({id:batchId,finishingLot,sentAt,sentPieces,rawWeight,yarnLot,batchNotes,closed:form[`${prefix}closed`]==='1',oldClosedAt:current.closed_at});
+      }
+
+      transaction(()=>{
+        const current=orderRecord(db,id);
+        if(!current||['cancelled','raw_sale'].includes(current.status))fail(409,'Zlecenie nie jest już edytowalne.');
+        db.prepare(`UPDATE finishing_orders SET finishing_plant_id=?,raw_symbol=?,client_name=?,trade_symbol=?,target_color=?,target_stiffening=?,target_width_cm=?,target_grammage=?,notes=?,recipe_snapshot=?,updated_at=?,updated_by=? WHERE id=?`)
+          .run(plantId,rawSymbol,client,tradeSymbol,targetColor,targetStiffening,width,grammage,JSON.stringify(noteData),JSON.stringify(snapshot),now(),req.user.id,id);
+        const deleteBale=db.prepare('DELETE FROM finishing_order_bales WHERE order_id=? AND bale_local_id=?');
+        const saveBale=db.prepare(`INSERT INTO finishing_order_bales(order_id,bale_local_id,bale_number,machine,production_date,weight_kg,meters,lot) VALUES(?,?,?,?,?,?,?,?)
+          ON CONFLICT(order_id,bale_local_id) DO UPDATE SET bale_number=excluded.bale_number,machine=excluded.machine,production_date=excluded.production_date,weight_kg=excluded.weight_kg,meters=excluded.meters,lot=excluded.lot`);
+        const keepIds=new Set(selectedBales.map(bale=>bale.localId));
+        for(const localId of savedIds)if(!keepIds.has(localId))deleteBale.run(id,localId);
+        for(const bale of selectedBales)saveBale.run(id,bale.localId,bale.baleNumber,bale.machine,bale.productionDate,bale.weight,bale.meters,bale.lot);
+        const saveBatch=db.prepare('UPDATE finishing_batches SET finishing_lot=?,sent_at=?,sent_pieces=?,raw_weight_kg=?,yarn_lot=?,notes=?,closed_at=?,updated_at=?,updated_by=? WHERE id=? AND order_id=?');
+        for(const batch of editedBatches){
+          const closedAt=batch.closed?(batch.oldClosedAt||now()):null;
+          saveBatch.run(batch.finishingLot,batch.sentAt,batch.sentPieces,batch.rawWeight,batch.yarnLot,batch.batchNotes,closedAt,now(),req.user.id,batch.id,id);
+        }
+        updateOrderStatus(ctx,id);
+        audit(req.user,'Edytowano zlecenie wykańczania',null,JSON.stringify({orderId:id,rawSymbol,client,tradeSymbol,baleCount:selectedBales.length,batchCount:editedBatches.length}),null);
+      });
+      return redirect(req,res,`/finishing/orders/${id}`,'Zapisano zmiany zlecenia, belek i partii.');
+    }
+  }
   const orderMatch=p.match(/^\/finishing\/orders\/(\d+)(?:\/(print|batches|lot|incidents|cancel))?$/);
   if(orderMatch){
     const id=Number(orderMatch[1]),action=orderMatch[2],order=orderRecord(db,id);
     if(!order)fail(404,'Nie znaleziono zlecenia.');
     if(action==='print'&&req.method==='GET')return receiptPage(ctx,id);
     if(action==='lot'&&req.method==='POST'){
-      role(req.user,...editableRoles);if(['received','raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już edytować.');
+      role(req.user,...editableRoles);if(['raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już edytować.');
       const batchId=Number(form.batch_id),lot=text(form,'finishing_lot',120),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=? AND order_id=?').get(batchId,id);
       if(!batch)fail(400,'Nie znaleziono wyjścia PM dla tego zlecenia.');if(!lot)fail(400,'Wpisz numer partii otrzymany z farbiarni.');
       transaction(()=>{db.prepare('UPDATE finishing_batches SET finishing_lot=?,updated_at=?,updated_by=? WHERE id=?').run(lot,now(),req.user.id,batchId);updateOrderStatus(ctx,id);audit(req.user,'Uzupełniono LOT partii w farbiarni',null,JSON.stringify({orderId:id,batchId,finishingLot:lot}),null);});
