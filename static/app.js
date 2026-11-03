@@ -3,7 +3,7 @@ let dirty=false,submitting=false;
 const correctionParentUrl=document.body?.dataset.correctionParentUrl;
 if(correctionParentUrl&&window.opener&&!window.opener.closed){try{window.opener.location.replace(correctionParentUrl);}catch{}}
 document.querySelectorAll('[data-finishing-batch-delete]').forEach(form=>form.addEventListener('submit',event=>{
- if(!window.confirm('Usunąć ostatnią pustą specyfikację?'))event.preventDefault();
+ if(!window.confirm('Usunąć tę pustą dodatkową specyfikację?'))event.preventDefault();
 }));
 document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
