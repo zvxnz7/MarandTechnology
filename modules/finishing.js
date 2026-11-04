@@ -336,7 +336,7 @@ function ordersPage(ctx) {
     const pm=order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
     const batches=batchesByOrder.get(order.id)||[];
     const baseBatch=[...batches].sort((a,b)=>a.id-b.id)[0];
-    const canAddSpec=editableRoles.includes(ctx.req.user.role)&&order.order_type!=='raw_sale'&&!['received','raw_sale','cancelled'].includes(order.status)&&order.receipt_count===0&&baseBatch&&!baseBatch.closed_at&&Number(baseBatch.sent_pieces)>0;
+    const canAddSpec=editableRoles.includes(ctx.req.user.role)&&order.order_type!=='raw_sale'&&!['received','raw_sale','cancelled'].includes(order.status)&&order.receipt_count===0&&batches.length>0&&baseBatch&&Number(baseBatch.sent_pieces)>0;
     const canReceiveBatch=editableRoles.includes(ctx.req.user.role)&&!['raw_sale','cancelled','received'].includes(order.status);
     const receiveActions=[];
     const receiveButtonForBatch=batch=>{
