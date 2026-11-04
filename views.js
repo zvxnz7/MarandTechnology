@@ -137,6 +137,12 @@ function datepl(value) {
   if (Number.isNaN(d.getTime())) return esc(value);
   return new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 }
+function datetimepl(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return esc(value);
+  return new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
+}
 function todayInput() {
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Warsaw',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
@@ -436,7 +442,7 @@ function sourceImportPage({ user, csrf, flashes, latestImport = null, restoreSta
 function updatePage({ user, csrf, flashes, current, latest, status, repo, canUpdate, updateAvailable, updateError }) {
   let latestInfo = latest ? `<p>${latest.__marandStale?'Ostatnio zapamiętane wydanie':'Najnowsze wydanie'}: <strong>${esc(latest.tag_name)}</strong>${latest.name ? ` · ${esc(latest.name)}` : ''}</p>` : '<p>Nie sprawdzono jeszcze wydań.</p>';
   const updatePending=Boolean(status?.pending);
-  const statusInfo = updatePending ? `<div class="notice" role="status">Instaluję wersję ${esc(status.version||'')}… Ta strona odświeży się po zakończeniu.</div>` : status ? `<div class="notice ${status.ok ? 'success' : 'warning'}">${status.ok ? `Ostatnia aktualizacja zakończyła się powodzeniem: ${esc(status.version || '')} · ${datepl(status.at)}` : `Ostatnia aktualizacja nie powiodła się: ${esc(status.error || 'sprawdź log aktualizacji')}`}</div>` : '';
+  const statusInfo = updatePending ? `<div class="notice" role="status">Instaluję wersję ${esc(status.version||'')}… Ta strona odświeży się po zakończeniu.</div>` : status ? `<div class="notice ${status.ok ? 'success' : 'warning'}">${status.ok ? `Ostatnia aktualizacja zakończyła się powodzeniem: ${esc(status.version || '')}` : `Ostatnia aktualizacja nie powiodła się: ${esc(status.error || 'sprawdź log aktualizacji')}`} · ${datetimepl(status.at)}</div>` : '';
   const updateForm = updatePending
     ? ''
     : !canUpdate
