@@ -918,7 +918,7 @@ function handle(ctx) {
         }
       }
       updateOrderStatus(ctx,batch.order_id);
-      audit(req.user,'Zarejestrowano przyjęcie z wykończalni',null,JSON.stringify({batchId,receiptId,returnedRawPieces:rawReceived,finishedPieces}),null);
+      audit(req.user,'Zarejestrowano przyjęcie z wykończalni',null,JSON.stringify({batchId,receiptId:id,returnedRawPieces:rawReceived,finishedPieces}),null);
       return id;
     });
     const returnTo=modalReceipt&&form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${batch.order_id}#batch-${batchId}`;
