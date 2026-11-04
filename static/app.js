@@ -416,6 +416,19 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  const parse=input=>{const value=Number(String(input.value||'').replace(',','.'));return Number.isFinite(value)&&value>0?value:0;};
  const parseTextNumber=value=>{const normalized=String(value||'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);
+ const paramRows=[...form.querySelectorAll('[data-finishing-param-row]')];
+ const refreshParamRows=()=>paramRows.forEach(row=>{
+  const input=row.querySelector('input'),status=row.querySelector('[data-param-status]'),actual=Number(String(input.value||'').trim().replace(',','.')),target=Number(row.dataset.paramTarget),minusRaw=row.dataset.paramMinus,plusRaw=row.dataset.paramPlus;
+  status.className='finishing-receive-param-status';status.textContent='';
+  if(!input.value.trim()||!Number.isFinite(actual)||actual<=0||!Number.isFinite(target)||target<=0)return;
+  if(minusRaw===''&&plusRaw===''){status.textContent='Brak tolerancji w recepturze';status.classList.add('is-unset');return;}
+  const minus=minusRaw===''?0:Number(minusRaw),plus=plusRaw===''?0:Number(plusRaw),min=target-minus,max=target+plus;
+  if(actual>=min&&actual<=max){status.textContent='W tolerancji';status.classList.add('is-ok');return;}
+  const excess=actual<min?min-actual:actual-max,percentage=excess/target*100;
+  status.textContent=`Poza wymaganą tolerancją · ${fmt(percentage)}%`;
+  status.classList.add(percentage<=5?'is-warning':'is-danger');
+ });
+ paramRows.forEach(row=>row.querySelector('input').addEventListener('input',refreshParamRows));
  const rows=()=>[...list.querySelectorAll('[data-receipt-bale-row]')];
  const addRow=(focusUnit=null)=>{const fragment=template.content.cloneNode(true),row=fragment.querySelector('[data-receipt-bale-row]');list.append(fragment);syncUnits();refresh();const target=focusUnit==='weight'?row.querySelector('[data-receipt-weight]'):row.querySelector('[data-receipt-meter]');target?.focus();return row;};
  const parseSummary=()=>{
@@ -492,8 +505,9 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(error){event.preventDefault();alert('Zaznacz ocenę koloru, usztywnienia i wydrapania.');return;}
   if(!summaryDirty&&(!rows().length||rows().some(row=>(metersToggle.checked&&!parse(row.querySelector('[data-receipt-meter]')))||(weightToggle.checked&&!parse(row.querySelector('[data-receipt-weight]')))))){event.preventDefault();alert('Uzupełnij wybrane pomiary dla każdej belki.');}
  });
- form.closest('dialog')?.addEventListener('close',()=>{form.reset();summaryDirty=false;const listItems=rows();listItems.slice(1).forEach(row=>row.remove());syncUnits();});
+ form.closest('dialog')?.addEventListener('close',()=>{form.reset();summaryDirty=false;const listItems=rows();listItems.slice(1).forEach(row=>row.remove());syncUnits();refreshParamRows();});
  syncUnits();
+ refreshParamRows();
 });
 document.querySelectorAll('[data-show-modal]').forEach(dialog=>{
  dialog.addEventListener('cancel',event=>{
