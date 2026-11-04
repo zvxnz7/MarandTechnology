@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS finishing_receipts(
   grammage_status TEXT NOT NULL DEFAULT '' CHECK(grammage_status IN ('','ok','warning','danger')),
   rubbing_status TEXT NOT NULL DEFAULT '' CHECK(rubbing_status IN ('','ok','not_ok')),
   notes TEXT NOT NULL DEFAULT '',
+  comment_consumed_at TEXT,
+  comment_consumed_by INTEGER REFERENCES finishing_receipts(id),
   created_at TEXT NOT NULL,
   created_by INTEGER REFERENCES users(id)
 );

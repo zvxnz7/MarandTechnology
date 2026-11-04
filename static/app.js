@@ -411,7 +411,7 @@ document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
- const list=form.querySelector('[data-receipt-bale-list]'),template=form.querySelector('[data-receipt-bale-template]'),entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),emptyBales=form.querySelector('[data-receipt-empty-bales]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received;
+ const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),emptyBales=form.querySelector('[data-receipt-empty-bales]'),summary=form.querySelector('[data-receipt-bale-summary]'),summaryError=form.querySelector('[data-receipt-summary-error]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received;
  const bales=[];let pendingMeters=null;
  const parsePositive=value=>{const normalized=String(value??'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);
@@ -426,29 +426,48 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(actual>=min&&actual<=max){status.textContent='W tolerancji';status.classList.add('is-ok');return;}
   const excess=actual<min?min-actual:actual-max,percentage=excess/target*100;
   status.textContent='Poza wymaganą tolerancją · '+fmt(percentage)+'%';
-  status.classList.add(percentage<=5?'is-warning':'is-danger');
+  status.classList.add('is-danger');
  });
  paramRows.forEach(row=>row.querySelector('input')?.addEventListener('input',refreshParamRows));
  const updateEntryPrompt=()=>{
   const label=mode()==='weight'?'masa (kg)':mode()==='both'&&pendingMeters!==null?'masa (kg)':'metry (mb)';
   entryPrompt.textContent='Belka '+(bales.length+1)+' — '+label;
  };
- const updateModeLock=()=>modeInputs.forEach(input=>{input.disabled=pendingMeters!==null;});
+ const updateModeLock=()=>modeInputs.forEach(input=>{input.disabled=pendingMeters!==null||bales.length>0;});
+ const summaryText=()=>bales.map((bale,index)=>{
+  const prefix=(index+1)+'-';
+  if(usesMeters()&&usesWeight())return prefix+fmt(bale.meters)+'m, '+fmt(bale.weight)+'kg';
+  if(usesMeters())return prefix+fmt(bale.meters)+'m';
+  return prefix+fmt(bale.weight)+'kg';
+ }).join(' | ');
  const renderBales=()=>{
-  list.replaceChildren();
-  bales.forEach((bale,index)=>{
-   const fragment=template.content.cloneNode(true),row=fragment.querySelector('[data-receipt-bale-row]');
-   row.querySelector('[data-receipt-bale-index]').textContent=(index+1)+'.';
-   for(const [unit,enabled] of [['meters',usesMeters()],['weight',usesWeight()]]){
-    const field=row.querySelector('[data-receipt-unit="'+unit+'"]'),input=field.querySelector('input');
-    field.hidden=!enabled;input.disabled=!enabled;input.required=enabled;input.value=bale[unit]===null?'':String(bale[unit]);
-    input.addEventListener('input',()=>{bale[unit]=parsePositive(input.value);refresh();});
-   }
-   row.querySelector('[data-receipt-remove]').addEventListener('click',()=>{bales.splice(index,1);renderBales();refresh();});
-   list.append(fragment);
-  });
-  emptyBales.hidden=bales.length>0;
+  summary.value=summaryText();summaryError.textContent='';emptyBales.hidden=bales.length>0;
+  if(!bales.length)emptyBales.textContent='Wpisane belki pojawią się tutaj.';
   updateModeLock();updateEntryPrompt();
+ };
+ const parseSummary=raw=>{
+  const segments=raw.split('|').map(value=>value.trim());
+  if(!raw.trim())return [];
+  if(segments.some(value=>!value))return null;
+  const numeric='(\\d+(?:[.,]\\d+)?)';
+  const parseNumber=value=>Number(value.replace(',','.'));
+  const parsed=[];
+  for(const segment of segments){
+   const value=segment.replace(/^\\s*\\d+\\s*[-:]\\s*/,'');let match;
+   if(mode()==='both'){
+    match=value.match(new RegExp('^\\s*'+numeric+'\\s*m(?:b)?\\s*[,;]\\s*'+numeric+'\\s*kg\\s*$','i'));
+    if(!match)return null;
+    const meters=parseNumber(match[1]),weight=parseNumber(match[2]);if(!(meters>0&&weight>0))return null;
+    parsed.push({meters,weight});
+   }else if(mode()==='meters'){
+    match=value.match(new RegExp('^\\s*'+numeric+'\\s*(?:mb|m)?\\s*$','i'));
+    if(!match)return null;const meters=parseNumber(match[1]);if(!(meters>0))return null;parsed.push({meters,weight:null});
+   }else{
+    match=value.match(new RegExp('^\\s*'+numeric+'\\s*(?:kg)?\\s*$','i'));
+    if(!match)return null;const weight=parseNumber(match[1]);if(!(weight>0))return null;parsed.push({meters:null,weight});
+   }
+  }
+  return parsed;
  };
  const refresh=()=>{
   const useMeters=usesMeters(),useWeight=usesWeight();
@@ -468,9 +487,14 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Włącz pomiar mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=fmt(percentage)+'%';note.textContent=percentage>=0?'Strata względem teorii dla liczby odebranych sztuk. Wartość poniżej zera oznacza uzysk powyżej teorii.':'Uzysk jest wyższy od wartości teoretycznej.';}
   const incomplete=bales.some(bale=>(useMeters&&(bale.meters===null||bale.meters<=0))||(useWeight&&(bale.weight===null||bale.weight<=0)));
-  form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete;
+  form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete||Boolean(summaryError.textContent);
  };
- modeInputs.forEach(input=>input.addEventListener('change',()=>{entryInput.value='';entryStatus.textContent='';renderBales();refresh();entryInput.focus();}));
+ modeInputs.forEach(input=>input.addEventListener('change',()=>{entryInput.value='';entryStatus.textContent='';bales.splice(0,bales.length);summary.value='';renderBales();refresh();entryInput.focus();}));
+ summary.addEventListener('input',()=>{
+  const parsed=parseSummary(summary.value);
+  if(parsed===null){summaryError.textContent=mode()==='both'?'Użyj formatu: 1-123m, 21,5kg | 2-122m, 21,4kg.':'Popraw wartości, rozdziel belki znakiem | i dodaj jednostkę.';refresh();return;}
+  bales.splice(0,bales.length,...parsed);summaryError.textContent='';emptyBales.hidden=bales.length>0;updateModeLock();updateEntryPrompt();refresh();
+ });
  entryInput.addEventListener('input',()=>{entryStatus.textContent='';});
  entryInput.addEventListener('keydown',event=>{
   if(event.key!=='Enter')return;event.preventDefault();
@@ -487,19 +511,17 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   entryStatus.textContent='Zapisano belkę '+bales.length+'.';
   renderBales();refresh();entryInput.focus();
  });
- list.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input')){event.preventDefault();entryInput.focus();}});
  rawPieces.addEventListener('input',refresh);
  form.addEventListener('submit',event=>{
   refresh();
   if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej belki.';entryInput.focus();return;}
   if(!bales.length){event.preventDefault();entryStatus.textContent='Dodaj co najmniej jedną belkę.';entryInput.focus();return;}
   const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&(bale.meters===null||bale.meters<=0))||(useWeight&&(bale.weight===null||bale.weight<=0)));
-  if(incompleteIndex!==-1){event.preventDefault();entryStatus.textContent='Uzupełnij pomiary w wierszu belki '+(incompleteIndex+1)+'.';list.querySelector('[data-receipt-bale-row] input:invalid')?.focus();return;}
-  const error=[...form.querySelectorAll('.finishing-receive-quality input[type="radio"]')].some(input=>input.required&&!form.querySelector('[name="'+input.name+'"]:checked'));
-  if(error){event.preventDefault();alert('Zaznacz ocenę koloru, usztywnienia i wydrapania.');return;}
+  if(incompleteIndex!==-1){event.preventDefault();entryStatus.textContent='Uzupełnij pomiary belki '+(incompleteIndex+1)+'.';summary.focus();return;}
+  if(summaryError.textContent){event.preventDefault();summary.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
-  form.reset();bales.splice(0,bales.length);pendingMeters=null;entryInput.value='';entryStatus.textContent='';
+  form.reset();bales.splice(0,bales.length);pendingMeters=null;entryInput.value='';entryStatus.textContent='';summaryError.textContent='';
   renderBales();refreshParamRows();refresh();
  });
  renderBales();refresh();refreshParamRows();
