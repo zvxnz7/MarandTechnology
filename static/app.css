@@ -504,7 +504,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-prior-comment div{white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-receive-form{gap:16px;margin:0;padding:0;border:0;background:transparent}
 .finishing-receive-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:16px}
-.finishing-receive-summary>div{display:grid;gap:3px;min-width:0;padding:9px 11px;border-radius:6px;background:#f4f6f8}
+.finishing-receive-summary>div{display:grid;gap:3px;min-width:0;padding:9px 11px;border-radius:6px;background:#e9ecef}
 .finishing-receive-summary small,.finishing-receive-totals small{color:var(--muted);font-size:11px}
 .finishing-receive-summary strong{overflow-wrap:anywhere;font-size:13px}
 .finishing-receive-date-row,.finishing-receive-measure-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
