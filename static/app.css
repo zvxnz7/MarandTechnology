@@ -376,6 +376,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-production-check .actions{display:flex;flex:none;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--line);background:#fafbfc}
 .finishing-production-check .actions button{max-width:100%}
 .finishing-production-check-empty{margin:0 0 4px;padding:13px 15px;border-left:3px solid #9aa2aa;border-radius:4px;background:#f3f5f6;color:var(--muted);font-size:14px}
+.finishing-production-check-issues{padding:11px 13px;border:1px solid #b7d9bf;border-radius:6px;background:#edf7ef;color:#245f38;font-size:13px}
+.finishing-production-check-issues.has-issues{border-color:#efc2b2;background:#fff1e9;color:#8b3e1d}
+.finishing-production-check-issues ul{display:grid;gap:5px;margin:7px 0 0;padding-left:20px}
+.finishing-production-check-issues p{margin:5px 0 0}
 .finishing-production-check-row{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);gap:12px;padding:9px 11px;border-radius:6px;background:#f5f7f8;font-size:13px}
 .finishing-production-check-row>span{overflow-wrap:anywhere}
 .finishing-production-check-row.is-ok{background:#eaf5ed;color:#245f38}

@@ -271,9 +271,12 @@ function statusBadge(status) {
 }
 function lastProductionPreview(db,source,recipe) {
   const currentLots=[...new Set(sourcePieces(db,source.shipment_article_id).map(piece=>String(piece.lot||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
+  const recipeSymbol=String(recipe?.raw_symbol||readRecipeDetails(recipe).rawSymbol||readRecipeDetails(recipe).raw_symbol||'').trim();
+  const symbolMismatch=Boolean(recipeSymbol&&normalizeSearch(recipeSymbol)!==normalizeSearch(source.symbol));
+  const symbolIssue=symbolMismatch?`Symbol z PM (${source.symbol}) różni się od symbolu receptury (${recipeSymbol}).`:!recipeSymbol?'Brak symbolu dzianiny w recepturze — nie można porównać go z PM.':'';
   const previous=db.prepare(`SELECT o.id,o.source_shipment_no,o.source_shipment_date,o.recipe_snapshot,o.target_color,o.target_grammage,
       s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
-      r.received_at,r.actual_grammage,r.actual_color,r.color_status,r.notes receipt_notes,b.finishing_lot,b.sent_at,b.yarn_lot,b.notes batch_notes,o.notes order_notes
+      r.received_at,r.actual_grammage,r.actual_width_cm,r.actual_color,r.color_status,r.stiffening_status,r.rubbing_status,r.process_checks,r.notes receipt_notes,b.finishing_lot,b.sent_at,b.yarn_lot,b.notes batch_notes,o.notes order_notes
     FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
     WHERE o.recipe_id=? AND o.status NOT IN ('cancelled','raw_sale') AND r.finished_pieces>0
@@ -281,10 +284,10 @@ function lastProductionPreview(db,source,recipe) {
   const lotParts=value=>String(value||'').split(/[,;]+/).map(part=>normalizeSearch(part)).filter(Boolean).sort();
   const compareLots=(current,previousLot)=>{
     if(!current.length||!String(previousLot||'').trim())return 'Brak danych LOT do porównania';
-    return current.join('|')===lotParts(previousLot).join('|')?'Ten sam LOT':'LOT się zmienił';
+    return lotParts(current.join(',')).join('|')===lotParts(previousLot).join('|')?'Ten sam LOT':'LOT się zmienił';
   };
   const currentLot=currentLots.join(', ')||'Brak LOT-u w PM';
-  if(!previous)return {found:false,currentLot};
+  if(!previous)return {found:false,currentLot,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,issues:[...(symbolIssue?[symbolIssue]:[]),'Brak wcześniejszej produkcji tej receptury do porównania.']};
   let snapshot={};try{snapshot=JSON.parse(previous.recipe_snapshot||'{}')}catch{}
   const details=recipe?readRecipeDetails(recipe):(snapshot.details||{}),expectedGrammage=recipe?.target_grammage??snapshot.targetGrammage??null;
   const actualGrammage=previous.actual_grammage;
@@ -293,17 +296,44 @@ function lastProductionPreview(db,source,recipe) {
     const min=Number(expectedGrammage)-Number(details.grammageMinus||0),max=Number(expectedGrammage)+Number(details.grammagePlus||0);
     grammageResult=Number(actualGrammage)>=min&&Number(actualGrammage)<=max?`OK, w tolerancji ${qty(min)}–${qty(max)} g/m²`:`Poza tolerancją ${qty(min)}–${qty(max)} g/m²`;
   }
+  const expectedWidth=recipe?.target_width_cm??snapshot.targetWidthCm??null,actualWidth=previous.actual_width_cm;
+  let widthResult='Brak danych do oceny szerokości';
+  if(actualWidth!==null&&actualWidth!==undefined&&expectedWidth!==null&&expectedWidth!==undefined){
+    const min=Number(expectedWidth)-Number(details.widthMinus||0),max=Number(expectedWidth)+Number(details.widthPlus||0);
+    widthResult=Number(actualWidth)>=min&&Number(actualWidth)<=max?`OK, w tolerancji ${qty(min)}–${qty(max)} cm`:`Poza tolerancją ${qty(min)}–${qty(max)} cm`;
+  }
   const expectedColor=recipe?.target_color||'';
   let colorResult='Brak koloru docelowego';
   if(previous.color_status==='ok')colorResult='Kolor zgodny';
   else if(previous.color_status==='not_ok')colorResult='Kolor różni się od receptury';
   else if(expectedColor&&previous.actual_color)colorResult=normalizeSearch(expectedColor)===normalizeSearch(previous.actual_color)?'Kolor zgodny':'Kolor różni się od receptury';
   else if(previous.actual_color)colorResult=`Brak koloru docelowego (uzyskano: ${previous.actual_color})`;
+  let previousProcessChecks={};try{previousProcessChecks=JSON.parse(previous.process_checks||'{}')||{};}catch{}
+  const processChecks=recipeProcessRequirements(details).map(item=>{
+    const saved=previousProcessChecks[item.key],status=saved==='ok'||saved==='not_ok'?saved:saved===true?'ok':'';
+    return {label:item.label,status};
+  });
   const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(recipeNotesText).filter(Boolean);
   const pm=previous.article_sequence?`PM ${articleNo({sequence:previous.shipment_sequence},{sequence:previous.article_sequence})}`:`PM ${previous.source_shipment_no||'—'}`;
   const orderYear=String(previous.sent_at||previous.received_at||'').slice(0,4),finishingOrder=previous.finishing_lot?`${previous.finishing_lot}${orderYear?`/${orderYear}`:''}`:'';
   const lotComparison=compareLots(currentLots,previous.yarn_lot);
-  return {found:true,pm,date:V.datepl(previous.received_at),finishingOrder,grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił'};
+  const issues=[];
+  if(symbolIssue)issues.push(symbolIssue);
+  if(grammageResult.startsWith('Poza'))issues.push(`Gramatura z ostatniej produkcji (${qty(actualGrammage)} g/m²) była ${grammageResult.toLocaleLowerCase('pl-PL')}.`);
+  else if(grammageResult.startsWith('Brak danych')&&expectedGrammage!==null&&expectedGrammage!==undefined)issues.push('Brak zmierzonej gramatury w ostatniej produkcji — nie można potwierdzić tolerancji.');
+  else if(expectedGrammage===null||expectedGrammage===undefined)issues.push('Brak gramatury zadanej w recepturze — nie można ocenić tolerancji.');
+  if(widthResult.startsWith('Poza'))issues.push(`Szerokość z ostatniej produkcji (${qty(actualWidth)} cm) była ${widthResult.toLocaleLowerCase('pl-PL')}.`);
+  else if(widthResult.startsWith('Brak danych')&&expectedWidth!==null&&expectedWidth!==undefined)issues.push('Brak zmierzonej szerokości w ostatniej produkcji — nie można potwierdzić tolerancji.');
+  else if(expectedWidth===null||expectedWidth===undefined)issues.push('Brak szerokości zadanej w recepturze — nie można ocenić tolerancji.');
+  if(colorResult==='Kolor różni się od receptury')issues.push(`Kolor z ostatniej produkcji był niezgodny${previous.actual_color?` (uzyskano: ${previous.actual_color})`:''}.`);
+  else if(expectedColor&&!previous.actual_color&&!previous.color_status)issues.push('Brak oceny koloru w ostatniej produkcji — nie można potwierdzić zgodności z recepturą.');
+  else if(!expectedColor)issues.push('Brak koloru zadanego w recepturze — nie można ocenić zgodności.');
+  for(const item of processChecks){if(item.status==='not_ok')issues.push(`Wymaganie receptury „${item.label}” oceniono jako NOK w ostatniej produkcji.`);else if(!item.status)issues.push(`Brak oceny OK/NOK wymagania receptury „${item.label}” w ostatniej produkcji.`);}
+  if(!processChecks.some(item=>item.label==='Usztywnienie')&&previous.stiffening_status==='not_ok')issues.push('Usztywnienie oceniono jako NOK w ostatniej produkcji.');
+  if(!processChecks.some(item=>item.label==='Drapanie'||item.label==='Drapanie pod rzep')&&previous.rubbing_status==='not_ok')issues.push('Wydrapanie oceniono jako NOK w ostatniej produkcji.');
+  if(lotComparison==='LOT się zmienił')issues.push(`Zmieniono LOT przędzy względem ostatniego zlecenia (${previous.yarn_lot}). Wykonać korektę koloru.`);
+  else if(lotComparison==='Brak danych LOT do porównania')issues.push('Brak kompletnych danych LOT przędzy — nie można porównać z ostatnią produkcją.');
+  return {found:true,pm,date:V.datepl(previous.received_at),finishingOrder,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,width:actualWidth===null||actualWidth===undefined?'Brak wpisu':`${qty(actualWidth)} cm`,widthResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,processChecks,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił',issues};
 }
 function header({user,csrf,flashes,title,body}) { return V.layout({user,csrf,flashes,title:`${title} · Wykańczanie`,body}); }
 function navTabs(active,db) {
