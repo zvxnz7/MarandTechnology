@@ -572,9 +572,12 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-remove:disabled{opacity:.35;cursor:default}
 .finishing-receive-add-bale{justify-self:start;padding:6px 10px;font-size:12px}
 .finishing-receive-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.finishing-receive-form[data-measure-weight="true"] .finishing-receive-totals{grid-template-columns:repeat(5,minmax(0,1fr))}
 .finishing-receive-totals>div{display:grid;gap:3px;padding:9px 10px;border:1px solid #e5e9ec;border-radius:6px;background:#fff}
+.finishing-receive-totals>div[hidden]{display:none}
 .finishing-receive-totals strong{font-size:14px}
 .finishing-receive-totals [data-receipt-theoretical]{font-size:13px;font-weight:400}
+.finishing-receive-print-row{display:flex;justify-content:flex-end}
 .finishing-receive-calculation-note{margin:0;color:var(--muted);font-size:11px}
 .finishing-receive-notes{margin:0}
 .finishing-receive-close-batch{margin:0}
@@ -584,7 +587,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receipts-list{min-width:1300px}
 .finishing-receipts-list td{vertical-align:middle}
 .finishing-receipts-list td small{display:block}
-@media(max-width:920px){.finishing-receive-summary,.finishing-receive-metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:920px){.finishing-receive-summary,.finishing-receive-metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.finishing-receive-form[data-measure-weight="true"] .finishing-receive-totals{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:680px){.finishing-receive-dialog .dialog-head{flex-wrap:wrap;padding:14px 16px}.finishing-receive-dialog .dialog-head>div{flex:1 1 calc(100% - 44px)}.finishing-receive-dialog .dialog-body{padding:14px}.finishing-receive-summary,.finishing-receive-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-receive-param-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.finishing-receive-date-row,.finishing-receive-measure-grid{grid-template-columns:1fr}.finishing-receive-check-grid{grid-template-columns:1fr}.finishing-receive-totals{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-receive-actions{flex-direction:column-reverse;align-items:stretch}.finishing-receive-actions button{width:100%}}
 .finishing-bale-entry{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .finishing-bale-entry label{margin:0}.finishing-bale-entry small{display:block;margin-top:5px;color:var(--muted);font-size:11px}
