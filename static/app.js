@@ -426,6 +426,10 @@ document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),emptyBales=form.querySelector('[data-receipt-empty-bales]'),summary=form.querySelector('[data-receipt-bale-summary]'),summaryError=form.querySelector('[data-receipt-summary-error]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg;
+ form.querySelectorAll('input[type="number"]').forEach(input=>{
+  input.addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown')event.preventDefault();});
+  input.addEventListener('wheel',()=>{if(document.activeElement===input)input.blur();},{passive:true});
+ });
  const bales=[];let pendingMeters=null;
  const parsePositive=value=>{const normalized=String(value??'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);

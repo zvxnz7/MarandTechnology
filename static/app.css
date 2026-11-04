@@ -503,6 +503,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-metric small{font-weight:400}
 .finishing-receive-metrics-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .finishing-receive-metric input{width:100%;min-width:0;height:26px;margin:0;padding:2px 8px;background:#fff;font-size:12px}
+.finishing-receive-form input[type="number"]{-moz-appearance:textfield;appearance:textfield}
+.finishing-receive-form input[type="number"]::-webkit-inner-spin-button,.finishing-receive-form input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .finishing-receive-summary-label{display:grid;gap:5px;margin:2px 0 0;font-size:12px;font-weight:650}
 .finishing-receive-summary-label textarea{min-height:54px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px}
 .finishing-receive-summary-label small{color:#a12a2e;font-size:11px;font-weight:500}
