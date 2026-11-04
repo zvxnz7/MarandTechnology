@@ -10,16 +10,23 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
  const matchingRemoveForm=()=>[...form.closest('.finishing-order-lot-list')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);
  const updateRemoveForm=()=>{const removeForm=matchingRemoveForm();if(!removeForm)return;removeForm.hidden=false;const button=removeForm.querySelector('button');if(button)button.disabled=saving||input.value.trim()!==lastSaved;};
+ const updateReceiveButton=savedValue=>{
+  const batchId=String(form.elements.batch_id?.value||''),button=[...document.querySelectorAll('[data-batch-receive]')].find(item=>item.dataset.batchReceive===batchId);
+  if(!button||input.value.trim()!==savedValue)return;
+  const dialog=document.getElementById(`finishing-receive-${batchId}`);if(!dialog)return;
+  const orderNumber=dialog.querySelector('[data-receipt-order-number]');if(orderNumber)orderNumber.textContent=savedValue;
+  button.disabled=false;button.dataset.openDialog=`finishing-receive-${batchId}`;button.title='Przyjmij sztuki';button.setAttribute('aria-label',`Przyjmij sztuki · nr zlecenia ${savedValue}`);
+ };
  const save=async()=>{
   const value=input.value.trim();if(!value||value===lastSaved)return;if(saving){queued=true;return;}saving=true;
   try{
    const response=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:new URLSearchParams(new FormData(form))});
    const result=await response.json();if(!response.ok||!result.ok)throw new Error('Nie udało się zapisać numeru LOT.');
-   lastSaved=value;form.dataset.saveState='saved';input.title='Numer LOT zapisany';updateRemoveForm();
+   lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia zapisany';updateRemoveForm();updateReceiveButton(value);
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
-  finally{saving=false;if(queued){queued=false;timer=setTimeout(save,150);}}
+  finally{saving=false;updateRemoveForm();if(queued){queued=false;timer=setTimeout(save,150);}}
  };
- const schedule=()=>{clearTimeout(timer);updateRemoveForm();if(!input.value.trim()){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,800);};
+ const schedule=()=>{clearTimeout(timer);updateRemoveForm();if(!input.value.trim()){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,350);};
  input.addEventListener('input',schedule);input.addEventListener('change',()=>{clearTimeout(timer);save();});
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);save();});
 });
@@ -378,11 +385,12 @@ document.querySelectorAll('[data-project-article-mode]').forEach(select=>{
   });
   select.addEventListener('change',update);update();
 });
-document.querySelectorAll('[data-open-dialog]').forEach(button=>button.addEventListener('click',()=>{
+document.addEventListener('click',event=>{
+ const button=event.target.closest('[data-open-dialog]');if(!button)return;
  const dialog=document.getElementById(button.dataset.openDialog);
  if(!dialog)return;
  if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
-}));
+});
 document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
  const handle=dialog.querySelector('[data-dialog-drag-handle]');if(!handle)return;
  let drag=null;

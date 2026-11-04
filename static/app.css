@@ -391,12 +391,16 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-add-batch-form button{white-space:nowrap}
 .finishing-order-notes-view{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}
 .finishing-row-actions{white-space:nowrap;text-align:right!important;vertical-align:middle!important}
+.finishing-order-actions-cell{vertical-align:top!important;padding-top:8px!important}
+.finishing-order-actions-inline{display:flex;align-items:flex-start;justify-content:flex-end;gap:5px}
+.finishing-order-receive-actions{display:grid;align-content:start;gap:6px}
+.finishing-order-receive-actions .finishing-row-action{margin:0}
 .finishing-orders-list td,.finishing-orders-list td .badge{font-size:13px}
 .finishing-order-pm{font-size:inherit;font-weight:750;color:inherit}
 .finishing-order-pm:hover{color:var(--red)}
 .finishing-order-lot{font-size:inherit;font-weight:750}
 .finishing-order-lot-list{display:grid;align-items:center;gap:6px;min-width:220px}
-.finishing-order-lot-entry{display:flex;align-items:center;flex:0 1 auto;min-width:0;gap:5px}
+.finishing-order-lot-entry{display:flex;align-items:center;flex:0 1 auto;min-width:0;min-height:34px;gap:5px}
 .finishing-lot-edit-button{width:30px;min-width:30px;height:30px;padding:0;margin:0;font-size:11px;font-weight:650;white-space:nowrap}
 .finishing-order-lot-inline{display:flex;align-items:center;flex:1 1 140px;width:140px;max-width:140px}
 .finishing-order-lot-inline input{width:140px;max-width:100%;min-width:0;padding:6px 8px;font-size:12px}
@@ -482,14 +486,14 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-batch-card h3{display:flex;align-items:center;gap:8px}
 .finishing-receipt-form{display:grid;gap:12px;margin-top:14px;background:#fbfcfd}
 .finishing-receipt-form h3{margin:0}
-.finishing-receive-dialog{width:min(980px,calc(100vw - 32px))}
+.finishing-receive-dialog{box-sizing:border-box;display:flex;flex-direction:column;width:min(980px,calc(100vw - 32px));max-height:90vh;overflow:clip;overscroll-behavior:contain}
 .finishing-receive-dialog .dialog-head{gap:14px;cursor:move;user-select:none;touch-action:none}
 .finishing-receive-dialog .dialog-head>div{display:grid;gap:2px;flex:1;min-width:0}
 .finishing-receive-dialog .dialog-head small{color:var(--muted);font-size:12px;font-weight:400}
 .finishing-receive-date{display:grid;gap:3px;flex:none;margin:0;font-size:11px;font-weight:650;cursor:default;touch-action:auto}
 .finishing-receive-date input{width:148px;margin:0;padding:6px 8px;font-size:12px}
 .finishing-receive-dialog .dialog-close{flex:none;cursor:pointer}
-.finishing-receive-dialog .dialog-body{max-height:calc(90vh - 75px);padding:18px 22px}
+.finishing-receive-dialog .dialog-body{flex:1 1 0;min-height:0;max-height:none;padding:18px 22px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
 .finishing-receive-overview{display:grid;gap:8px}
 .finishing-receive-date-card,.finishing-receive-metric{display:grid;align-content:center;gap:4px;min-width:0;min-height:56px;padding:8px 10px;border:1px solid #e5e9ec;border-radius:6px;background:#f1f3f5;color:#4c5660}
 .finishing-receive-date-card small,.finishing-receive-metric small{color:var(--muted);font-size:11px}
