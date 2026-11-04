@@ -287,6 +287,17 @@ document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);search();});
  document.addEventListener('click',event=>{if(!form.contains(event.target)){clearTimeout(timer);controller?.abort();results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}});
 });
+document.querySelectorAll('[data-finishing-recipe-library]').forEach(library=>{
+ const searchInput=document.querySelector('#finishing-recipe-search'),rows=[...library.querySelectorAll('[data-finishing-recipe-row]')],empty=library.querySelector('[data-finishing-recipe-empty]');
+ if(!searchInput)return;
+ const normalize=value=>String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ const filter=()=>{
+  const terms=normalize(searchInput.value).trim().split(/\s+/).filter(Boolean);let visible=0;
+  for(const row of rows){const haystack=normalize(row.dataset.recipeSearch);const matches=terms.every(term=>haystack.includes(term));row.hidden=!matches;if(matches)visible++;}
+  empty.hidden=visible>0;
+ };
+ searchInput.addEventListener('input',filter);filter();
+});
 document.querySelectorAll('[data-warehouse-note-form]').forEach(form=>{
  const input=form.querySelector('[data-warehouse-note]'),status=form.querySelector('.warehouse-note-status');let saved=input.value,timer=null,busy=false,pending=false;
  const persist=async()=>{
@@ -480,23 +491,28 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const meterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0),weightTotal=weightValues.reduce((sum,value)=>sum+(value||0),0);
   form.querySelector('[data-receipt-total-meters]').textContent=useMeters&&meterValues.length?fmt(meterTotal)+' mb':'—';
   form.querySelector('[data-receipt-total-weight]').textContent=useWeight&&weightValues.length?fmt(weightTotal)+' kg':'—';
+  receivedWeightInput.readOnly=useWeight;
+  if(useWeight)receivedWeightInput.value=weightValues.length?String(Math.round(weightTotal*100)/100):'';
   const typedWeight=String(receivedWeightInput.value||'').trim().replace(',','.');
-  const receivedKg=typedWeight!==''&&Number.isFinite(Number(typedWeight))?Number(typedWeight):useWeight&&weightValues.length?weightTotal:null;
+  const receivedKg=useWeight&&weightValues.length?weightTotal:typedWeight!==''&&Number.isFinite(Number(typedWeight))?Number(typedWeight):null;
   const weightDifference=form.querySelector('[data-receipt-weight-difference-value]');
   if(receivedKg===null)weightDifference.textContent='—';
   else{const difference=Number(form.dataset.rawWeight)-receivedKg;weightDifference.textContent=difference>0.005?'Strata '+fmt(difference)+' kg':difference< -0.005?'Zysk '+fmt(Math.abs(difference))+' kg':'0 kg · bez straty';}
   const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value);
   const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&returned>=0?rawWeight*Math.min(returned/sentPieces,1)*100000/(planGrammage*planWidth):0;
   const theory=form.querySelector('[data-receipt-theoretical]'),loss=form.querySelector('[data-receipt-loss]'),note=form.querySelector('[data-receipt-calculation-note]');
-  theory.textContent=expected?fmt(expected)+' mb':'—';
+  theory.textContent=expected?new Intl.NumberFormat('pl-PL',{maximumFractionDigits:0}).format(Math.round(expected))+' mb':'—';
   if(!expected){loss.textContent='—';note.textContent='Do wyliczenia potrzebne są planowana gramatura, planowana szerokość i liczba odebranych sztuk surowych.';}
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Włącz pomiar mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
-  else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=fmt(percentage)+'%';note.textContent=percentage>=0?'Strata względem teorii dla liczby odebranych sztuk. Wartość poniżej zera oznacza uzysk powyżej teorii.':'Uzysk jest wyższy od wartości teoretycznej.';}
+  else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
+  const receivedForClose=receivedKg===null?null:receivedKg,previousPieces=Number(form.dataset.previousReceivedPieces),previousWeight=Number(form.dataset.previousReceivedWeight);
+  const closesByMatch=sentPieces>0&&Number.isFinite(returned)&&previousPieces+returned===sentPieces&&rawWeight>0&&receivedForClose!==null&&Math.abs(previousWeight+receivedForClose-rawWeight)<=0.01;
+  form.querySelector('[data-receipt-auto-close-message]').hidden=!closesByMatch;
   const incomplete=bales.some(bale=>(useMeters&&(bale.meters===null||bale.meters<=0))||(useWeight&&(bale.weight===null||bale.weight<=0)));
   form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete||Boolean(summaryError.textContent);
   printLabelsButton.disabled=bales.length===0;
  };
- modeInputs.forEach(input=>input.addEventListener('change',()=>{entryInput.value='';entryStatus.textContent='';bales.splice(0,bales.length);summary.value='';renderBales();refresh();entryInput.focus();}));
+ modeInputs.forEach(input=>input.addEventListener('change',()=>{entryInput.value='';entryStatus.textContent='';bales.splice(0,bales.length);summary.value='';if(input.value==='meters'){receivedWeightInput.readOnly=false;receivedWeightInput.value='';}renderBales();refresh();entryInput.focus();}));
  summary.addEventListener('input',()=>{
   const parsed=parseSummary(summary.value);
   if(parsed===null){summaryError.textContent=mode()==='both'?'Użyj formatu: 1-123m, 21,5kg | 2-122m, 21,4kg.':'Popraw wartości, rozdziel belki znakiem | i dodaj jednostkę.';refresh();return;}

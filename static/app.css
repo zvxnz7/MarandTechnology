@@ -534,6 +534,12 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-lost-actions .button{white-space:nowrap}
 .finishing-receive-measure-grid label small{display:block;margin-top:5px;color:var(--muted);font-weight:400}
 .finishing-receive-check-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.finishing-receive-process-checks{display:grid;gap:8px;padding:10px 12px;border:1px solid #e3e7ea;border-radius:6px;background:#f8fafb}
+.finishing-receive-process-checks h4{margin:0;font-size:13px}
+.finishing-receive-process-checks label{display:flex;align-items:flex-start;gap:9px;margin:0;padding:8px 10px;border:1px solid #e3e7ea;border-radius:5px;background:#fff;cursor:pointer}
+.finishing-receive-process-checks input{width:auto;margin:2px 0 0;accent-color:#17823a}
+.finishing-receive-process-checks label>span{display:grid;gap:3px}
+.finishing-receive-process-checks small{color:var(--muted);font-size:11px}
 .finishing-receive-check{display:flex;align-items:center;gap:14px;min-width:0;margin:0;padding:8px 12px;border:1px solid #e3e7ea;border-radius:6px}
 .finishing-receive-check legend{padding:0 4px;font-size:12px;font-weight:650}
 .finishing-receive-check label{display:flex;align-items:center;gap:6px;margin:0;padding:5px 9px;border:1px solid #e3e7ea;border-radius:6px;background:#fff;font-size:12px;font-weight:600;cursor:pointer}
@@ -575,13 +581,18 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-form[data-measure-weight="true"] .finishing-receive-totals{grid-template-columns:repeat(5,minmax(0,1fr))}
 .finishing-receive-totals>div{display:grid;gap:3px;padding:9px 10px;border:1px solid #e5e9ec;border-radius:6px;background:#fff}
 .finishing-receive-totals>div[hidden]{display:none}
+.finishing-receive-totals>.finishing-receive-total-highlight{background:#d2d4d7}
 .finishing-receive-totals strong{font-size:14px}
 .finishing-receive-totals [data-receipt-theoretical]{font-size:13px;font-weight:400}
 .finishing-receive-print-row{display:flex;justify-content:flex-end}
+.finishing-receive-print-row button{border-color:#12682e;background:#17823a;color:#fff}
+.finishing-receive-print-row button:hover:not(:disabled){border-color:#0f5c29;background:#126d30;color:#fff}
+.finishing-receive-auto-close{padding:9px 12px;border-radius:6px;background:#e8f5eb;color:#176b31;font-size:13px;font-weight:650}
 .finishing-receive-calculation-note{margin:0;color:var(--muted);font-size:11px}
 .finishing-receive-notes{margin:0}
 .finishing-receive-close-batch{margin:0}
 .finishing-receive-close-row{display:flex;justify-content:flex-end}
+.finishing-receive-close-batch{font-size:12px;color:var(--muted)}
 .finishing-receive-actions{justify-content:flex-end;padding-top:12px;border-top:1px solid var(--line)}
 .finishing-receive-print:disabled{cursor:not-allowed;color:#899097;background:#f2f3f4}
 .finishing-receipts-list{min-width:1300px}
@@ -622,6 +633,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 
 /* Receptury: surowy tekst WZ w wierszu, a identyfikacja wyrównana do prawej. */
 .finishing-recipe-row{grid-template-columns:minmax(0,1fr) auto auto;gap:18px}
+.finishing-recipe-row[hidden]{display:none}
 .finishing-recipe-search-field{position:relative;z-index:4}
 .finishing-recipe-search-field:focus-within{z-index:50}
 .finishing-recipe-option{align-items:flex-start}
