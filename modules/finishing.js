@@ -273,7 +273,7 @@ function lastProductionPreview(db,source,recipe) {
   const currentLots=[...new Set(sourcePieces(db,source.shipment_article_id).map(piece=>String(piece.lot||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
   const previous=db.prepare(`SELECT o.id,o.source_shipment_no,o.source_shipment_date,o.recipe_snapshot,o.target_color,o.target_grammage,
       s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
-      r.received_at,r.actual_grammage,r.actual_color,r.color_status,r.notes receipt_notes,b.yarn_lot,b.notes batch_notes,o.notes order_notes
+      r.received_at,r.actual_grammage,r.actual_color,r.color_status,r.notes receipt_notes,b.finishing_lot,b.sent_at,b.yarn_lot,b.notes batch_notes,o.notes order_notes
     FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
     WHERE o.recipe_id=? AND o.status NOT IN ('cancelled','raw_sale') AND r.finished_pieces>0
@@ -301,8 +301,9 @@ function lastProductionPreview(db,source,recipe) {
   else if(previous.actual_color)colorResult=`Brak koloru docelowego (uzyskano: ${previous.actual_color})`;
   const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(recipeNotesText).filter(Boolean);
   const pm=previous.article_sequence?`PM ${articleNo({sequence:previous.shipment_sequence},{sequence:previous.article_sequence})}`:`PM ${previous.source_shipment_no||'—'}`;
+  const orderYear=String(previous.sent_at||previous.received_at||'').slice(0,4),finishingOrder=previous.finishing_lot?`${previous.finishing_lot}${orderYear?`/${orderYear}`:''}`:'';
   const lotComparison=compareLots(currentLots,previous.yarn_lot);
-  return {found:true,pm,date:V.datepl(previous.received_at),grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił'};
+  return {found:true,pm,date:V.datepl(previous.received_at),finishingOrder,grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił'};
 }
 function header({user,csrf,flashes,title,body}) { return V.layout({user,csrf,flashes,title:`${title} · Wykańczanie`,body}); }
 function navTabs(active,db) {
