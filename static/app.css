@@ -483,6 +483,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-subline{display:block;margin-top:3px;color:var(--muted);font-size:10px}
 .finishing-batch-add{margin:16px 0}.finishing-batch-add summary{cursor:pointer;margin-bottom:12px}
 .finishing-batch-card{margin:12px 0;scroll-margin-top:12px}
+.finishing-batch-row-actions{display:flex;align-items:center;justify-content:center;gap:6px}
+.finishing-batch-row-actions form{margin:0}
+.finishing-add-batch-inline{justify-content:center;margin:0}
 .finishing-batch-card h3{display:flex;align-items:center;gap:8px}
 .finishing-receipt-form{display:grid;gap:12px;margin-top:14px;background:#fbfcfd}
 .finishing-receipt-form h3{margin:0}
