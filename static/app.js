@@ -428,6 +428,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   status.textContent='Poza wymaganą tolerancją · '+fmt(percentage)+'%';
   status.classList.add(percentage<=5?'is-warning':'is-danger');
  });
+ paramRows.forEach(row=>row.querySelector('input')?.addEventListener('input',refreshParamRows));
  const updateEntryPrompt=()=>{
   const label=mode()==='weight'?'masa (kg)':mode()==='both'&&pendingMeters!==null?'masa (kg)':'metry (mb)';
   entryPrompt.textContent='Belka '+(bales.length+1)+' — '+label;
