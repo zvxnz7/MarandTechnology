@@ -536,11 +536,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-check-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .finishing-receive-process-checks{display:grid;gap:8px;padding:10px 12px;border:1px solid #e3e7ea;border-radius:6px;background:#f8fafb}
 .finishing-receive-process-checks h4{margin:0;font-size:13px}
-.finishing-receive-process-checks label{display:flex;align-items:flex-start;gap:9px;margin:0;padding:8px 10px;border:1px solid #e3e7ea;border-radius:5px;background:#fff;cursor:pointer}
-.finishing-receive-process-checks input{width:auto;margin:2px 0 0;accent-color:#17823a}
-.finishing-receive-process-checks label>span{display:grid;gap:3px}
-.finishing-receive-process-checks small{color:var(--muted);font-size:11px}
-.finishing-receive-check{display:flex;align-items:center;gap:14px;min-width:0;margin:0;padding:8px 12px;border:1px solid #e3e7ea;border-radius:6px}
+.finishing-receive-check-description{flex:1 1 100%;color:var(--muted);font-size:11px}
+.finishing-receive-check{display:flex;flex-wrap:wrap;align-items:center;gap:14px;min-width:0;margin:0;padding:8px 12px;border:1px solid #e3e7ea;border-radius:6px}
 .finishing-receive-check legend{padding:0 4px;font-size:12px;font-weight:650}
 .finishing-receive-check label{display:flex;align-items:center;gap:6px;margin:0;padding:5px 9px;border:1px solid #e3e7ea;border-radius:6px;background:#fff;font-size:12px;font-weight:600;cursor:pointer}
 .finishing-receive-check label:has(input:checked){border-color:#bac7d1;background:#f4f7f9}

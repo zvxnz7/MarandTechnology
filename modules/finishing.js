@@ -32,6 +32,17 @@ function recipeNotesData(value='') {
   }).filter(run=>run.text);
   return {format:RECIPE_NOTES_FORMAT,runs};
 }
+function recipeNotesText(value='') {
+  const data=recipeNotesData(value);
+  return data.runs.map(run=>run.text).join('').trim();
+}
+function appendRecipeNote(value,note) {
+  const data=recipeNotesData(value),addition=String(note||'').trim();
+  if(!addition)return data;
+  if(data.runs.length)data.runs.push({text:'\n',underline:false,italic:false,size:16});
+  data.runs.push({text:addition,underline:false,italic:false,size:16});
+  return recipeNotesData(JSON.stringify(data));
+}
 function recipeNotesHtml(value='') {
   return recipeNotesData(value).runs.map(run=>{
     let html=V.esc(run.text).replace(/\n/g,'<br>');
@@ -151,6 +162,13 @@ function recipeProcessRequirements(details={}) {
     ['trimSygnits','Obcinanie sygnitów',''],
   ].filter(([key])=>details[key]==='yes').map(([key,label,description])=>({key,label,description}));
 }
+function receiptProcessSummary(receipt,details={}) {
+  let checks={};try{checks=JSON.parse(receipt.process_checks||'{}')||{};}catch{}
+  return recipeProcessRequirements(details).map(item=>{
+    const status=checks[item.key];
+    return ['ok','not_ok'].includes(status)?`${item.label}: ${status==='ok'?'OK':'NOK'}`:'';
+  }).filter(Boolean).join(' · ');
+}
 function parameterStatus(actual,target,minus,plus) {
   if(actual===null||actual===undefined||target===null||target===undefined)return '';
   const measured=Number(actual),planned=Number(target);
@@ -258,8 +276,8 @@ function lastProductionPreview(db,source,recipe) {
       r.received_at,r.actual_grammage,r.actual_color,r.color_status,r.notes receipt_notes,b.yarn_lot,b.notes batch_notes,o.notes order_notes
     FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
-    WHERE upper(replace(o.raw_symbol,' ',''))=upper(replace(?,' ','')) AND o.status NOT IN ('cancelled','raw_sale') AND r.finished_pieces>0
-    ORDER BY r.received_at DESC,r.id DESC LIMIT 1`).get(source.symbol);
+    WHERE o.recipe_id=? AND o.status NOT IN ('cancelled','raw_sale') AND r.finished_pieces>0
+    ORDER BY r.received_at DESC,r.id DESC LIMIT 1`).get(recipe?.id||0);
   const lotParts=value=>String(value||'').split(/[,;]+/).map(part=>normalizeSearch(part)).filter(Boolean).sort();
   const compareLots=(current,previousLot)=>{
     if(!current.length||!String(previousLot||'').trim())return 'Brak danych LOT do porównania';
@@ -281,9 +299,10 @@ function lastProductionPreview(db,source,recipe) {
   else if(previous.color_status==='not_ok')colorResult='Kolor różni się od receptury';
   else if(expectedColor&&previous.actual_color)colorResult=normalizeSearch(expectedColor)===normalizeSearch(previous.actual_color)?'Kolor zgodny':'Kolor różni się od receptury';
   else if(previous.actual_color)colorResult=`Brak koloru docelowego (uzyskano: ${previous.actual_color})`;
-  const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(value=>String(value||'').trim()).filter(Boolean);
+  const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(recipeNotesText).filter(Boolean);
   const pm=previous.article_sequence?`PM ${articleNo({sequence:previous.shipment_sequence},{sequence:previous.article_sequence})}`:`PM ${previous.source_shipment_no||'—'}`;
-  return {found:true,pm,date:V.datepl(previous.received_at),grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison:compareLots(currentLots,previous.yarn_lot)};
+  const lotComparison=compareLots(currentLots,previous.yarn_lot);
+  return {found:true,pm,date:V.datepl(previous.received_at),grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił'};
 }
 function header({user,csrf,flashes,title,body}) { return V.layout({user,csrf,flashes,title:`${title} · Wykańczanie`,body}); }
 function navTabs(active,db) {
@@ -424,8 +443,10 @@ function receiptDialog(ctx,order,batch,pm,returnTo='orders') {
     WHERE o.recipe_id=? AND trim(r.notes)<>'' AND r.comment_consumed_at IS NULL ORDER BY r.id DESC LIMIT 1`).get(order.recipe_id):null;
   const priorCommentHtml=priorComment?`<aside class="finishing-receive-prior-comment"><strong>Poprzedni komentarz do tej receptury</strong><small>${V.datepl(priorComment.received_at)}${priorComment.finishing_lot?` · LOT ${V.esc(priorComment.finishing_lot)}`:''}</small><div>${V.esc(priorComment.notes)}</div></aside>`:'';
   const baleRow=`<div class="finishing-receive-bale-row" data-receipt-bale-row><strong data-receipt-bale-index></strong><label data-receipt-unit="meters"><span>Metry (mb)</span><input type="number" inputmode="decimal" min="0.01" step="0.01" data-receipt-meter aria-label="Metry belki"></label><label data-receipt-unit="weight"><span>Masa (kg)</span><input type="number" inputmode="decimal" min="0.01" step="0.01" data-receipt-weight aria-label="Masa belki"></label><button type="button" class="finishing-receive-remove" data-receipt-remove aria-label="Usuń belkę" title="Usuń belkę">×</button></div>`;
-  const statusChoices=(name,label)=>`<fieldset class="finishing-receive-check"><legend>${label}</legend><label><input type="radio" name="${name}" value="ok"><span class="finishing-receive-choice-dot is-ok" aria-hidden="true"></span><span>OK</span></label><label><input type="radio" name="${name}" value="not_ok"><span class="finishing-receive-choice-dot is-nok" aria-hidden="true"></span><span>NOK</span></label></fieldset>`;
-  const processRequirementsHtml=processRequirements.length?`<div class="finishing-receive-process-checks"><h4>Wymagania z receptury</h4>${processRequirements.map(item=>`<label><input type="checkbox" name="process_check_${item.key}" value="yes" required><span><strong>${V.esc(item.label)}</strong>${item.description?`<small>Opis procesu: ${V.esc(item.description)}</small>`:''}</span></label>`).join('')}</div>`:'';
+  const statusChoices=(name,label,required=false,description='')=>`<fieldset class="finishing-receive-check"><legend>${V.esc(label)}</legend>${description?`<small class="finishing-receive-check-description">${V.esc(description)}</small>`:''}<label><input type="radio" name="${V.esc(name)}" value="ok"${required?' required':''}><span class="finishing-receive-choice-dot is-ok" aria-hidden="true"></span><span>OK</span></label><label><input type="radio" name="${V.esc(name)}" value="not_ok"><span class="finishing-receive-choice-dot is-nok" aria-hidden="true"></span><span>NOK</span></label></fieldset>`;
+  const requiredKeys=new Set(processRequirements.map(item=>item.key));
+  const recipeProcessChoices=processRequirements.map(item=>statusChoices(`process_check_${item.key}`,item.label,true,item.description)).join('');
+  const baseChoices=[statusChoices('color_status','Kolor'),...(!requiredKeys.has('stiffeningEnabled')?[statusChoices('stiffening_status','Usztywnienie')]:[]),...(!requiredKeys.has('brushing')&&!requiredKeys.has('brushingForVelcro')?[statusChoices('rubbing_status','Wydrapanie')]:[])].join('');
   return `<dialog id="${dialogId}" class="form-dialog finishing-receive-dialog" data-draggable-dialog aria-labelledby="${dialogId}-title"><div class="dialog-head finishing-receive-dialog-head" data-dialog-drag-handle><div><strong id="${dialogId}-title">Przyjęcie belek · ${V.esc(pm)} · ${V.datepl(V.todayInput())}</strong><small>${V.esc(order.finishing_plant_name||'')}</small></div><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body">
     <section class="finishing-receive-summary" aria-label="Przyjmowane zlecenie"><div><small>Symbol surowy</small><strong>${V.esc(order.raw_symbol||'—')}</strong></div><div><small>Symbol handlowy</small><strong>${V.esc(order.trade_symbol||'—')}</strong></div><div><small>Kolor planowany</small><strong>${V.esc(order.target_color||'—')}</strong></div><div><small>PM</small><strong>${V.esc(pm)}</strong></div><div><small>Nr zlecenia</small><strong data-receipt-order-number>${V.esc(batch.finishing_lot||'—')}</strong></div></section>${symbolWarning}
     <form id="${dialogId}-form" method="post" action="/finishing/batches/${batch.id}/receipts" class="finishing-receipt-form finishing-receive-form" data-finishing-receive-form data-raw-symbol="${V.esc(order.raw_symbol||'')}" data-trade-symbol="${V.esc(order.trade_symbol||'')}" data-target-color="${V.esc(order.target_color||'')}" data-order-number="${V.esc(batch.finishing_lot||'')}" data-plan-grammage="${V.esc(targetGrammage)}" data-plan-width="${V.esc(targetWidth)}" data-raw-weight="${V.esc(batch.raw_weight_kg)}" data-sent-pieces="${V.esc(batch.sent_pieces)}" data-previous-received-pieces="${V.esc(previousBatchTotals.pieces)}" data-previous-received-weight="${V.esc(previousBatchTotals.weight)}">${hidden('csrf',ctx.req.session.csrf)}${hidden('modal_receipt','1')}${hidden('return_to',returnTo)}${hidden('received_at',V.todayInput())}${priorComment?hidden('prior_comment_receipt_id',priorComment.receipt_id):''}<input type="hidden" name="meters_list" value="" data-receipt-meters-list><input type="hidden" name="weights_list" value="" data-receipt-weights-list>
@@ -435,7 +456,7 @@ function receiptDialog(ctx,order,batch,pm,returnTo='orders') {
       <section class="finishing-receive-quality"><h3>Kontrola parametrów</h3>
         <div class="finishing-receive-param-row" data-finishing-param-row data-param-target="${V.esc(targetGrammage)}" data-param-minus="${V.esc(grammageMinus??'')}" data-param-plus="${V.esc(grammagePlus??'')}"><label>Gramatura z belki<input name="actual_grammage" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="g/m²" required></label><div><small>Gramatura zlecona</small><strong>${targetGrammage?`${V.esc(targetGrammage)} g/m²`:'—'}</strong></div><div><small>Tolerancja z receptury</small><strong>${grammagePlus!==null||grammageMinus!==null?`−${grammageMinus??'0'} / +${grammagePlus??'0'} g/m²`:'0 g/m²'}</strong></div><div class="finishing-receive-param-status" data-param-status aria-live="polite"></div></div>
         <div class="finishing-receive-param-row" data-finishing-param-row data-param-target="${V.esc(targetWidth)}" data-param-minus="${V.esc(widthMinus??'')}" data-param-plus="${V.esc(widthPlus??'')}"><label>Szerokość z belki<input name="actual_width_cm" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="cm" required></label><div><small>Szerokość zlecona</small><strong>${targetWidth?`${V.esc(targetWidth)} cm`:'—'}</strong></div><div><small>Tolerancja z receptury</small><strong>${widthPlus!==null||widthMinus!==null?`−${widthMinus??'0'} / +${widthPlus??'0'} cm`:'0 cm'}</strong></div><div class="finishing-receive-param-status" data-param-status aria-live="polite"></div></div>
-        ${processRequirementsHtml}<div class="finishing-receive-check-grid">${statusChoices('color_status','Kolor')}${statusChoices('stiffening_status','Usztywnienie')}${statusChoices('rubbing_status','Wydrapanie')}</div></section>
+        <div class="finishing-receive-check-grid">${baseChoices}${recipeProcessChoices}</div></section>
       <section class="finishing-receive-bales"><div class="finishing-receive-bales-heading"><div><h3>Belki wykończone</h3><p class="muted">Wpisz wartość i naciśnij Enter. Zestawienie belek możesz też edytować w jednym polu.</p></div></div><fieldset class="finishing-receive-mode"><legend>Co wpisuję?</legend><label><input type="radio" name="measurement_mode" value="meters" checked data-receipt-mode><span>mb</span></label><label><input type="radio" name="measurement_mode" value="both" data-receipt-mode><span>mb + kg</span></label><label><input type="radio" name="measurement_mode" value="weight" data-receipt-mode><span>kg</span></label></fieldset><input type="hidden" name="measure_meters" value="1" data-receipt-measure-meters><input type="hidden" name="measure_weight" value="0" data-receipt-measure-weight><label class="finishing-receive-entry"><small data-receipt-entry-prompt>Belka 1 — metry (mb)</small><input type="number" inputmode="decimal" min="0.01" step="0.01" data-receipt-entry-input placeholder="Wpisz wartość i naciśnij Enter" autocomplete="off"></label><small class="finishing-receive-entry-status" data-receipt-entry-status aria-live="polite"></small><label class="finishing-receive-summary-label">Zestawienie belek<textarea rows="2" data-receipt-bale-summary aria-describedby="receipt-bale-summary-help"></textarea><small id="receipt-bale-summary-help" data-receipt-summary-error aria-live="polite"></small></label><div class="finishing-receive-print-row"><button type="button" data-receipt-print-labels disabled>Drukuj etykiety</button></div><div class="finishing-receive-empty-bales" data-receipt-empty-bales>Wpisane belki pojawią się tutaj.</div><div class="finishing-receive-totals"><div><small>L.m. teoretyczna</small><span data-receipt-theoretical>—</span></div><div><small>Strata</small><strong data-receipt-loss>—</strong></div><div data-receipt-weight-difference><small>Różnica kg · wydane − odebrane</small><strong data-receipt-weight-difference-value>—</strong></div><div class="finishing-receive-total-highlight"><small>Przyjęte kg</small><strong data-receipt-total-weight>—</strong></div><div class="finishing-receive-total-highlight"><small>Razem mb</small><strong data-receipt-total-meters>—</strong></div></div><p class="finishing-receive-calculation-note" data-receipt-calculation-note>Teoria jest liczona z masy odebranych sztuk oraz planowanej gramatury i szerokości.</p></section>
       ${priorCommentHtml}<label class="finishing-receive-notes">Komentarz do partii (wyświetli się jednorazowo przy kolejnej produkcji receptury)<textarea name="notes" maxlength="3000" rows="3" placeholder="Wpisz komentarz do tej partii"></textarea></label><div class="finishing-receive-auto-close" data-receipt-auto-close-message hidden>Odebrane kg i sztuki zgadzają się ze zleceniem — to przyjęcie zamyka tę partię.</div><div class="finishing-receive-close-row"><label class="check finishing-receive-close-batch"><input type="checkbox" name="close_batch" value="1"> Ręcznie zamknij partię (np. zagubiona belka)</label></div>
       <div class="actions finishing-receive-actions"><button type="button" data-close-dialog>Wróć</button><button type="submit" class="primary">Zapisz przyjęcie</button></div>
@@ -459,7 +480,7 @@ function orderPage(ctx,id) {
   const receiptDialogs=[];
   const receiptViews=batches.map(batch=>{
     const recent=receipts.filter(receipt=>receipt.batch_id===batch.id);
-    const rows=recent.map(receipt=>`<tr><td>${V.datepl(receipt.received_at)}</td><td>${receipt.raw_pieces_received} szt. surowe</td><td>${receipt.finished_pieces} belek · ${receipt.meters_sum===null?'—':`${qty(receipt.meters_sum)} mb`} · ${receipt.finished_weight_kg>0?`${money(receipt.finished_weight_kg)} kg`:'—'}</td><td>Gramatura: ${parameterStatusHtml(receipt.grammage_status)} · Szerokość: ${parameterStatusHtml(receipt.width_status)}<small class="finishing-subline">Kolor: ${receipt.color_status==='ok'?'OK':receipt.color_status==='not_ok'?'NOK':'—'} · Usztywnienie: ${receipt.stiffening_status==='ok'?'OK':receipt.stiffening_status==='not_ok'?'NOK':'—'} · Wydrapanie: ${receipt.rubbing_status==='ok'?'OK':receipt.rubbing_status==='not_ok'?'NOK':'—'}</small></td><td>${V.esc(receipt.notes||'—')}</td><td>${receipt.bale_count?`<a class="button" href="/finishing/receipts/${receipt.id}/labels">Etykiety</a>`:'<span class="muted small">Brak wymiarów pojedynczych belek</span>'}</td></tr>`).join('');
+    const rows=recent.map(receipt=>`<tr><td>${V.datepl(receipt.received_at)}</td><td>${receipt.raw_pieces_received} szt. surowe</td><td>${receipt.finished_pieces} belek · ${receipt.meters_sum===null?'—':`${qty(receipt.meters_sum)} mb`} · ${receipt.finished_weight_kg>0?`${money(receipt.finished_weight_kg)} kg`:'—'}</td><td>Gramatura: ${parameterStatusHtml(receipt.grammage_status)} · Szerokość: ${parameterStatusHtml(receipt.width_status)}<small class="finishing-subline">Kolor: ${receipt.color_status==='ok'?'OK':receipt.color_status==='not_ok'?'NOK':'—'} · Usztywnienie: ${receipt.stiffening_status==='ok'?'OK':receipt.stiffening_status==='not_ok'?'NOK':'—'} · Wydrapanie: ${receipt.rubbing_status==='ok'?'OK':receipt.rubbing_status==='not_ok'?'NOK':'—'}</small>${receiptProcessSummary(receipt,snapshot.details||{})?`<small class="finishing-subline">${V.esc(receiptProcessSummary(receipt,snapshot.details||{}))}</small>`:''}</td><td>${V.esc(receipt.notes||'—')}</td><td>${receipt.bale_count?`<a class="button" href="/finishing/receipts/${receipt.id}/labels">Etykiety</a>`:'<span class="muted small">Brak wymiarów pojedynczych belek</span>'}</td></tr>`).join('');
     const canReceiveBatch=canEdit&&!batch.closed_at&&String(batch.finishing_lot||'').trim();
     if(canReceiveBatch)receiptDialogs.push(receiptDialog(ctx,order,batch,pm,'detail'));
     const receiveButton=canReceiveBatch?`<button type="button" class="finishing-row-action is-receive" data-open-dialog="finishing-receive-${batch.id}" aria-label="Przyjmij sztuki partii ${V.esc(batch.finishing_lot)}" title="Przyjmij sztuki"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>`:canEdit&&!batch.closed_at?'<button type="button" class="finishing-row-action is-receive" disabled title="Najpierw wpisz numer specyfikacji z wykończalni" aria-label="Najpierw wpisz numer specyfikacji z wykończalni">+</button>':'';
@@ -714,8 +735,15 @@ function handle(ctx) {
       if(!currentSource||currentSource.status!=='closed')fail(409,'Specyfikacja wysyłkowa nie jest już dostępna. Odśwież listę i wybierz inną pozycję.');
       if(shipmentSpecUsed(db,shipmentArticleId))fail(409,'Ta pozycja PM została już powiązana z innym zleceniem wykańczania.');
       if(Number(currentSource.raw_bales)<1)fail(409,'Wybrana pozycja WZ nie ma już aktywnych sztuk do wykańczania.');
+      let orderNotes=recipeNotesData(String(form.notes||'').trim().slice(0,100000));
+      if(recipe){
+        const previousProduction=lastProductionPreview(db,currentSource,recipe);
+        if(previousProduction.lotChanged&&previousProduction.previousLot){
+          orderNotes=appendRecipeNote(orderNotes,`UWAGA INNY LOT PRZEDZY NIZ OSTATNIE ZLECENIE BARWIARSKIE (${previousProduction.previousLot}) Wykonac korekte koloru`);
+        }
+      }
       const result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_id,recipe_snapshot,target_color,target_stiffening,target_width_cm,target_grammage,notes,status,created_at,created_by,updated_at,updated_by)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(currentSource.shipment_article_id,orderType,plantId||null,shipmentNo({sequence:currentSource.shipment_sequence,shipment_year:currentSource.shipment_year}),currentSource.shipment_date,currentSource.symbol,client,text(form,'trade_symbol',200),recipe?recipeId:null,JSON.stringify({...snapshotRecipe(recipe),finishingPlant:plant?.name||''}),text(form,'target_color',160)||(recipe&&recipe.target_color)||'',text(form,'target_stiffening',160)||(recipe&&recipe.target_stiffening)||'',targetWidth,targetGrammage,JSON.stringify(recipeNotesData(String(form.notes||'').trim().slice(0,100000))),rawSale?'raw_sale':'draft',now(),req.user.id,now(),req.user.id);
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(currentSource.shipment_article_id,orderType,plantId||null,shipmentNo({sequence:currentSource.shipment_sequence,shipment_year:currentSource.shipment_year}),currentSource.shipment_date,currentSource.symbol,client,text(form,'trade_symbol',200),recipe?recipeId:null,JSON.stringify({...snapshotRecipe(recipe),finishingPlant:plant?.name||''}),text(form,'target_color',160)||(recipe&&recipe.target_color)||'',text(form,'target_stiffening',160)||(recipe&&recipe.target_stiffening)||'',targetWidth,targetGrammage,JSON.stringify(orderNotes),rawSale?'raw_sale':'draft',now(),req.user.id,now(),req.user.id);
       const newId=Number(result.lastInsertRowid);
       const pieceCount=saveOrderPieces(db,newId,currentSource.shipment_article_id);
       if(!pieceCount)fail(409,'Wybrana pozycja WZ nie ma już aktywnych sztuk do załadowania do zlecenia.');
@@ -905,8 +933,9 @@ function handle(ctx) {
     const recipeDetails=savedRecipe.details||{};
     const requiredProcesses=recipeProcessRequirements(recipeDetails),processChecks={};
     if(modalReceipt)for(const requirement of requiredProcesses){
-      if(form[`process_check_${requirement.key}`]!=='yes')fail(400,`Zaznacz wymaganie z receptury: ${requirement.label}.`);
-      processChecks[requirement.key]=true;
+      const status=form[`process_check_${requirement.key}`];
+      if(!['ok','not_ok'].includes(status))fail(400,`Wybierz OK lub NOK dla wymagania z receptury: ${requirement.label}.`);
+      processChecks[requirement.key]=status;
     }
     const grammageStatus=parameterStatus(grammage,order?.target_grammage,recipeDetails.grammageMinus,recipeDetails.grammagePlus);
     const widthStatus=parameterStatus(width,order?.target_width_cm,recipeDetails.widthMinus,recipeDetails.widthPlus);
