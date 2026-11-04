@@ -140,6 +140,18 @@ function snapshotRecipe(recipe) {
 function readRecipeDetails(recipe) {
   try{return JSON.parse(recipe?.recipe_details||'{}')||{};}catch{return {};}
 }
+function parameterStatus(actual,target,minus,plus) {
+  if(actual===null||actual===undefined||target===null||target===undefined)return '';
+  const measured=Number(actual),planned=Number(target);
+  if(!Number.isFinite(measured)||!Number.isFinite(planned)||planned<=0)return '';
+  const lower=planned-(Number(minus)||0),upper=planned+(Number(plus)||0);
+  if(measured>=lower&&measured<=upper)return 'ok';
+  return Math.abs(measured<lower?lower-measured:measured-upper)/planned*100<=5?'warning':'danger';
+}
+function parameterStatusHtml(status) {
+  const labels={ok:'W tolerancji',warning:'Poza tolerancją · do 5%',danger:'Poza tolerancją · powyżej 5%'};
+  return status?`<span class="finishing-param-result is-${status}">${labels[status]||'—'}</span>`:'—';
+}
 function recipeTradeSymbol(recipe) {
   const details=readRecipeDetails(recipe);
   const saved=details.tradeSymbol||details.trade_symbol||recipe?.trade_symbol;
@@ -263,7 +275,7 @@ function lastProductionPreview(db,source,recipe) {
 }
 function header({user,csrf,flashes,title,body}) { return V.layout({user,csrf,flashes,title:`${title} · Wykańczanie`,body}); }
 function navTabs(active) {
-  return `<nav class="finishing-tabs" aria-label="Wykańczanie"><a class="${active==='orders'?'selected':''}" href="/finishing/orders">Zlecenia wykańczania</a><a class="${active==='receipts'?'selected':''}" href="/finishing/receipts">Przyjęcie towaru</a><a class="${active==='recipes'?'selected':''}" href="/finishing/recipes">Biblioteka receptur wykańczania</a></nav>`;
+  return `<nav class="finishing-tabs" aria-label="Wykańczanie"><a class="${active==='orders'?'selected':''}" href="/finishing/orders">Zlecenia wykańczania</a><a class="${active==='receipts'?'selected':''}" href="/finishing/receipts">Przyjęcie towaru</a><a class="${active==='lost'?'selected':''}" href="/finishing/lost">Zagubione/zniszczone</a><a class="${active==='recipes'?'selected':''}" href="/finishing/recipes">Biblioteka receptur wykańczania</a></nav>`;
 }
 function shipmentOptions(db,selectedId=0) {
   const rows=db.prepare(`SELECT sa.id,sa.sequence article_sequence,s.shipment_year,s.sequence shipment_sequence,s.shipment_date,
@@ -431,7 +443,7 @@ function orderPage(ctx,id) {
   const receiptDialogs=[];
   const receiptViews=batches.map(batch=>{
     const recent=receipts.filter(receipt=>receipt.batch_id===batch.id);
-    const rows=recent.map(receipt=>`<tr><td>${V.datepl(receipt.received_at)}</td><td>${receipt.raw_pieces_received} szt. surowe</td><td>${receipt.finished_pieces} belek · ${receipt.meters_sum===null?'—':`${qty(receipt.meters_sum)} mb`} · ${receipt.finished_weight_kg>0?`${money(receipt.finished_weight_kg)} kg`:'—'}</td><td>Kolor: ${receipt.color_status==='ok'?'OK':receipt.color_status==='not_ok'?'NOK':'—'}<small class="finishing-subline">Usztywnienie: ${receipt.stiffening_status==='ok'?'OK':receipt.stiffening_status==='not_ok'?'NOK':'—'} · Wydrapanie: ${receipt.rubbing_status==='ok'?'OK':receipt.rubbing_status==='not_ok'?'NOK':'—'}</small></td><td>${V.esc(receipt.notes||'—')}</td><td>${receipt.bale_count?`<a class="button" href="/finishing/receipts/${receipt.id}/labels">Etykiety</a>`:'<span class="muted small">Brak wymiarów pojedynczych belek</span>'}</td></tr>`).join('');
+    const rows=recent.map(receipt=>`<tr><td>${V.datepl(receipt.received_at)}</td><td>${receipt.raw_pieces_received} szt. surowe</td><td>${receipt.finished_pieces} belek · ${receipt.meters_sum===null?'—':`${qty(receipt.meters_sum)} mb`} · ${receipt.finished_weight_kg>0?`${money(receipt.finished_weight_kg)} kg`:'—'}</td><td>Gramatura: ${parameterStatusHtml(receipt.grammage_status)} · Szerokość: ${parameterStatusHtml(receipt.width_status)}<small class="finishing-subline">Kolor: ${receipt.color_status==='ok'?'OK':receipt.color_status==='not_ok'?'NOK':'—'} · Usztywnienie: ${receipt.stiffening_status==='ok'?'OK':receipt.stiffening_status==='not_ok'?'NOK':'—'} · Wydrapanie: ${receipt.rubbing_status==='ok'?'OK':receipt.rubbing_status==='not_ok'?'NOK':'—'}</small></td><td>${V.esc(receipt.notes||'—')}</td><td>${receipt.bale_count?`<a class="button" href="/finishing/receipts/${receipt.id}/labels">Etykiety</a>`:'<span class="muted small">Brak wymiarów pojedynczych belek</span>'}</td></tr>`).join('');
     const canReceiveBatch=canEdit&&!batch.closed_at&&String(batch.finishing_lot||'').trim();
     if(canReceiveBatch)receiptDialogs.push(receiptDialog(ctx,order,batch,pm,'detail'));
     const receiveButton=canReceiveBatch?`<button type="button" class="finishing-row-action is-receive" data-open-dialog="finishing-receive-${batch.id}" aria-label="Przyjmij sztuki partii ${V.esc(batch.finishing_lot)}" title="Przyjmij sztuki"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>`:canEdit&&!batch.closed_at?'<button type="button" class="finishing-row-action is-receive" disabled title="Najpierw wpisz numer specyfikacji z wykończalni" aria-label="Najpierw wpisz numer specyfikacji z wykończalni">+</button>':'';
@@ -486,7 +498,7 @@ function orderEditPage(ctx,order) {
 function receiptsPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim();
   const query=normalizeSearch(q);
-  const all=ctx.db.prepare(`SELECT r.id receipt_id,r.received_at,r.raw_pieces_received,r.finished_pieces,r.finished_weight_kg,r.finished_meters,r.actual_color,r.actual_width_cm,r.actual_grammage,r.color_status,r.stiffening_status,r.actual_stiffening,r.rubbing_status,r.notes,
+  const all=ctx.db.prepare(`SELECT r.id receipt_id,r.received_at,r.raw_pieces_received,r.finished_pieces,r.finished_weight_kg,r.finished_meters,r.actual_color,r.actual_width_cm,r.actual_grammage,r.width_status,r.grammage_status,r.color_status,r.stiffening_status,r.actual_stiffening,r.rubbing_status,r.notes,
       rb.sequence bale_sequence,rb.meters bale_meters,rb.weight_kg bale_weight,
       o.id order_id,o.raw_symbol,o.client_name,o.trade_symbol,o.target_color,o.target_width_cm,o.target_grammage,o.source_shipment_no,o.status order_status,
       b.id batch_id,b.finishing_lot,fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence
@@ -501,10 +513,25 @@ function receiptsPage(ctx) {
     const pm=row.article_sequence?`PM ${articleNo({sequence:row.shipment_sequence},{sequence:row.article_sequence})}`:`PM ${row.source_shipment_no||'—'}`;
     const color=row.color_status?statusText(row.color_status):row.actual_color||'—';
     const stiffening=row.stiffening_status?statusText(row.stiffening_status):row.actual_stiffening||'—';
-    return `<tr><td>${V.datepl(row.received_at)}</td><td>${V.esc(row.finishing_plant_name||'—')}</td><td><strong>${V.esc(row.raw_symbol||'—')}</strong></td><td>${V.esc(row.trade_symbol||'—')}</td><td><a class="finishing-order-pm" href="/finishing/orders/${row.order_id}">${V.esc(pm)}</a></td><td><strong>${V.esc(row.finishing_lot||'—')}</strong></td><td>${hasBale?`Belka ${row.bale_sequence}`:`${row.finished_pieces||0} belek`}</td><td>${row.actual_grammage!==null&&row.actual_grammage!==undefined?`${qty(row.actual_grammage)} g/m²`:'—'}</td><td>${row.actual_width_cm!==null&&row.actual_width_cm!==undefined?`${qty(row.actual_width_cm)} cm`:'—'}</td><td><span>Kolor: ${V.esc(color)}</span><small class="finishing-subline">Usztywnienie: ${V.esc(stiffening)} · Wydrapanie: ${V.esc(statusText(row.rubbing_status))}</small></td><td>${hasBale&&row.bale_meters!==null?`${qty(row.bale_meters)} mb`:'—'}</td><td>${hasBale&&row.bale_weight!==null?`${money(row.bale_weight)} kg`:'—'}</td><td>${V.esc(row.notes||'—')}</td><td>${hasBale?`<a href="/finishing/receipts/${row.receipt_id}/labels">Etykieta</a>`:'—'}</td></tr>`;
+    return `<tr><td>${V.datepl(row.received_at)}</td><td>${V.esc(row.finishing_plant_name||'—')}</td><td><strong>${V.esc(row.raw_symbol||'—')}</strong></td><td>${V.esc(row.trade_symbol||'—')}</td><td><a class="finishing-order-pm" href="/finishing/orders/${row.order_id}">${V.esc(pm)}</a></td><td><strong>${V.esc(row.finishing_lot||'—')}</strong></td><td>${hasBale?`Belka ${row.bale_sequence}`:`${row.finished_pieces||0} belek`}</td><td>${row.actual_grammage!==null&&row.actual_grammage!==undefined?`${qty(row.actual_grammage)} g/m²`:'—'}</td><td>${row.actual_width_cm!==null&&row.actual_width_cm!==undefined?`${qty(row.actual_width_cm)} cm`:'—'}</td><td><span>Gramatura: ${parameterStatusHtml(row.grammage_status)} · Szerokość: ${parameterStatusHtml(row.width_status)}</span><small class="finishing-subline">Kolor: ${V.esc(color)} · Usztywnienie: ${V.esc(stiffening)} · Wydrapanie: ${V.esc(statusText(row.rubbing_status))}</small></td><td>${hasBale&&row.bale_meters!==null?`${qty(row.bale_meters)} mb`:'—'}</td><td>${hasBale&&row.bale_weight!==null?`${money(row.bale_weight)} kg`:'—'}</td><td>${V.esc(row.notes||'—')}</td><td>${hasBale?`<a href="/finishing/receipts/${row.receipt_id}/labels">Etykieta</a>`:'—'}</td></tr>`;
   }).join('');
   const body=`${navTabs('receipts')}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Przyjęcie towaru</h1><p class="muted">Każda przyjęta belka ma osobny wiersz z datą i rzeczywistymi parametrami.</p></div></div><form method="get" action="/finishing/receipts" class="shipment-list-filters"><label class="shipment-list-search">Szukaj<input name="q" value="${V.esc(q)}" placeholder="Symbol, klient, LOT, numer PM lub belki"></label><button class="primary">Szukaj</button><a class="button" href="/finishing/receipts">Wyczyść</a></form><div class="panel scroll"><table class="listing compact finishing-receipts-list"><thead><tr><th>Data przyjęcia</th><th>Wykończalnia</th><th>Symbol surowy</th><th>Symbol handlowy</th><th>PM</th><th>LOT z wykończalni</th><th>Belka</th><th>Gramatura rzeczywista</th><th>Szerokość rzeczywista</th><th>Kontrola</th><th>mb</th><th>kg</th><th>Komentarz do partii</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="14">Brak przyjętych belek.</td></tr>'}</tbody></table></div>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Przyjęcie towaru',body});
+}
+function lostPage(ctx) {
+  const canManage=editableRoles.includes(ctx.req.user.role);
+  const rows=ctx.db.prepare(`SELECT i.*,b.finishing_lot,b.sent_at,o.created_at order_created_at,o.source_shipment_no,
+      s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence
+    FROM finishing_incidents i JOIN finishing_batches b ON b.id=i.batch_id JOIN finishing_orders o ON o.id=i.order_id
+    LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
+    WHERE i.auto_generated=1 AND i.incident_type='lost' ORDER BY i.created_at DESC,i.id DESC`).all();
+  const pm=row=>row.article_sequence?`PM ${articleNo({sequence:row.shipment_sequence},{sequence:row.article_sequence})}`:`PM ${row.source_shipment_no||'—'}`;
+  const rowsHtml=rows.map(row=>{
+    const action=(kind,label,doneAt)=>doneAt?`<span class="badge approved">${label}</span>`:canManage?`<form method="post" action="/finishing/lost/${row.id}/${kind}">${hidden('csrf',ctx.req.session.csrf)}<button class="button${kind==='found'?'':' primary'}">${label}</button></form>`:'<span class="muted">Oczekuje</span>';
+    return `<tr><td>${row.lost_pieces} szt.</td><td>${money(row.lost_weight_kg)} kg</td><td><a class="finishing-order-pm" href="/finishing/orders/${row.order_id}">${V.esc(pm(row))}</a></td><td>${V.esc(row.finishing_lot||'—')}</td><td>${V.datepl(row.order_created_at)}</td><td>${V.datepl(row.created_at)}</td><td class="finishing-lost-actions">${action('found','Odnaleziona',row.found_at)}${action('settle','Rozliczona z wykańczalnią',row.settled_at)}</td></tr>`;
+  }).join('');
+  const body=`${navTabs('lost')}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Zagubione/zniszczone</h1><p class="muted">Braki są dopisywane automatycznie po zamknięciu przyjęcia partii.</p></div></div><div class="panel scroll"><table class="listing compact finishing-lost-list"><thead><tr><th>Brak</th><th>Masa</th><th>PM</th><th>Nr zlecenia</th><th>Data zlecenia</th><th>Data przyjęcia</th><th>Akcje</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="7">Brak zagubionych lub zniszczonych sztuk.</td></tr>'}</tbody></table></div>`;
+  return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Zagubione/zniszczone',body});
 }
 function recipeForm(ctx,recipe=null,initialRawSymbol='') {
   const plantList=plants(ctx.db),rawArticles=ctx.db.prepare("SELECT DISTINCT a.symbol,r.payload FROM articles a LEFT JOIN records r ON r.id=a.active_spec WHERE trim(a.symbol)<>'' ORDER BY a.symbol COLLATE NOCASE").all().map(article=>{
@@ -858,6 +885,10 @@ function handle(ctx) {
     const width=number(form.actual_width_cm),grammage=number(form.actual_grammage);
     if(width!==null&&width<=0||grammage!==null&&grammage<=0)fail(400,'Szerokość i gramatura muszą być większe od zera.');
     if(modalReceipt&&(!width||!grammage))fail(400,'Wpisz zmierzoną szerokość i gramaturę.');
+    const order=orderRecord(db,batch.order_id);let savedRecipe={};try{savedRecipe=JSON.parse(order?.recipe_snapshot||'{}')}catch{}
+    const recipeDetails=savedRecipe.details||{};
+    const grammageStatus=parameterStatus(grammage,order?.target_grammage,recipeDetails.grammageMinus,recipeDetails.grammagePlus);
+    const widthStatus=parameterStatus(width,order?.target_width_cm,recipeDetails.widthMinus,recipeDetails.widthPlus);
     const colorStatus=['ok','not_ok'].includes(form.color_status)?form.color_status:'',stiffeningStatus=['ok','not_ok'].includes(form.stiffening_status)?form.stiffening_status:'';
     if(modalReceipt&&(!colorStatus||!stiffeningStatus||!['ok','not_ok'].includes(form.rubbing_status)))fail(400,'Uzupełnij checklistę koloru, usztywnienia i wydrapania.');
     const enteredFinishedWeight=number(form.finished_weight_kg);
@@ -865,17 +896,45 @@ function handle(ctx) {
     const totalWeight=enteredFinishedWeight!==null?Math.round(enteredFinishedWeight*100)/100:measureWeight?Math.round(weights.reduce((sum,value)=>sum+value,0)*100)/100:0,totalMeters=measureMeters?Math.round(meters.reduce((sum,value)=>sum+value,0)*100)/100:0,finishedPieces=measureMeters?meters.length:weights.length;
     if(finishedPieces<1)fail(400,'Dodaj co najmniej jedną belkę z wybranym pomiarem.');
     const receiptId=transaction(()=>{
-      const result=db.prepare(`INSERT INTO finishing_receipts(batch_id,received_at,raw_pieces_received,finished_pieces,finished_weight_kg,finished_meters,actual_color,actual_stiffening,color_status,stiffening_status,actual_width_cm,actual_grammage,rubbing_status,notes,created_at,created_by)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(batchId,receivedAt,rawReceived,finishedPieces,totalWeight,totalMeters,text(form,'actual_color',160),text(form,'actual_stiffening',160),colorStatus,stiffeningStatus,width,grammage,['ok','not_ok'].includes(form.rubbing_status)?form.rubbing_status:'',text(form,'notes',3000),now(),req.user.id);
+      const cumulative=db.prepare(`SELECT coalesce(sum(r.raw_pieces_received),0) pieces,coalesce(sum(r.finished_weight_kg),0) weight
+        FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=?`).get(batch.order_id);
+      const ordered=db.prepare('SELECT coalesce(sum(sent_pieces),0) pieces,coalesce(sum(raw_weight_kg),0) weight FROM finishing_batches WHERE order_id=?').get(batch.order_id);
+      if(Number(ordered.pieces)>0&&Number(cumulative.pieces)+rawReceived>Number(ordered.pieces))fail(400,'Odebrane sztuki przekraczają liczbę sztuk zleconych w PM.');
+      if(Number(ordered.weight)>0&&Number(cumulative.weight)+totalWeight>Number(ordered.weight)+0.001)fail(400,`Suma odebranych kg z przyjęć przekroczyłaby zlecone ${money(ordered.weight)} kg.`);
+      const result=db.prepare(`INSERT INTO finishing_receipts(batch_id,received_at,raw_pieces_received,finished_pieces,finished_weight_kg,finished_meters,actual_color,actual_stiffening,color_status,stiffening_status,actual_width_cm,actual_grammage,width_status,grammage_status,rubbing_status,notes,created_at,created_by)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(batchId,receivedAt,rawReceived,finishedPieces,totalWeight,totalMeters,text(form,'actual_color',160),text(form,'actual_stiffening',160),colorStatus,stiffeningStatus,width,grammage,widthStatus,grammageStatus,['ok','not_ok'].includes(form.rubbing_status)?form.rubbing_status:'',text(form,'notes',3000),now(),req.user.id);
       const id=Number(result.lastInsertRowid),insert=db.prepare('INSERT INTO finishing_return_bales(receipt_id,sequence,meters,weight_kg) VALUES(?,?,?,?)');
       for(let i=0;i<finishedPieces;i++)insert.run(id,i+1,measureMeters?meters[i]:null,measureWeight?weights[i]:null);
-      if(form.close_batch==='1')db.prepare('UPDATE finishing_batches SET closed_at=?,updated_at=?,updated_by=? WHERE id=?').run(now(),now(),req.user.id,batchId);
+      if(form.close_batch==='1'){
+        const closedAt=now();
+        db.prepare('UPDATE finishing_batches SET closed_at=?,updated_at=?,updated_by=? WHERE id=?').run(closedAt,closedAt,req.user.id,batchId);
+        const totals=db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces,coalesce(sum(finished_weight_kg),0) weight FROM finishing_receipts WHERE batch_id=?').get(batchId);
+        const lostPieces=Math.max(0,Number(batch.sent_pieces||0)-Number(totals.pieces||0));
+        if(lostPieces>0){
+          const lostWeight=Math.max(0,Math.round((Number(batch.raw_weight_kg||0)-Number(totals.weight||0))*100)/100);
+          const description=`Automatycznie po zamknięciu przyjęcia: brak ${lostPieces} szt.${lostWeight>0?` · ${money(lostWeight)} kg`:''}.`;
+          db.prepare(`INSERT OR IGNORE INTO finishing_incidents(order_id,batch_id,incident_type,description,created_at,created_by,auto_generated,lost_pieces,lost_weight_kg)
+            VALUES(?,?,'lost',?,?,?,?,?,?)`).run(batch.order_id,batchId,description,closedAt,req.user.id,1,lostPieces,lostWeight);
+        }
+      }
       updateOrderStatus(ctx,batch.order_id);
       audit(req.user,'Zarejestrowano przyjęcie z wykończalni',null,JSON.stringify({batchId,receiptId,returnedRawPieces:rawReceived,finishedPieces}),null);
       return id;
     });
     const returnTo=modalReceipt&&form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${batch.order_id}#batch-${batchId}`;
     return redirect(req,res,returnTo,'Zapisano przyjęcie belek.');
+  }
+  const lostAction=p.match(/^\/finishing\/lost\/(\d+)\/(found|settle)$/);
+  if(lostAction&&req.method==='POST'){
+    role(req.user,...editableRoles);const id=Number(lostAction[1]),kind=lostAction[2],incident=db.prepare("SELECT * FROM finishing_incidents WHERE id=? AND auto_generated=1 AND incident_type='lost'").get(id);
+    if(!incident)fail(404,'Nie znaleziono wpisu o zagubionych sztukach.');
+    const stamp=now(),column=kind==='found'?'found_at':'settled_at',userColumn=kind==='found'?'found_by':'settled_by';
+    const changed=transaction(()=>{
+      const result=db.prepare(`UPDATE finishing_incidents SET ${column}=?,${userColumn}=? WHERE id=? AND ${column} IS NULL`).run(stamp,req.user.id,id);
+      if(result.changes)audit(req.user,kind==='found'?'Oznaczono brakujące sztuki jako odnalezione':'Oznaczono brakujące sztuki jako rozliczone z wykańczalnią',null,JSON.stringify({incidentId:id,orderId:incident.order_id,batchId:incident.batch_id}),null);
+      return result.changes;
+    });
+    return redirect(req,res,'/finishing/lost',changed?(kind==='found'?'Oznaczono sztuki jako odnalezione.':'Oznaczono sztuki jako rozliczone z wykańczalnią.'):'Ta akcja została już zapisana.');
   }
   const resolveMatch=p.match(/^\/finishing\/incidents\/(\d+)\/resolve$/);
   if(resolveMatch&&req.method==='POST'){
@@ -885,6 +944,7 @@ function handle(ctx) {
     return redirect(req,res,`/finishing/orders/${incident.order_id}`,'Oznaczono problem jako rozwiązany.');
   }
   if(p==='/finishing/receipts'&&req.method==='GET')return send(req,res,200,receiptsPage(ctx));
+  if(p==='/finishing/lost'&&req.method==='GET')return send(req,res,200,lostPage(ctx));
   const labelMatch=p.match(/^\/finishing\/receipts\/(\d+)\/labels$/);
   if(labelMatch&&req.method==='GET')return send(req,res,200,labelPage(ctx,Number(labelMatch[1])),'text/html; charset=utf-8');
   if(p==='/finishing/recipes'&&req.method==='GET')return send(req,res,200,recipesPage(ctx));

@@ -135,6 +135,8 @@ CREATE TABLE IF NOT EXISTS finishing_receipts(
   stiffening_status TEXT NOT NULL DEFAULT '' CHECK(stiffening_status IN ('','ok','not_ok')),
   actual_width_cm REAL,
   actual_grammage REAL,
+  width_status TEXT NOT NULL DEFAULT '' CHECK(width_status IN ('','ok','warning','danger')),
+  grammage_status TEXT NOT NULL DEFAULT '' CHECK(grammage_status IN ('','ok','warning','danger')),
   rubbing_status TEXT NOT NULL DEFAULT '' CHECK(rubbing_status IN ('','ok','not_ok')),
   notes TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
@@ -163,7 +165,14 @@ CREATE TABLE IF NOT EXISTS finishing_incidents(
   created_at TEXT NOT NULL,
   created_by INTEGER REFERENCES users(id),
   resolved_at TEXT,
-  resolved_by INTEGER REFERENCES users(id)
+  resolved_by INTEGER REFERENCES users(id),
+  auto_generated INTEGER NOT NULL DEFAULT 0 CHECK(auto_generated IN (0,1)),
+  lost_pieces INTEGER NOT NULL DEFAULT 0 CHECK(lost_pieces >= 0),
+  lost_weight_kg REAL NOT NULL DEFAULT 0 CHECK(lost_weight_kg >= 0),
+  found_at TEXT,
+  found_by INTEGER REFERENCES users(id),
+  settled_at TEXT,
+  settled_by INTEGER REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS finishing_incidents_order ON finishing_incidents(order_id,status,id);
 

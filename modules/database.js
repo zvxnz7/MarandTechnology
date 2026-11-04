@@ -366,27 +366,47 @@ function migrateV15(db) {
     db.exec('PRAGMA user_version=15; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
 }
+function migrateV16(db) {
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  if(version>=16)return;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const receiptColumns=new Set(db.prepare("PRAGMA table_info('finishing_receipts')").all().map(column=>column.name));
+    for(const column of ['width_status','grammage_status'])if(!receiptColumns.has(column))db.exec(`ALTER TABLE finishing_receipts ADD COLUMN ${column} TEXT NOT NULL DEFAULT '' CHECK(${column} IN ('','ok','warning','danger'))`);
+    const incidentColumns=new Set(db.prepare("PRAGMA table_info('finishing_incidents')").all().map(column=>column.name));
+    const additions=[
+      ['auto_generated','INTEGER NOT NULL DEFAULT 0 CHECK(auto_generated IN (0,1))'],
+      ['lost_pieces','INTEGER NOT NULL DEFAULT 0 CHECK(lost_pieces >= 0)'],
+      ['lost_weight_kg','REAL NOT NULL DEFAULT 0 CHECK(lost_weight_kg >= 0)'],
+      ['found_at','TEXT'],['found_by','INTEGER REFERENCES users(id)'],['settled_at','TEXT'],['settled_by','INTEGER REFERENCES users(id)']
+    ];
+    for(const [column,definition] of additions)if(!incidentColumns.has(column))db.exec(`ALTER TABLE finishing_incidents ADD COLUMN ${column} ${definition}`);
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS finishing_auto_lost_batch ON finishing_incidents(batch_id) WHERE auto_generated=1 AND incident_type='lost' AND batch_id IS NOT NULL; PRAGMA user_version=16; COMMIT");
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+}
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>15)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===15) { db.exec(schema); return; }
-  if(version===14) { migrateV15(db); return; }
-  if(version===13) { migrateV14(db); migrateV15(db); return; }
-  if(version===12) { migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===11) { migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
-  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); return; }
+  if(version>16)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===16) { db.exec(schema); return; }
+  if(version===15) { migrateV16(db); return; }
+  if(version===14) { migrateV15(db); migrateV16(db); return; }
+  if(version===13) { migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===12) { migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===11) { migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===10) { migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===9) { migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===8) { migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===7) { migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===6) { db.exec(schema); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===5) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===4) { db.exec(schema); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
+  if(version===3) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); return; }
   if (dbPath) {
     const backup = `${dbPath}.before-schema2-${Date.now()}.sqlite3`;
     db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
@@ -426,5 +446,6 @@ function migrate(db, dbPath) {
   migrateV13(db);
   migrateV14(db);
   migrateV15(db);
+  migrateV16(db);
 }
 module.exports = { migrate };
