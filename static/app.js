@@ -3,12 +3,13 @@ let dirty=false,submitting=false;
 const correctionParentUrl=document.body?.dataset.correctionParentUrl;
 if(correctionParentUrl&&window.opener&&!window.opener.closed){try{window.opener.location.replace(correctionParentUrl);}catch{}}
 document.querySelectorAll('[data-finishing-batch-delete]').forEach(form=>form.addEventListener('submit',event=>{
- if(!window.confirm('Usunąć tę pustą dodatkową specyfikację?'))event.preventDefault();
+ const batchLabel=form.dataset.batchLabel||'tej partii';
+ if(!window.confirm(`Usunąć ${batchLabel}? Zapisane przyjęcia i dane belek z tej partii zostaną usunięte. Wpis audytowy pozostanie, a zgłoszone problemy zostaną zachowane i odłączone od partii.`))event.preventDefault();
 }));
 document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
  const matchingRemoveForm=()=>[...form.closest('.finishing-order-lot-list')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);
- const updateRemoveForm=()=>{const removeForm=matchingRemoveForm();if(!removeForm)return;if(lastSaved){removeForm.hidden=true;return;}const button=removeForm.querySelector('button');if(button)button.disabled=input.value.trim()!==lastSaved;};
+ const updateRemoveForm=()=>{const removeForm=matchingRemoveForm();if(!removeForm)return;removeForm.hidden=false;const button=removeForm.querySelector('button');if(button)button.disabled=saving||input.value.trim()!==lastSaved;};
  const save=async()=>{
   const value=input.value.trim();if(!value||value===lastSaved)return;if(saving){queued=true;return;}saving=true;
   try{
@@ -382,6 +383,24 @@ document.querySelectorAll('[data-open-dialog]').forEach(button=>button.addEventL
  if(!dialog)return;
  if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
 }));
+document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
+ const handle=dialog.querySelector('[data-dialog-drag-handle]');if(!handle)return;
+ let drag=null;
+ handle.addEventListener('pointerdown',event=>{
+  if(event.button!==0||event.target.closest('button,input,a,label'))return;
+  const rect=dialog.getBoundingClientRect();
+  dialog.style.position='fixed';dialog.style.inset='auto';dialog.style.margin='0';dialog.style.left=`${rect.left}px`;dialog.style.top=`${rect.top}px`;
+  drag={x:event.clientX,y:event.clientY,left:rect.left,top:rect.top};
+  try{handle.setPointerCapture(event.pointerId)}catch{}
+ });
+ handle.addEventListener('pointermove',event=>{
+  if(!drag)return;
+  const left=Math.max(0,Math.min(window.innerWidth-dialog.offsetWidth,drag.left+event.clientX-drag.x));
+  const top=Math.max(0,Math.min(window.innerHeight-dialog.offsetHeight,drag.top+event.clientY-drag.y));
+  dialog.style.left=`${left}px`;dialog.style.top=`${top}px`;
+ });
+ const stop=()=>{drag=null;};handle.addEventListener('pointerup',stop);handle.addEventListener('pointercancel',stop);
+});
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  const list=form.querySelector('[data-receipt-bale-list]'),template=form.querySelector('[data-receipt-bale-template]'),metersToggle=form.querySelector('[data-receipt-measure-meters]'),weightToggle=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received;
@@ -436,7 +455,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(!summaryDirty)summary.value=textForValues(rowData);
   const meterTotal=meterValues.reduce((sum,v)=>sum+v,0),weightTotal=weightValues.reduce((sum,v)=>sum+v,0);
   form.querySelector('[data-receipt-total-meters]').textContent=useMeters&&meterValues.length?`${fmt(meterTotal)} mb`:'—';
-  form.querySelector('[data-receipt-summary-total-weight]').textContent=useWeight&&weightValues.length?`${fmt(weightTotal)} kg`:'—';
+  const receivedWeightSummary=form.querySelector('[data-receipt-summary-total-weight]');if(receivedWeightSummary)receivedWeightSummary.textContent=useWeight&&weightValues.length?`${fmt(weightTotal)} kg`:'—';
   form.querySelector('[data-receipt-total-weight]').textContent=useWeight&&weightValues.length?`${fmt(weightTotal)} kg`:'—';
   const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value);
   const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&returned>=0?rawWeight*Math.min(returned/sentPieces,1)*100000/(planGrammage*planWidth):0;
