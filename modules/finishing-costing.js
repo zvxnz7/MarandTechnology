@@ -19,7 +19,9 @@ function importWorkbook(db,buffer,sourceName,userId,now){
 function latestImport(db){return db.prepare('SELECT * FROM finishing_calculation_imports ORDER BY imported_at DESC,id DESC LIMIT 1').get()||null;}
 function priceFor(db,importId,rawSymbol){
   if(!importId||!rawSymbol)return null;
-  return db.prepare('SELECT * FROM finishing_calculation_prices WHERE import_id=? AND raw_symbol_key=?').get(importId,normalizeSymbol(rawSymbol))||null;
+  const key=normalizeSymbol(rawSymbol),direct=db.prepare('SELECT * FROM finishing_calculation_prices WHERE import_id=? AND raw_symbol_key=?').get(importId,key);
+  if(direct)return direct;
+  return db.prepare('SELECT * FROM finishing_calculation_prices WHERE import_id=?').all(importId).find(row=>normalizeSymbol(row.raw_symbol)===key)||null;
 }
 function batchRecord(db,batchId){
   return db.prepare(`SELECT b.*,o.raw_symbol,o.trade_symbol,o.client_name,o.status order_status,o.order_type,o.shipment_article_id,
