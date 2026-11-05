@@ -395,6 +395,28 @@ if(sourceImportUpload){
  });
  applyForm?.addEventListener('submit',()=>{const button=applyForm.querySelector('button[type="submit"],button:not([type])');if(button){button.disabled=true;button.textContent='Tworzenie kopii i import danych…';}});
 }
+const finishingCalculationUpload=document.querySelector('form[data-finishing-calculation-upload]');
+if(finishingCalculationUpload){
+ const fileInput=finishingCalculationUpload.querySelector('[data-finishing-calculation-file]'),status=finishingCalculationUpload.querySelector('[data-finishing-calculation-upload-status]'),button=finishingCalculationUpload.querySelector('[data-finishing-calculation-upload-button]');
+ finishingCalculationUpload.addEventListener('submit',async event=>{
+  event.preventDefault();const file=fileInput.files?.[0];if(!file)return;
+  if(file.size>25*1024*1024){status.textContent='Plik przekracza limit 25 MB.';return;}
+  button.disabled=true;status.textContent='Wczytuję ceny i sprawdzam arkusz…';
+  try{
+   const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,Math.min(offset+32768,bytes.length)));
+   const response=await fetch('/finishing/calculations/import',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':finishingCalculationUpload.dataset.csrf},body:JSON.stringify({name:file.name,file_base64:btoa(binary)})});
+   const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się wczytać kalkulacji.');
+   status.textContent=`Wczytano ${result.imported.item_count} symboli z arkusza ${result.imported.sheet}.`;location.reload();
+  }catch(error){status.textContent=error.message;}
+  finally{button.disabled=false;}
+ });
+}
+document.querySelectorAll('form[data-finishing-settlement-form]').forEach(form=>{
+ const all=form.querySelector('[data-finishing-settlement-all]'),hiddenIds=form.querySelector('[data-finishing-settlement-ids]'),selection=form.querySelector('[data-finishing-settlement-selection]'),checks=[...form.querySelectorAll('[data-finishing-settlement-select]:not(:disabled)')];
+ const update=()=>{const selected=checks.filter(input=>input.checked);if(hiddenIds)hiddenIds.value=selected.map(input=>input.value).join(',');if(selection)selection.textContent=selected.length?`Wybrano ${selected.length} zleceń barwiarskich.`:'Wybierz zlecenia barwiarskie.';if(all){all.checked=checks.length>0&&selected.length===checks.length;all.indeterminate=selected.length>0&&selected.length<checks.length;}};
+ all?.addEventListener('change',()=>{for(const input of checks)input.checked=all.checked;update();});for(const input of checks)input.addEventListener('change',update);
+ form.addEventListener('submit',event=>{update();if(!hiddenIds?.value){event.preventDefault();selection?.classList.add('is-error');selection?.focus?.();}});update();
+});
 document.querySelectorAll('form[data-inherited-values]').forEach(form=>form.querySelectorAll('input:not([type=hidden]),textarea').forEach(control=>{
   if(control.value.trim())control.classList.add('inherited-value');
   control.addEventListener('input',()=>control.classList.remove('inherited-value'));

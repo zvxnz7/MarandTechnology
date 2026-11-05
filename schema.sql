@@ -106,6 +106,8 @@ CREATE INDEX IF NOT EXISTS finishing_order_bales_order ON finishing_order_bales(
 CREATE TABLE IF NOT EXISTS finishing_batches(
   id INTEGER PRIMARY KEY,
   order_id INTEGER NOT NULL REFERENCES finishing_orders(id) ON DELETE CASCADE,
+  correction_of_batch_id INTEGER REFERENCES finishing_batches(id),
+  complaint_status TEXT NOT NULL DEFAULT 'normal' CHECK(complaint_status IN ('normal','reklamowana','poprawiona')),
   finishing_lot TEXT NOT NULL DEFAULT '',
   sent_at TEXT NOT NULL,
   sent_pieces INTEGER NOT NULL CHECK(sent_pieces >= 0),
@@ -128,6 +130,8 @@ CREATE TABLE IF NOT EXISTS finishing_receipts(
   raw_pieces_received INTEGER NOT NULL DEFAULT 0 CHECK(raw_pieces_received >= 0),
   finished_pieces INTEGER NOT NULL DEFAULT 0 CHECK(finished_pieces >= 0),
   finished_weight_kg REAL NOT NULL DEFAULT 0 CHECK(finished_weight_kg >= 0),
+  used_weight_kg REAL NOT NULL DEFAULT 0 CHECK(used_weight_kg >= 0),
+  settlement_unit TEXT NOT NULL DEFAULT 'mb' CHECK(settlement_unit IN ('mb','kg')),
   finished_meters REAL NOT NULL DEFAULT 0 CHECK(finished_meters >= 0),
   actual_color TEXT NOT NULL DEFAULT '',
   actual_stiffening TEXT NOT NULL DEFAULT '',
@@ -188,3 +192,67 @@ CREATE TABLE IF NOT EXISTS finishing_import_runs(
   imported_at TEXT NOT NULL,
   imported_by INTEGER REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS finishing_calculation_imports(
+  id INTEGER PRIMARY KEY,
+  source_name TEXT NOT NULL,
+  digest TEXT NOT NULL UNIQUE,
+  imported_at TEXT NOT NULL,
+  imported_by INTEGER REFERENCES users(id),
+  item_count INTEGER NOT NULL DEFAULT 0 CHECK(item_count >= 0)
+);
+CREATE INDEX IF NOT EXISTS finishing_calculation_imports_date ON finishing_calculation_imports(imported_at DESC,id DESC);
+
+CREATE TABLE IF NOT EXISTS finishing_calculation_prices(
+  id INTEGER PRIMARY KEY,
+  import_id INTEGER NOT NULL REFERENCES finishing_calculation_imports(id) ON DELETE CASCADE,
+  raw_symbol TEXT NOT NULL,
+  raw_symbol_key TEXT NOT NULL,
+  article_name TEXT NOT NULL DEFAULT '',
+  current_price REAL CHECK(current_price IS NULL OR current_price >= 0),
+  theoretical_price REAL CHECK(theoretical_price IS NULL OR theoretical_price >= 0),
+  current_error TEXT NOT NULL DEFAULT '',
+  theoretical_error TEXT NOT NULL DEFAULT '',
+  UNIQUE(import_id,raw_symbol_key)
+);
+CREATE INDEX IF NOT EXISTS finishing_calculation_prices_symbol ON finishing_calculation_prices(raw_symbol_key,import_id);
+
+CREATE TABLE IF NOT EXISTS finishing_settlements(
+  id INTEGER PRIMARY KEY,
+  batch_id INTEGER NOT NULL UNIQUE REFERENCES finishing_batches(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','settled','changed')),
+  invoice_note TEXT NOT NULL DEFAULT '',
+  calculation_import_id INTEGER REFERENCES finishing_calculation_imports(id),
+  raw_symbol TEXT NOT NULL DEFAULT '',
+  trade_symbol TEXT NOT NULL DEFAULT '',
+  raw_price_per_kg REAL CHECK(raw_price_per_kg IS NULL OR raw_price_per_kg >= 0),
+  theoretical_raw_price_per_kg REAL CHECK(theoretical_raw_price_per_kg IS NULL OR theoretical_raw_price_per_kg >= 0),
+  raw_price_override INTEGER NOT NULL DEFAULT 0 CHECK(raw_price_override IN (0,1)),
+  theoretical_price_override INTEGER NOT NULL DEFAULT 0 CHECK(theoretical_price_override IN (0,1)),
+  used_weight_kg REAL NOT NULL DEFAULT 0 CHECK(used_weight_kg >= 0),
+  finishing_cost REAL NOT NULL DEFAULT 0 CHECK(finishing_cost >= 0),
+  output_quantity REAL NOT NULL DEFAULT 0 CHECK(output_quantity >= 0),
+  output_unit TEXT NOT NULL DEFAULT 'mb' CHECK(output_unit IN ('mb','kg')),
+  raw_cost_total REAL NOT NULL DEFAULT 0 CHECK(raw_cost_total >= 0),
+  actual_cost_total REAL NOT NULL DEFAULT 0 CHECK(actual_cost_total >= 0),
+  theoretical_cost_total REAL NOT NULL DEFAULT 0 CHECK(theoretical_cost_total >= 0),
+  actual_unit_cost REAL,
+  theoretical_unit_cost REAL,
+  version INTEGER NOT NULL DEFAULT 1 CHECK(version > 0),
+  updated_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  approved_at TEXT,
+  approved_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_settlements_status ON finishing_settlements(status,updated_at DESC,id DESC);
+
+CREATE TABLE IF NOT EXISTS finishing_settlement_history(
+  id INTEGER PRIMARY KEY,
+  settlement_id INTEGER NOT NULL REFERENCES finishing_settlements(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('draft_saved','approved','changed')),
+  snapshot TEXT NOT NULL,
+  changed_at TEXT NOT NULL,
+  changed_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS finishing_settlement_history_settlement ON finishing_settlement_history(settlement_id,version DESC,id DESC);

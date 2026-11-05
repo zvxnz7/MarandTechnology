@@ -18,6 +18,7 @@ const DatabaseSnapshot = require('./modules/database-snapshot');
 const Production = require('./modules/production');
 const Warehouse = require('./modules/warehouse');
 const Finishing = require('./modules/finishing');
+const FinishingCosting = require('./modules/finishing-costing');
 
 const ROOT = __dirname;
 const DATA = path.resolve(process.env.MARAND_DATA || path.join(ROOT, 'data'));
@@ -779,6 +780,26 @@ async function handle(req, res) {
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 400;
         return send(req, res, status, JSON.stringify({ ok: false, error: error.message || 'Nie udało się sprawdzić paczki.' }), 'application/json; charset=utf-8');
+      }
+    }
+    if (p === '/finishing/calculations/import' && req.method === 'POST') {
+      try {
+        if (!req.user || !req.user.active) return send(req, res, 401, JSON.stringify({ ok:false,error:'Zaloguj się ponownie.' }), 'application/json; charset=utf-8');
+        role(req.user, 'admin', 'approver');
+        if (!validCsrfToken(req.session.csrf, req.headers['x-csrf-token'])) fail(400, 'Sesja formularza wygasła. Odśwież stronę.');
+        if (fs.existsSync(path.join(DATA, 'maintenance.json'))) fail(503, 'Trwa aktualizacja programu. Spróbuj ponownie po jej zakończeniu.');
+        const body=await readImportBody(req);let payload;
+        try{payload=JSON.parse(body.toString('utf8'));}catch{fail(400,'Nieprawidłowe dane przesłania pliku.');}
+        const base64=String(payload?.file_base64||'');
+        if(!base64||base64.length>34*1024*1024||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))fail(400,'Nieprawidłowe dane pliku Excel.');
+        const bytes=Buffer.from(base64,'base64');
+        if(!bytes.length||bytes.length>25*1024*1024)fail(413,'Plik Excel przekracza limit 25 MB.');
+        const imported=transaction(()=>FinishingCosting.importWorkbook(db,bytes,String(payload?.name||'kalkulacja.xlsx'),req.user.id,now()));
+        audit(req.user,'Wczytano kalkulację kosztów wykańczania',null,JSON.stringify({importId:imported.id,sourceName:imported.source_name,itemCount:imported.item_count,duplicates:imported.duplicate_count,digest:imported.digest}),null);
+        return send(req,res,200,JSON.stringify({ok:true,imported}), 'application/json; charset=utf-8');
+      }catch(error){
+        const status=error.status||400;
+        return send(req,res,status,JSON.stringify({ok:false,error:error.message||'Nie udało się wczytać kalkulacji.'}),'application/json; charset=utf-8');
       }
     }
     if (req.method === 'POST' && !p.startsWith('/static/')) {

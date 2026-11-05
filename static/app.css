@@ -662,3 +662,35 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-submit{min-height:38px;padding-inline:16px;white-space:nowrap}
 @media(max-width:760px){.finishing-order-data-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.finishing-order-data-grid{grid-template-columns:1fr}.finishing-order-data-grid>.finishing-additional-notes{grid-column:1}.finishing-recipe-search-actions{flex-wrap:wrap}.finishing-order-submit{flex:1 0 100%}}
+.finishing-calculation-import{margin:12px 0 16px}
+.finishing-calculation-import form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:10px 0}
+.finishing-calculation-import form label{min-width:min(340px,100%);flex:1}
+.finishing-calculation-import [data-finishing-calculation-upload-status]{min-width:180px}
+.finishing-settlements-list{min-width:1500px}
+.finishing-settlement-pm-row th{padding:12px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:14px}
+.finishing-settlement-pm-status{float:right;margin-left:12px}
+.finishing-settlement-order-row td{vertical-align:top}
+.finishing-settlement-order-row.is-replaced{opacity:.68}
+.finishing-cost-input{width:118px;min-width:90px;padding:6px 7px;font-size:12px}
+.finishing-settlement-order-row td:nth-child(1){width:34px;text-align:center}
+.finishing-settlement-order-row td:nth-child(11){min-width:190px}
+.finishing-settlement-order-row td:nth-child(12){min-width:145px}
+.finishing-cost-history{margin-top:6px;font-size:11px}
+.finishing-cost-history>summary{cursor:pointer;color:#175eb0}
+.finishing-cost-history table{min-width:700px}
+.finishing-settlement-actions{position:sticky;bottom:0;z-index:3;padding:10px;background:#fff;border-top:1px solid #dfe3e7}
+.finishing-settlement-actions [data-finishing-settlement-selection]{margin-left:auto}
+.finishing-settlement-actions [data-finishing-settlement-selection].is-error{color:#b42318;font-weight:700}
+.finishing-batch-card>.actions{align-items:center;margin:8px 0}
+.finishing-batch-card>.actions form{margin:0}
+.finishing-receipt-edit{margin-top:7px;min-width:190px;font-size:12px}
+.finishing-receipt-edit>summary{cursor:pointer;color:#175eb0}
+.finishing-receipt-edit form{display:grid;gap:7px;margin-top:8px;padding:9px;background:#f7f8fa;border:1px solid #e1e5e9;border-radius:6px}
+.finishing-receipt-edit label{display:grid;gap:4px}
+.finishing-receipt-edit input,.finishing-receipt-edit textarea{width:100%;min-width:155px}
+.finishing-correction-note{display:flex;flex-direction:column;gap:4px}
+.finishing-correction-note span{font-size:12px}
+.finishing-cost-report{padding:12px}
+.finishing-cost-report .pagehead{align-items:center}
+.finishing-cost-report table{min-width:1050px}
+@media(max-width:700px){.finishing-calculation-import form{align-items:stretch;flex-direction:column}.finishing-settlement-actions{flex-wrap:wrap}.finishing-settlement-actions [data-finishing-settlement-selection]{flex-basis:100%;margin-left:0}}
