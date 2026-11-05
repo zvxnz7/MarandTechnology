@@ -75,7 +75,7 @@ function parseMoney(value) {
   if(!raw)return {value:null,error:'Brak wartości'};
   const parsed=Number(raw);
   if(!Number.isFinite(parsed)||parsed<0)return {value:null,error:'Nieprawidłowa wartość'};
-  return {value:parsed,error:''};
+  return {value:Math.round(parsed*100)/100,error:''};
 }
 
 function readCalculationWorkbook(buffer) {
