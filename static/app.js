@@ -431,7 +431,7 @@ const recalculateSettlementRow=row=>{
  const recalculate=()=>{
   const values=Object.fromEntries(Object.entries(controls).map(([key,input])=>[key,input?.value.trim()===''?null:Number(String(input?.value||'').replace(',','.'))]));
   if(!(qty>0)||Object.values(values).some(value=>value===null||!Number.isFinite(value))){actual.textContent='—';theory.textContent='';delta.textContent='';return;}
-  const actualCost=((values.used*values.price)+values.finishing)/qty,theoreticalCost=((values.used*values.theoretical)+values.finishing)/qty;
+  const actualCost=(values.used*(values.price+values.finishing))/qty,theoreticalCost=(values.used*(values.theoretical+values.finishing))/qty;
   actual.textContent=`${format(actualCost)} zł/${unit}`;theory.textContent=`Teoria ${format(theoreticalCost)} zł/${unit}`;
   const previous=String(row.dataset.previousActual||'').trim()===''?NaN:Number(row.dataset.previousActual);delta.textContent=Number.isFinite(previous)?`Różnica: ${format(actualCost-previous)} zł/${unit}`:'';
  };
