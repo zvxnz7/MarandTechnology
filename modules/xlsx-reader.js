@@ -66,6 +66,9 @@ function parseSheet(xml,sharedStrings=[]) {
 function normalizeHeader(value) {
   return String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
 }
+function normalizeSymbol(value) {
+  return normalizeHeader(value).replace(/\//g,'(').replace(/\s+/g,'');
+}
 function parseMoney(value) {
   if(value&&typeof value==='object'&&value.error)return {value:null,error:value.error};
   const raw=String(value??'').trim().replace(/\s/g,'').replace(',','.');
@@ -102,7 +105,7 @@ function readCalculationWorkbook(buffer) {
   const rows=[],seen=new Set();let duplicateCount=0;
   for(const row of selected.rows.slice(header+1)){
     const rawSymbol=String(row[indexes.symbol]??'').trim();if(!rawSymbol)continue;
-    const key=normalizeHeader(rawSymbol).replace(/\s/g,'');if(seen.has(key)){duplicateCount++;continue;}seen.add(key);
+    const key=normalizeSymbol(rawSymbol);if(seen.has(key)){duplicateCount++;continue;}seen.add(key);
     const current=parseMoney(row[indexes.current]),theoretical=parseMoney(row[indexes.theoretical]);
     rows.push({raw_symbol:rawSymbol,raw_symbol_key:key,article_name:indexes.name>=0?String(row[indexes.name]??'').trim():'',current_price:current.value,theoretical_price:theoretical.value,current_error:current.error,theoretical_error:theoretical.error});
   }

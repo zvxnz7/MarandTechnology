@@ -3,7 +3,7 @@
 const crypto=require('node:crypto');
 const XlsxReader=require('./xlsx-reader');
 
-const normalizeSymbol=value=>String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'').trim();
+const normalizeSymbol=value=>String(value||'').toLocaleLowerCase('pl-PL').replace(/\//g,'(').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'').trim();
 const round2=value=>Math.round((Number(value)||0)*100)/100;
 
 function importWorkbook(db,buffer,sourceName,userId,now){
