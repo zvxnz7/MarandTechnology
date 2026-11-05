@@ -633,6 +633,16 @@ document.querySelectorAll('[data-finishing-notes-editor]').forEach(editor=>{
  const bold=editor.querySelector('[data-finishing-notes-bold]'),underline=editor.querySelector('[data-finishing-notes-underline]'),italic=editor.querySelector('[data-finishing-notes-italic]'),size=editor.querySelector('[data-finishing-notes-size]');
  if(!content||!value)return;
  const allowedSizes=[14,16,18,20,24,28];let savedRange=null;
+ const noteText=value=>{
+  if(typeof value==='string'||typeof value==='number')return String(value).replace(/\[object Object\]/g,'');
+  if(Array.isArray(value))return value.map(noteText).join('');
+  if(value&&typeof value==='object'){
+   if(typeof value.text==='string')return noteText(value.text);
+   if(typeof value.value==='string')return noteText(value.value);
+   if(Array.isArray(value.runs))return value.runs.map(run=>noteText(run?.text??run)).join('');
+  }
+  return '';
+ };
  const captureSelection=()=>{const selection=window.getSelection();if(selection?.rangeCount&&content.contains(selection.anchorNode))savedRange=selection.getRangeAt(0).cloneRange();};
  const restoreSelection=()=>{content.focus();if(savedRange){const selection=window.getSelection();selection.removeAllRanges();selection.addRange(savedRange);}};
  const runs=[];
@@ -657,7 +667,7 @@ document.querySelectorAll('[data-finishing-notes-editor]').forEach(editor=>{
    if(run.bold){const strong=document.createElement('strong');node.appendChild(strong);node=strong;}
    if(run.underline){const u=document.createElement('u');node.appendChild(u);node=u;}
    if(run.italic){const em=document.createElement('em');node.appendChild(em);node=em;}
-   String(run.text||'').split('\n').forEach((line,index)=>{if(index)node.appendChild(document.createElement('br'));if(line)node.appendChild(document.createTextNode(line));});content.appendChild(span);
+   noteText(run.text).split('\n').forEach((line,index)=>{if(index)node.appendChild(document.createElement('br'));if(line)node.appendChild(document.createTextNode(line));});content.appendChild(span);
   }
  };
  const commands=[[bold,'bold'],[underline,'underline'],[italic,'italic']];

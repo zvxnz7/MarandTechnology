@@ -22,12 +22,22 @@ const dateOnlyPl = value => String(V.datepl(value)||'—').split(',')[0];
 const normalizeSearch = value => String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');
 const RECIPE_NOTES_FORMAT='marand-finishing-notes-v1';
 const RECIPE_NOTES_SIZES=[14,16,18,20,24,28];
+function recipeNoteText(value) {
+  if(typeof value==='string'||typeof value==='number')return String(value).replace(/\[object Object\]/g,'').replace(/UWAGA:\s*INNY LOT PRZĘDZY NIŻ W ZLECENI[EA] FARBIARSKIEGO\s*(?:-\s*zmienna w ostatniej partii\s*)?NR\s*([\d./-]+)/giu,'UWAGA: INNY LOT PRZĘDZY NIŻ W ZLECENIU FARBIARSKIM NR $1');
+  if(Array.isArray(value))return value.map(recipeNoteText).join('');
+  if(value&&typeof value==='object'){
+    if(typeof value.text==='string')return recipeNoteText(value.text);
+    if(typeof value.value==='string')return recipeNoteText(value.value);
+    if(Array.isArray(value.runs))return value.runs.map(run=>recipeNoteText(run?.text??run)).join('');
+  }
+  return '';
+}
 function recipeNotesData(value='') {
-  let parsed;try{parsed=JSON.parse(String(value||''));}catch{}
-  if(parsed?.format!==RECIPE_NOTES_FORMAT||!Array.isArray(parsed.runs))parsed={runs:[{text:String(value||''),underline:false,italic:false,size:16}]};
+  let parsed=value&&typeof value==='object'?value:undefined;try{if(!parsed)parsed=JSON.parse(String(value||''));}catch{}
+  if(parsed?.format!==RECIPE_NOTES_FORMAT||!Array.isArray(parsed.runs))parsed={runs:[{text:recipeNoteText(value),underline:false,italic:false,size:16}]};
   let remaining=5000;
   const runs=parsed.runs.slice(0,1000).map(run=>{
-    const text=String(run?.text||'').slice(0,remaining);remaining-=text.length;
+    const text=recipeNoteText(run?.text).slice(0,remaining);remaining-=text.length;
     return {text,bold:Boolean(run?.bold),underline:Boolean(run?.underline),italic:Boolean(run?.italic),size:RECIPE_NOTES_SIZES.includes(Number(run?.size))?Number(run.size):16};
   }).filter(run=>run.text);
   return {format:RECIPE_NOTES_FORMAT,runs};
@@ -775,8 +785,8 @@ function handle(ctx) {
       if(recipe){
         const previousProduction=lastProductionPreview(db,currentSource,recipe);
         if(previousProduction.lotChanged&&previousProduction.previousLot){
-          const previousOrderReference=previousProduction.finishingOrder?`zlecenia farbiarskiego nr ${previousProduction.finishingOrder}`:'ostatniego zlecenia farbiarskiego';
-          orderNotes=appendRecipeNote(orderNotes,`UWAGA: INNY LOT PRZĘDZY NIŻ W ${previousOrderReference.toLocaleUpperCase('pl-PL')}. WYKONAĆ KOREKTĘ KOLORU.`);
+          const previousOrderInReference=previousProduction.finishingOrder?`zleceniu farbiarskim nr ${previousProduction.finishingOrder}`:'ostatnim zleceniu farbiarskim';
+          orderNotes=appendRecipeNote(orderNotes,`UWAGA: INNY LOT PRZĘDZY NIŻ W ${previousOrderInReference.toLocaleUpperCase('pl-PL')}. WYKONAĆ KOREKTĘ KOLORU.`);
         }
       }
       const result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_id,recipe_snapshot,target_color,target_stiffening,target_width_cm,target_grammage,notes,status,created_at,created_by,updated_at,updated_by)
