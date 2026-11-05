@@ -686,10 +686,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6),.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7),.finishing-settlements-list th:nth-child(8),.finishing-settlements-list td:nth-child(8){width:87px}
 .finishing-settlements-list th:nth-child(9),.finishing-settlements-list td:nth-child(9){width:90px}
 .finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10){width:180px}
-.finishing-settlement-pm-row th{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
-.finishing-settlement-pm-status{order:0}
-.finishing-settlement-pm-symbols{order:1;margin-left:2px;font-weight:400}
-.finishing-settlement-pm-row .finishing-order-pm{order:-1}
+.finishing-settlement-pm-row th{padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
+.finishing-settlement-pm-status{display:inline-block;margin-left:9px;vertical-align:middle}
+.finishing-settlement-pm-symbols{display:inline-block;margin-left:9px;font-weight:400;vertical-align:middle}
 .finishing-settlement-order-row td{vertical-align:top}
 .finishing-settlement-order-row.is-replaced{opacity:.68}
 .finishing-cost-input{box-sizing:border-box;width:100%;min-width:0;padding:5px 6px;font-size:12px}
