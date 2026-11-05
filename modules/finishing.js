@@ -603,8 +603,8 @@ function receiptsPage(ctx) {
       const row=item.row,c=item.context,settlement=c?.settlement,output=c?.output||{output_quantity:0,output_unit:'mb',receipt_count:0},price=c?.price;
       const isClosed=Boolean(row.closed_at&&output.receipt_count),replaced=row.complaint_status==='poprawiona',complained=row.complaint_status==='reklamowana';
       const canSelect=isClosed&&!replaced&&!complained&&row.order_status!=='cancelled';
-      const basePrice=settlement?.raw_price_per_kg??price?.current_price??'';
-      const theoretical=settlement?.theoretical_raw_price_per_kg??price?.theoretical_price??'';
+      const rawBasePrice=settlement?.raw_price_per_kg??price?.current_price??'',rawTheoretical=settlement?.theoretical_raw_price_per_kg??price?.theoretical_price??'';
+      const basePrice=rawBasePrice===''?'':Number(rawBasePrice).toFixed(2),theoretical=rawTheoretical===''?'':Number(rawTheoretical).toFixed(2);
       const usedKg=settlement?.used_weight_kg??c?.usedWeight??row.raw_weight_kg??'';
       const pmLabel=row.article_sequence?`PM ${articleNo({sequence:row.shipment_sequence},{sequence:row.article_sequence})}`:`PM ${row.source_shipment_no||'—'}`;
       const state=complained?'<span class="badge archived">Reklamowana</span>':replaced?'<span class="badge approved">Poprawiona</span>':settlement?(settlement.status==='settled'?'<span class="badge approved">Rozliczona</span>':settlement.status==='changed'?'<span class="badge archived">Rozliczona – zmieniona</span>':'<span class="badge submitted">Robocza</span>'):'<span class="badge submitted">Do rozliczenia</span>';

@@ -20,8 +20,8 @@ function latestImport(db){return db.prepare('SELECT * FROM finishing_calculation
 function priceFor(db,importId,rawSymbol){
   if(!importId||!rawSymbol)return null;
   const key=normalizeSymbol(rawSymbol),direct=db.prepare('SELECT * FROM finishing_calculation_prices WHERE import_id=? AND raw_symbol_key=?').get(importId,key);
-  if(direct)return direct;
-  return db.prepare('SELECT * FROM finishing_calculation_prices WHERE import_id=?').all(importId).find(row=>normalizeSymbol(row.raw_symbol)===key)||null;
+  const row=direct||db.prepare('SELECT * FROM finishing_calculation_prices WHERE import_id=?').all(importId).find(item=>normalizeSymbol(item.raw_symbol)===key)||null;
+  return row?{...row,current_price:row.current_price===null?null:round2(row.current_price),theoretical_price:row.theoretical_price===null?null:round2(row.theoretical_price)}:null;
 }
 function batchRecord(db,batchId){
   return db.prepare(`SELECT b.*,o.raw_symbol,o.trade_symbol,o.client_name,o.status order_status,o.order_type,o.shipment_article_id,
