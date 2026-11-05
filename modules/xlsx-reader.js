@@ -67,7 +67,7 @@ function normalizeHeader(value) {
   return String(value||'').toLocaleLowerCase('pl-PL').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
 }
 function normalizeSymbol(value) {
-  return normalizeHeader(value).replace(/\//g,'(').replace(/\s+/g,'');
+  return normalizeHeader(value).replace(/\/([^/]+)\//g,'($1)').replace(/\//g,'(').replace(/\s+/g,'');
 }
 function parseMoney(value) {
   if(value&&typeof value==='object'&&value.error)return {value:null,error:value.error};
