@@ -59,7 +59,8 @@ function settlementRows(db){
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
     LEFT JOIN shipments s ON s.id=sa.shipment_id
-    WHERE o.order_type<>'raw_sale' AND o.status<>'cancelled'
+    WHERE o.order_type<>'raw_sale' AND o.status<>'cancelled' AND b.closed_at IS NOT NULL
+      AND EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id)
     ORDER BY o.created_at DESC,o.id DESC,b.id`).all();
   return rows.map(row=>({row,context:calculationContext(db,row.batch_id)}));
 }
