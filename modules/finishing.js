@@ -316,6 +316,7 @@ function lastProductionPreview(db,source,recipe) {
   const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(recipeNotesText).filter(Boolean);
   const pm=previous.article_sequence?`PM ${articleNo({sequence:previous.shipment_sequence},{sequence:previous.article_sequence})}`:`PM ${previous.source_shipment_no||'—'}`;
   const orderYear=String(previous.sent_at||previous.received_at||'').slice(0,4),finishingOrder=previous.finishing_lot?`${previous.finishing_lot}${orderYear?`/${orderYear}`:''}`:'';
+  const previousOrderReference=finishingOrder?`zlecenia farbiarskiego nr ${finishingOrder}`:'ostatniego zlecenia farbiarskiego';
   const lotComparison=compareLots(currentLots,previous.yarn_lot);
   const issues=[];
   if(symbolIssue)issues.push(symbolIssue);
@@ -331,7 +332,7 @@ function lastProductionPreview(db,source,recipe) {
   for(const item of processChecks){if(item.status==='not_ok')issues.push(`Wymaganie receptury „${item.label}” oceniono jako NOK w ostatniej produkcji.`);else if(!item.status)issues.push(`Brak oceny OK/NOK wymagania receptury „${item.label}” w ostatniej produkcji.`);}
   if(!processChecks.some(item=>item.label==='Usztywnienie')&&previous.stiffening_status==='not_ok')issues.push('Usztywnienie oceniono jako NOK w ostatniej produkcji.');
   if(!processChecks.some(item=>item.label==='Drapanie'||item.label==='Drapanie pod rzep')&&previous.rubbing_status==='not_ok')issues.push('Wydrapanie oceniono jako NOK w ostatniej produkcji.');
-  if(lotComparison==='LOT się zmienił')issues.push(`Zmieniono LOT przędzy względem ostatniego zlecenia (${previous.yarn_lot}). Wykonać korektę koloru.`);
+  if(lotComparison==='LOT się zmienił')issues.push(`Zmieniono LOT przędzy względem ${previousOrderReference}. Wykonać korektę koloru.`);
   else if(lotComparison==='Brak danych LOT do porównania')issues.push('Brak kompletnych danych LOT przędzy — nie można porównać z ostatnią produkcją.');
   return {found:true,recipeName:recipe?.name||snapshot.name||'',pm,date:V.datepl(previous.received_at),finishingOrder,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,width:actualWidth===null||actualWidth===undefined?'Brak wpisu':`${qty(actualWidth)} cm`,widthResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,processChecks,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił',issues};
 }
@@ -774,7 +775,8 @@ function handle(ctx) {
       if(recipe){
         const previousProduction=lastProductionPreview(db,currentSource,recipe);
         if(previousProduction.lotChanged&&previousProduction.previousLot){
-          orderNotes=appendRecipeNote(orderNotes,`UWAGA INNY LOT PRZEDZY NIZ OSTATNIE ZLECENIE BARWIARSKIE (${previousProduction.previousLot}) Wykonac korekte koloru`);
+          const previousOrderReference=previousProduction.finishingOrder?`zlecenia farbiarskiego nr ${previousProduction.finishingOrder}`:'ostatniego zlecenia farbiarskiego';
+          orderNotes=appendRecipeNote(orderNotes,`UWAGA: INNY LOT PRZĘDZY NIŻ W ${previousOrderReference.toLocaleUpperCase('pl-PL')}. WYKONAĆ KOREKTĘ KOLORU.`);
         }
       }
       const result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_id,recipe_snapshot,target_color,target_stiffening,target_width_cm,target_grammage,notes,status,created_at,created_by,updated_at,updated_by)
