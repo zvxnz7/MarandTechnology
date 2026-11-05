@@ -439,8 +439,9 @@ function touchWeightInfo(articleId, productionDate, meters) {
   const endDate = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
   const monthWhere = 'article_id=? AND production_date>=? AND production_date<?';
   const weighedRows = db.prepare(`SELECT id,machine,serial_number,article_id,production_date,weight_kg,meters,created_at
-    FROM bales WHERE ${monthWhere} AND weight_weighed=1 ORDER BY created_at DESC,id DESC LIMIT 3`).all(articleId, startDate, endDate);
-  const lastWeighed = weighedRows[0] || null;
+    FROM bales WHERE ${monthWhere} AND weight_weighed=1 AND needs_check=0 ORDER BY created_at DESC,id DESC LIMIT 3`).all(articleId, startDate, endDate);
+  const lastWeighed = db.prepare(`SELECT id,machine,serial_number,article_id,production_date,weight_kg,meters,created_at
+    FROM bales WHERE ${monthWhere} AND weight_weighed=1 ORDER BY created_at DESC,id DESC LIMIT 1`).get(articleId, startDate, endDate) || null;
   const monthCount = db.prepare(`SELECT count(*) n FROM bales WHERE ${monthWhere}`).get(articleId, startDate, endDate).n;
   const articleCount = db.prepare('SELECT count(*) n FROM bales WHERE article_id=?').get(articleId).n;
   const balesSinceLastWeigh = lastWeighed
