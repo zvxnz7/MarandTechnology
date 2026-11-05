@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS finishing_calculation_imports(
   id INTEGER PRIMARY KEY,
   source_name TEXT NOT NULL,
   digest TEXT NOT NULL UNIQUE,
+  calculation_date TEXT NOT NULL DEFAULT '',
   imported_at TEXT NOT NULL,
   imported_by INTEGER REFERENCES users(id),
   item_count INTEGER NOT NULL DEFAULT 0 CHECK(item_count >= 0)

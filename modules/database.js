@@ -400,7 +400,7 @@ function migrateV17(db) {
 function migrateV18(db) {
   const version=db.prepare('PRAGMA user_version').get().user_version;
   db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
-  if(version>=19)return;
+  if(version>=19){migrateV20(db);return;}
   db.exec('BEGIN IMMEDIATE');
   try{
     const columns=new Set(db.prepare("PRAGMA table_info('finishing_receipts')").all().map(column=>column.name));
@@ -413,6 +413,19 @@ function migrateV18(db) {
     db.exec('CREATE INDEX IF NOT EXISTS finishing_batches_correction ON finishing_batches(correction_of_batch_id,id)');
     db.exec('PRAGMA user_version=19; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+  migrateV20(db);
+}
+function migrateV20(db){
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  if(version>=20){db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));return;}
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+    const columns=new Set(db.prepare("PRAGMA table_info('finishing_calculation_imports')").all().map(column=>column.name));
+    if(!columns.has('calculation_date'))db.exec("ALTER TABLE finishing_calculation_imports ADD COLUMN calculation_date TEXT NOT NULL DEFAULT ''");
+    db.prepare("UPDATE finishing_calculation_imports SET calculation_date='2026-09-22' WHERE calculation_date='' AND lower(source_name) LIKE '%kalkulacja2026%'").run();
+    db.exec('PRAGMA user_version=20; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
 }
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
@@ -421,8 +434,9 @@ function migrate(db, dbPath) {
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
   if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>19)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===19) { db.exec(schema); return; }
+  if(version>20)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===20) { db.exec(schema); return; }
+  if(version===19) { migrateV20(db); return; }
   if(version===18) { migrateV18(db); return; }
   if(version===17) { migrateV18(db); return; }
   if(version===16) { migrateV17(db); migrateV18(db); return; }

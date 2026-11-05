@@ -404,19 +404,43 @@ if(finishingCalculationUpload){
   button.disabled=true;status.textContent='Wczytuję ceny i sprawdzam arkusz…';
   try{
    const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,Math.min(offset+32768,bytes.length)));
-   const response=await fetch('/finishing/calculations/import',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':finishingCalculationUpload.dataset.csrf},body:JSON.stringify({name:file.name,file_base64:btoa(binary)})});
+   const response=await fetch('/finishing/calculations/import',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':finishingCalculationUpload.dataset.csrf},body:JSON.stringify({name:file.name,calculation_date:finishingCalculationUpload.elements.calculation_date?.value||'',file_base64:btoa(binary)})});
    const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się wczytać kalkulacji.');
    status.textContent=`Wczytano ${result.imported.item_count} symboli z arkusza ${result.imported.sheet}.`;location.reload();
   }catch(error){status.textContent=error.message;}
   finally{button.disabled=false;}
  });
 }
-document.querySelectorAll('form[data-finishing-settlement-form]').forEach(form=>{
- const all=form.querySelector('[data-finishing-settlement-all]'),hiddenIds=form.querySelector('[data-finishing-settlement-ids]'),selection=form.querySelector('[data-finishing-settlement-selection]'),checks=[...form.querySelectorAll('[data-finishing-settlement-select]:not(:disabled)')];
- const update=()=>{const selected=checks.filter(input=>input.checked);if(hiddenIds)hiddenIds.value=selected.map(input=>input.value).join(',');if(selection)selection.textContent=selected.length?`Wybrano ${selected.length} zleceń barwiarskich.`:'Wybierz zlecenia barwiarskie.';if(all){all.checked=checks.length>0&&selected.length===checks.length;all.indeterminate=selected.length>0&&selected.length<checks.length;}};
- all?.addEventListener('change',()=>{for(const input of checks)input.checked=all.checked;update();});for(const input of checks)input.addEventListener('change',update);
- form.addEventListener('submit',event=>{update();if(!hiddenIds?.value){event.preventDefault();selection?.classList.add('is-error');selection?.focus?.();}});update();
+const settlementFormFor=element=>element?.closest('[data-finishing-settlement-form]')||document.getElementById(element?.getAttribute?.('form')||'');
+const updateSettlementSelection=form=>{
+ if(!form)return;const all=document.querySelector('[data-finishing-settlement-all]'),hiddenIds=form.querySelector('[data-finishing-settlement-ids]'),selection=form.querySelector('[data-finishing-settlement-selection]'),checks=[...document.querySelectorAll('[data-finishing-settlement-select]:not(:disabled)')],selected=checks.filter(input=>input.checked);
+ if(hiddenIds)hiddenIds.value=selected.map(input=>input.value).join(',');if(selection)selection.textContent=selected.length?`Wybrano ${selected.length} zleceń barwiarskich.`:'Wybierz zlecenia barwiarskie.';if(all){all.checked=checks.length>0&&selected.length===checks.length;all.indeterminate=selected.length>0&&selected.length<checks.length;}
+};
+document.addEventListener('change',event=>{
+ if(event.target.matches('[data-finishing-settlement-all]')){const form=settlementFormFor(event.target);document.querySelectorAll('[data-finishing-settlement-select]:not(:disabled)').forEach(input=>input.checked=event.target.checked);updateSettlementSelection(form);}
+ else if(event.target.matches('[data-finishing-settlement-select]'))updateSettlementSelection(settlementFormFor(event.target));
 });
+document.addEventListener('submit',event=>{
+ const form=event.target.closest('[data-finishing-settlement-form]');if(!form)return;updateSettlementSelection(form);
+ if(!form.querySelector('[data-finishing-settlement-ids]')?.value){event.preventDefault();const selection=form.querySelector('[data-finishing-settlement-selection]');selection?.classList.add('is-error');selection?.focus?.();}
+});
+const recalculateSettlementRow=row=>{
+ const controls={used:row.querySelector('input[name^="used_"]'),price:row.querySelector('input[name^="price_"]'),theoretical:row.querySelector('input[name^="theoretical_"]'),finishing:row.querySelector('input[name^="finishing_"]')},actual=row.querySelector('[data-live-actual]'),theory=row.querySelector('[data-live-theoretical]'),delta=row.querySelector('[data-live-delta]'),qty=Number(row.dataset.outputQuantity),unit=row.dataset.outputUnit;
+ if(!actual||!theory||!delta)return;
+ const format=value=>new Intl.NumberFormat('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(value);
+ const recalculate=()=>{
+  const values=Object.fromEntries(Object.entries(controls).map(([key,input])=>[key,input?.value.trim()===''?null:Number(String(input?.value||'').replace(',','.'))]));
+  if(!(qty>0)||Object.values(values).some(value=>value===null||!Number.isFinite(value))){actual.textContent='—';theory.textContent='';delta.textContent='';return;}
+  const actualCost=((values.used*values.price)+values.finishing)/qty,theoreticalCost=((values.used*values.theoretical)+values.finishing)/qty;
+  actual.textContent=`${format(actualCost)} zł/${unit}`;theory.textContent=`Teoria ${format(theoreticalCost)} zł/${unit}`;
+  const previous=String(row.dataset.previousActual||'').trim()===''?NaN:Number(row.dataset.previousActual);delta.textContent=Number.isFinite(previous)?`Różnica: ${format(actualCost-previous)} zł/${unit}`:'';
+ };
+ recalculate();
+};
+document.querySelectorAll('[data-settlement-row]').forEach(recalculateSettlementRow);
+document.addEventListener('input',event=>{const row=event.target.closest('[data-settlement-row]');if(row&&event.target.matches('input[name^="used_"],input[name^="price_"],input[name^="theoretical_"],input[name^="finishing_"]'))recalculateSettlementRow(row);});
+document.addEventListener('keydown',event=>{if(event.target.matches('input[type="number"]')&&(event.key==='ArrowUp'||event.key==='ArrowDown'))event.preventDefault();});
+document.addEventListener('wheel',event=>{if(event.target.matches('input[type="number"]')&&document.activeElement===event.target)event.target.blur();},{passive:true});
 document.querySelectorAll('form[data-inherited-values]').forEach(form=>form.querySelectorAll('input:not([type=hidden]),textarea').forEach(control=>{
   if(control.value.trim())control.classList.add('inherited-value');
   control.addEventListener('input',()=>control.classList.remove('inherited-value'));
@@ -775,12 +799,14 @@ document.querySelectorAll('form[data-live-search]').forEach(liveSearch=>{
  const clearActiveRow=()=>{resultRows().forEach(row=>row.classList.remove('keyboard-active'));activeRow=-1;};
  const currentSearchUrl=()=>{
   const params=new URLSearchParams();
-  for(const [key,value] of new FormData(liveSearch))if(String(value).trim())params.set(key,String(value).trim());
+  const minimum=Number(liveSearch.dataset.liveSearchMin||0);
+  for(const [key,value] of new FormData(liveSearch)){const text=String(value).trim();if(!text||key==='q'&&minimum>0&&text.length<minimum)continue;params.set(key,text);}
   const query=params.toString();return `${location.pathname}${query?`?${query}`:''}`;
  };
  const syncControls=url=>{
   const params=new URL(url,location.href).searchParams;
-  for(const control of liveSearch.elements){if(!control.name)continue;if(params.has(control.name))control.value=params.get(control.name);else if(control.type==='text'||control.type==='search'||control.type==='date')control.value='';}
+  const minimum=Number(liveSearch.dataset.liveSearchMin||0);
+  for(const control of liveSearch.elements){if(!control.name)continue;if(params.has(control.name))control.value=params.get(control.name);else if(control.name==='q'&&minimum>0&&control.value.trim().length<minimum)continue;else if(control.type==='text'||control.type==='search'||control.type==='date')control.value='';}
  };
  const loadResults=async(url,sequence=++searchSequence)=>{
   if(!results)return;

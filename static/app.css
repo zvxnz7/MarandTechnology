@@ -666,21 +666,46 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-calculation-import form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:10px 0}
 .finishing-calculation-import form label{min-width:min(340px,100%);flex:1}
 .finishing-calculation-import [data-finishing-calculation-upload-status]{min-width:180px}
-.finishing-settlements-list{min-width:1500px}
-.finishing-settlement-pm-row th{padding:12px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:14px}
-.finishing-settlement-pm-status{float:right;margin-left:12px}
+.finishing-settlement-head{align-items:center}
+.finishing-settlement-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.finishing-settlement-title h1{margin:0}
+.finishing-load-calculation{display:inline-flex;align-items:center;gap:7px}
+.finishing-load-calculation svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.finishing-calculation-dialog{width:min(520px,calc(100vw - 28px))}
+.finishing-calculation-dialog .dialog-body>form{display:grid;gap:12px}
+.finishing-current-calculation{padding:10px 12px;border-radius:6px;background:#f1f4f6}
+.finishing-settlement-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(4,minmax(110px,.7fr));align-items:end;gap:10px}
+.finishing-settlement-filters>label{min-width:0}
+.finishing-settlements-list{min-width:980px;table-layout:fixed}
+.finishing-settlements-list th,.finishing-settlements-list td{padding:7px 6px}
+.finishing-settlements-list th:nth-child(1),.finishing-settlements-list td:nth-child(1){width:34px;text-align:center}
+.finishing-settlements-list th:nth-child(2),.finishing-settlements-list td:nth-child(2){width:95px}
+.finishing-settlements-list th:nth-child(3),.finishing-settlements-list td:nth-child(3){width:112px}
+.finishing-settlements-list th:nth-child(4),.finishing-settlements-list td:nth-child(4){width:100px}
+.finishing-settlements-list th:nth-child(5),.finishing-settlements-list td:nth-child(5){width:78px}
+.finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6),.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7),.finishing-settlements-list th:nth-child(8),.finishing-settlements-list td:nth-child(8){width:87px}
+.finishing-settlements-list th:nth-child(9),.finishing-settlements-list td:nth-child(9){width:90px}
+.finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10){width:180px}
+.finishing-settlement-pm-row th{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
+.finishing-settlement-pm-status{order:0}
+.finishing-settlement-pm-symbols{order:1;margin-left:2px;font-weight:400}
+.finishing-settlement-pm-row .finishing-order-pm{order:-1}
 .finishing-settlement-order-row td{vertical-align:top}
 .finishing-settlement-order-row.is-replaced{opacity:.68}
-.finishing-cost-input{width:118px;min-width:90px;padding:6px 7px;font-size:12px}
-.finishing-settlement-order-row td:nth-child(1){width:34px;text-align:center}
-.finishing-settlement-order-row td:nth-child(11){min-width:190px}
-.finishing-settlement-order-row td:nth-child(12){min-width:145px}
+.finishing-cost-input{box-sizing:border-box;width:100%;min-width:0;padding:5px 6px;font-size:12px}
+.finishing-invoice-input{font-size:11px}
+.finishing-output strong,.finishing-output small{display:block}
+.finishing-output small{margin-top:3px;color:#69747f}
+.finishing-live-cost strong,.finishing-live-cost small{display:block}
+.finishing-live-cost small{margin-top:3px}
 .finishing-cost-history{margin-top:6px;font-size:11px}
 .finishing-cost-history>summary{cursor:pointer;color:#175eb0}
 .finishing-cost-history table{min-width:700px}
 .finishing-settlement-actions{position:sticky;bottom:0;z-index:3;padding:10px;background:#fff;border-top:1px solid #dfe3e7}
 .finishing-settlement-actions [data-finishing-settlement-selection]{margin-left:auto}
 .finishing-settlement-actions [data-finishing-settlement-selection].is-error{color:#b42318;font-weight:700}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .finishing-batch-card>.actions{align-items:center;margin:8px 0}
 .finishing-batch-card>.actions form{margin:0}
 .finishing-receipt-edit{margin-top:7px;min-width:190px;font-size:12px}
@@ -693,4 +718,5 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-cost-report{padding:12px}
 .finishing-cost-report .pagehead{align-items:center}
 .finishing-cost-report table{min-width:1050px}
-@media(max-width:700px){.finishing-calculation-import form{align-items:stretch;flex-direction:column}.finishing-settlement-actions{flex-wrap:wrap}.finishing-settlement-actions [data-finishing-settlement-selection]{flex-basis:100%;margin-left:0}}
+@media(max-width:950px){.finishing-settlement-filters{grid-template-columns:repeat(3,minmax(120px,1fr))}.finishing-settlement-filters>.shipment-list-search{grid-column:span 3}}
+@media(max-width:700px){.finishing-settlement-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-settlement-filters>.shipment-list-search{grid-column:span 2}.finishing-settlement-actions{flex-wrap:wrap}.finishing-settlement-actions [data-finishing-settlement-selection]{flex-basis:100%;margin-left:0}}

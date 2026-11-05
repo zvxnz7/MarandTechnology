@@ -6,15 +6,17 @@ const XlsxReader=require('./xlsx-reader');
 const normalizeSymbol=value=>String(value||'').toLocaleLowerCase('pl-PL').replace(/\/([^/]+)\//g,'($1)').replace(/\//g,'(').replace(/ł/g,'l').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'').trim();
 const round2=value=>Math.round((Number(value)||0)*100)/100;
 
-function importWorkbook(db,buffer,sourceName,userId,now){
+function importWorkbook(db,buffer,sourceName,userId,now,calculationDate=''){
   const digest=crypto.createHash('sha256').update(buffer).digest('hex');
   if(db.prepare('SELECT id FROM finishing_calculation_imports WHERE digest=?').get(digest))throw Object.assign(new Error('Ten plik kalkulacji został już wczytany.'),{status:409});
-  const parsed=XlsxReader.readCalculationWorkbook(buffer),insertRun=db.prepare('INSERT INTO finishing_calculation_imports(source_name,digest,imported_at,imported_by,item_count) VALUES(?,?,?,?,?)');
+  const parsed=XlsxReader.readCalculationWorkbook(buffer),insertRun=db.prepare('INSERT INTO finishing_calculation_imports(source_name,digest,calculation_date,imported_at,imported_by,item_count) VALUES(?,?,?,?,?,?)');
   const insertPrice=db.prepare(`INSERT INTO finishing_calculation_prices(import_id,raw_symbol,raw_symbol_key,article_name,current_price,theoretical_price,current_error,theoretical_error)
     VALUES(?,?,?,?,?,?,?,?)`);
-  const run=insertRun.run(String(sourceName||'kalkulacja.xlsx').slice(0,250),digest,now,userId,parsed.rows.length),id=Number(run.lastInsertRowid);
+  const candidate=String(calculationDate||''),date=/^\d{4}-\d{2}-\d{2}$/.test(candidate)&&Number.isFinite(Date.parse(`${candidate}T00:00:00Z`))&&new Date(`${candidate}T00:00:00Z`).toISOString().slice(0,10)===candidate?candidate:'';
+  if(!date)throw Object.assign(new Error('Wpisz prawidłową datę kalkulacji z pliku.'),{status:400});
+  const run=insertRun.run(String(sourceName||'kalkulacja.xlsx').slice(0,250),digest,date,now,userId,parsed.rows.length),id=Number(run.lastInsertRowid);
   for(const row of parsed.rows)insertPrice.run(id,row.raw_symbol,row.raw_symbol_key,row.article_name,row.current_price,row.theoretical_price,row.current_error,row.theoretical_error);
-  return {id,source_name:String(sourceName||'kalkulacja.xlsx').slice(0,250),item_count:parsed.rows.length,duplicate_count:parsed.duplicateCount,sheet:parsed.sheet,digest};
+  return {id,source_name:String(sourceName||'kalkulacja.xlsx').slice(0,250),calculation_date:date,item_count:parsed.rows.length,duplicate_count:parsed.duplicateCount,sheet:parsed.sheet,digest};
 }
 function latestImport(db){return db.prepare('SELECT * FROM finishing_calculation_imports ORDER BY imported_at DESC,id DESC LIMIT 1').get()||null;}
 function priceFor(db,importId,rawSymbol){
@@ -25,7 +27,8 @@ function priceFor(db,importId,rawSymbol){
 }
 function batchRecord(db,batchId){
   return db.prepare(`SELECT b.*,o.raw_symbol,o.trade_symbol,o.client_name,o.status order_status,o.order_type,o.shipment_article_id,
-      o.source_shipment_no,fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence
+      o.source_shipment_no,fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
+      (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
     LEFT JOIN shipments s ON s.id=sa.shipment_id WHERE b.id=?`).get(batchId)||null;
@@ -57,7 +60,8 @@ function calculationContext(db,batchId){
 function settlementRows(db){
   const rows=db.prepare(`SELECT b.id batch_id,b.order_id,b.correction_of_batch_id,b.complaint_status,b.finishing_lot,b.sent_at,b.raw_weight_kg,b.sent_pieces,b.closed_at,
       o.raw_symbol,o.trade_symbol,o.client_name,o.order_type,o.status order_status,o.source_shipment_no,
-      fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence
+      fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
+      (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
     LEFT JOIN shipments s ON s.id=sa.shipment_id
