@@ -98,10 +98,18 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
    const response=await fetch(`${form.dataset.productionCheckUrl.split('?')[0]}?${params}`,{headers:{'X-Requested-With':'fetch'}}),data=await response.json();checkContent.replaceChildren();
    if(!response.ok)throw new Error(data.error||'Nie udało się pobrać informacji o ostatniej produkcji.');
    addCheckIssues(data.issues||[]);
-   addCheckRow('Symbol PM',data.sourceSymbol);addCheckRow('Symbol receptury',data.recipeSymbol||'Brak');
+   addCheckRow('Receptura wykańczania',data.recipeName||'Brak nazwy receptury');
    if(!data.found){const note=document.createElement('p');note.className='finishing-production-check-empty';note.textContent='Nie ma zapisanej wcześniejszej produkcji tej receptury. Poniżej sprawdź LOT z wybranego PM.';checkContent.appendChild(note);}
-   else{addCheckRow('Ostatnia produkcja',data.pm);addCheckRow('Nr zlecenia farbiarskiego',data.finishingOrder||'Brak');addCheckRow('Data',data.date);addCheckRow('Gramatura',data.grammage);addCheckRow('Ocena gramatury',data.grammageResult,data.grammageResult?.startsWith('OK,')?'is-ok':data.grammageResult?.startsWith('Poza')?'is-warning':'');addCheckRow('Szerokość',data.width);addCheckRow('Ocena szerokości',data.widthResult,data.widthResult?.startsWith('OK,')?'is-ok':data.widthResult?.startsWith('Poza')?'is-warning':'');addCheckRow('Kolor uzyskany',data.color);addCheckRow('Ocena koloru',data.colorResult,data.colorResult==='Kolor zgodny'?'is-ok':data.colorResult==='Kolor różni się od receptury'?'is-warning':'');const processSummary=(data.processChecks||[]).map(item=>`${item.label}: ${item.status==='ok'?'OK':item.status==='not_ok'?'NOK':'brak oceny'}`).join(' · ');addCheckRow('Wymagania z receptury',processSummary||'Brak zapisanych wymagań');addCheckRow('Komentarze',data.comments);addCheckRow('LOT z poprzedniej produkcji',data.previousLot||'Brak');}
-   addCheckRow('LOT z wybranego PM',data.currentLot);addCheckRow('Porównanie LOT-u',data.lotComparison,data.lotComparison==='Ten sam LOT'?'is-ok':data.lotComparison==='LOT się zmienił'?'is-warning':'');checkConfirm.disabled=false;
+   else{
+    const lastOrder=[data.pm,data.finishingOrder?`zlecenie farbiarskie ${data.finishingOrder}`:''].filter(Boolean).join(' · ');
+    addCheckRow('Ostatnie zlecenie',lastOrder||'Brak danych');
+    addCheckRow('Data',data.date);
+    if(data.colorResult==='Kolor różni się od receptury')addCheckRow('Kolor niezgodny',data.color||'NOK','is-warning');
+    addCheckRow('Komentarze',data.comments);
+    addCheckRow('LOT z poprzedniej produkcji',data.previousLot||'Brak');
+   }
+   addCheckRow('LOT z wybranego PM',data.currentLot);
+   addCheckRow('Porównanie LOT-u',data.lotComparison,data.lotComparison==='Ten sam LOT'?'is-ok':data.lotComparison==='LOT się zmienił'?'is-warning':'');checkConfirm.disabled=false;
   }catch(error){checkContent.replaceChildren();const note=document.createElement('p');note.className='notice warning';note.textContent=error.message;checkContent.appendChild(note);}
  };
  form.addEventListener('submit',event=>{

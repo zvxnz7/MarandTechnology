@@ -287,7 +287,7 @@ function lastProductionPreview(db,source,recipe) {
     return lotParts(current.join(',')).join('|')===lotParts(previousLot).join('|')?'Ten sam LOT':'LOT się zmienił';
   };
   const currentLot=currentLots.join(', ')||'Brak LOT-u w PM';
-  if(!previous)return {found:false,currentLot,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,issues:[...(symbolIssue?[symbolIssue]:[]),'Brak wcześniejszej produkcji tej receptury do porównania.']};
+  if(!previous)return {found:false,recipeName:recipe?.name||'',currentLot,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,issues:[...(symbolIssue?[symbolIssue]:[]),'Brak wcześniejszej produkcji tej receptury do porównania.']};
   let snapshot={};try{snapshot=JSON.parse(previous.recipe_snapshot||'{}')}catch{}
   const details=recipe?readRecipeDetails(recipe):(snapshot.details||{}),expectedGrammage=recipe?.target_grammage??snapshot.targetGrammage??null;
   const actualGrammage=previous.actual_grammage;
@@ -333,7 +333,7 @@ function lastProductionPreview(db,source,recipe) {
   if(!processChecks.some(item=>item.label==='Drapanie'||item.label==='Drapanie pod rzep')&&previous.rubbing_status==='not_ok')issues.push('Wydrapanie oceniono jako NOK w ostatniej produkcji.');
   if(lotComparison==='LOT się zmienił')issues.push(`Zmieniono LOT przędzy względem ostatniego zlecenia (${previous.yarn_lot}). Wykonać korektę koloru.`);
   else if(lotComparison==='Brak danych LOT do porównania')issues.push('Brak kompletnych danych LOT przędzy — nie można porównać z ostatnią produkcją.');
-  return {found:true,pm,date:V.datepl(previous.received_at),finishingOrder,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,width:actualWidth===null||actualWidth===undefined?'Brak wpisu':`${qty(actualWidth)} cm`,widthResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,processChecks,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił',issues};
+  return {found:true,recipeName:recipe?.name||snapshot.name||'',pm,date:V.datepl(previous.received_at),finishingOrder,sourceSymbol:source.symbol,recipeSymbol,symbolMismatch,symbolIssue,grammage:actualGrammage===null||actualGrammage===undefined?'Brak wpisu':`${qty(actualGrammage)} g/m²`,grammageResult,width:actualWidth===null||actualWidth===undefined?'Brak wpisu':`${qty(actualWidth)} cm`,widthResult,color:previous.color_status?previous.color_status==='ok'?'OK':'NOK':previous.actual_color||'Brak wpisu',colorResult,processChecks,comments:comments.join(' · ')||'Brak komentarzy',previousLot:previous.yarn_lot||'',currentLot,lotComparison,lotChanged:lotComparison==='LOT się zmienił',issues};
 }
 function header({user,csrf,flashes,title,body}) { return V.layout({user,csrf,flashes,title:`${title} · Wykańczanie`,body}); }
 function navTabs(active,db) {
