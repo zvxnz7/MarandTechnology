@@ -50,12 +50,12 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
   else recipeSearch.removeAttribute('aria-activedescendant');
  };
  const closeRecipeResults=()=>{recipeResults.replaceChildren();recipeSearch.setAttribute('aria-expanded','false');recipeSearch.removeAttribute('aria-activedescendant');activeRecipeIndex=-1;};
- const clearRecipe=()=>{recipe.value='';delete recipe.dataset.selectedLabel;delete recipe.dataset.plant;recipeSelected.textContent='';recipeEditShortcut.href='/finishing/recipes';recipeEditShortcut.setAttribute('aria-label','Otwórz bibliotekę receptur do edycji');recipeEditShortcut.title='Otwórz bibliotekę receptur do edycji';selectedRecipeDetails.hidden=true;selectedRecipeDetails.open=false;selectedRecipeText.textContent='';form.elements.trade_symbol.value='';};
+ const clearRecipe=()=>{recipe.value='';delete recipe.dataset.selectedLabel;delete recipe.dataset.plant;recipeSelected.textContent='';recipeEditShortcut.href='/finishing/recipes?return_to_order=1';recipeEditShortcut.setAttribute('aria-label','Otwórz bibliotekę receptur do edycji');recipeEditShortcut.title='Otwórz bibliotekę receptur do edycji';selectedRecipeDetails.hidden=true;selectedRecipeDetails.open=false;selectedRecipeText.textContent='';form.elements.trade_symbol.value='';};
  const sync=()=>{const raw=orderTypeInputs.find(input=>input.checked)?.value==='raw_sale';plant.required=!raw;recipeSearch.required=!raw;};
  const applyRecipe=button=>{
   const label=button.dataset.recipeLabel||button.querySelector('strong')?.textContent||'';
   recipe.value=button.dataset.recipeId||'';recipe.dataset.selectedLabel=label;recipe.dataset.plant=button.dataset.plant||'';recipeSearch.value=label;recipeSearch.setCustomValidity('');
-  recipeEditShortcut.href=`/finishing/recipes/${recipe.value}/edit`;recipeEditShortcut.setAttribute('aria-label','Edytuj wybraną recepturę');recipeEditShortcut.title='Edytuj wybraną recepturę';
+  recipeEditShortcut.href=`/finishing/recipes/${recipe.value}/edit?return_to_order=1`;recipeEditShortcut.setAttribute('aria-label','Edytuj wybraną recepturę');recipeEditShortcut.title='Edytuj wybraną recepturę';
   recipeSelected.textContent=`Wybrano recepturę: ${label}`;
   selectedRecipeText.textContent=button.dataset.recipeText||'Brak tekstowego opisu receptury.';selectedRecipeDetails.hidden=false;selectedRecipeDetails.open=false;
   for(const [field,key] of [['target_color','color'],['target_stiffening','stiffening'],['target_width_cm','width'],['target_grammage','grammage']]){const input=form.elements[field],value=button.dataset[key];if(input)input.value=value||'';}
@@ -63,6 +63,11 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
   if(button.dataset.plant)plant.value=button.dataset.plant;
   closeRecipeResults();
  };
+ window.addEventListener('message',event=>{
+  const updated=event.data?.type==='finishing-recipe-updated'&&event.data.recipe;
+  if(event.origin!==location.origin||!updated)return;
+  const option=document.createElement('button');option.dataset.recipeId=String(updated.id);option.dataset.recipeLabel=`${updated.name}${updated.rawSymbol?` · ${updated.rawSymbol}`:''}`;option.dataset.recipeText=updated.recipeText||'';option.dataset.plant=String(updated.plant||'');option.dataset.color=updated.color||'';option.dataset.stiffening=updated.stiffening||'';option.dataset.width=updated.width??'';option.dataset.grammage=updated.grammage??'';option.dataset.tradeSymbol=updated.tradeSymbol||'';applyRecipe(option);
+ });
  const searchRecipes=async()=>{
   const query=recipeSearch.value.trim();recipeController?.abort();recipeController=null;
   if(query.length<1){recipeResults.replaceChildren();recipeSearch.setAttribute('aria-expanded','false');return;}
@@ -143,6 +148,10 @@ document.querySelectorAll('[data-finishing-recipe-copy-button]').forEach(button=
  });
  update();
 });
+const recipeReturn=document.querySelector('[data-return-recipe-to-order]');
+if(recipeReturn&&window.opener&&!window.opener.closed){
+ try{const recipe=JSON.parse(recipeReturn.textContent);window.opener.postMessage({type:'finishing-recipe-updated',recipe},location.origin);window.close();}catch{}
+}
 document.querySelectorAll('.finishing-recipe-form').forEach(form=>{
  const symbol=form.querySelector('[data-article-symbol]'),composition=form.querySelector('[data-article-composition]');
  let map={};try{map=JSON.parse(form.querySelector('[data-article-composition-map]')?.textContent||'{}');}catch{}
