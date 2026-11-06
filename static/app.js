@@ -23,6 +23,8 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
    const response=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:new URLSearchParams(new FormData(form))});
    const result=await response.json();if(!response.ok||!result.ok)throw new Error('Nie udało się zapisać numeru LOT.');
    lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia zapisany';updateRemoveForm();updateReceiveButton(value);
+   const orderRow=form.closest('tr'),statusBadge=orderRow?.querySelector('td:nth-child(8) .badge');
+   if(statusBadge&&result.status_label){statusBadge.textContent=result.status_label;statusBadge.className=`badge ${result.status_class||'submitted'}`;}
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
   finally{saving=false;updateRemoveForm();if(queued){queued=false;timer=setTimeout(save,150);}}
  };

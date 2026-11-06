@@ -277,8 +277,10 @@ function orderTypeLabel(type) {
   return {standard:'Wykończenie standard',raw_sale:'Sprzedaż surowej',trial:'Próba'}[type]||'Wykończenie standard';
 }
 function statusBadge(status) {
-  const cls={draft:'submitted',sent:'status-finishing',partial:'status-finishing',received:'approved',raw_sale:'archived',cancelled:'archived'}[status]||'submitted';
-  return `<span class="badge ${cls}">${V.esc(orderStatusLabel(status))}</span>`;
+  return `<span class="badge ${orderStatusBadgeClass(status)}">${V.esc(orderStatusLabel(status))}</span>`;
+}
+function orderStatusBadgeClass(status) {
+  return {draft:'submitted',sent:'status-finishing',partial:'status-finishing',received:'approved',raw_sale:'archived',cancelled:'archived'}[status]||'submitted';
 }
 function lastProductionPreview(db,source,recipe) {
   const currentLots=[...new Set(sourcePieces(db,source.shipment_article_id).map(piece=>String(piece.lot||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
@@ -774,6 +776,7 @@ function updateOrderStatus(ctx,orderId) {
   const receiptCount=ctx.db.prepare('SELECT count(*) n FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=?').get(orderId).n;
   const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':receiptCount?'partial':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
   ctx.db.prepare('UPDATE finishing_orders SET status=?,updated_at=?,updated_by=? WHERE id=?').run(status,ctx.now(),ctx.req.user.id,orderId);
+  return status;
 }
 function settlementSnapshot(row){
   return {batch_id:row.batch_id,status:row.status,invoice_note:row.invoice_note,calculation_import_id:row.calculation_import_id,raw_symbol:row.raw_symbol,trade_symbol:row.trade_symbol,
@@ -1059,8 +1062,8 @@ function handle(ctx) {
       role(req.user,...editableRoles);if(['raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już edytować.');
       const batchId=Number(form.batch_id),lot=text(form,'finishing_lot',120),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=? AND order_id=?').get(batchId,id);
       if(!batch)fail(400,'Nie znaleziono wyjścia PM dla tego zlecenia.');if(!lot)fail(400,'Wpisz numer partii otrzymany z farbiarni.');
-      transaction(()=>{db.prepare('UPDATE finishing_batches SET finishing_lot=?,updated_at=?,updated_by=? WHERE id=?').run(lot,now(),req.user.id,batchId);updateOrderStatus(ctx,id);audit(req.user,'Uzupełniono LOT partii w farbiarni',null,JSON.stringify({orderId:id,batchId,finishingLot:lot}),null);});
-      if(String(req.headers.accept||'').includes('application/json'))return send(req,res,200,JSON.stringify({ok:true,finishing_lot:lot}),'application/json; charset=utf-8');
+      const updatedStatus=transaction(()=>{db.prepare('UPDATE finishing_batches SET finishing_lot=?,updated_at=?,updated_by=? WHERE id=?').run(lot,now(),req.user.id,batchId);const status=updateOrderStatus(ctx,id);audit(req.user,'Uzupełniono LOT partii w farbiarni',null,JSON.stringify({orderId:id,batchId,finishingLot:lot,status}),null);return status;});
+      if(String(req.headers.accept||'').includes('application/json'))return send(req,res,200,JSON.stringify({ok:true,finishing_lot:lot,status:updatedStatus,status_label:orderStatusLabel(updatedStatus),status_class:orderStatusBadgeClass(updatedStatus)}),'application/json; charset=utf-8');
       const returnTo=form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${id}`;
       return redirect(req,res,returnTo,'Zapisano numer specyfikacji z farbiarni.');
     }
