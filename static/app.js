@@ -490,18 +490,21 @@ document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
- const baleList=form.querySelector('[data-receipt-bale-list]'),addBaleButton=form.querySelector('[data-receipt-add-bale]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg;
+ const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg,weightOverride=form.elements.finished_weight_override;
  form.querySelectorAll('input[type="number"]').forEach(input=>{
   input.addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown')event.preventDefault();});
   input.addEventListener('wheel',()=>{if(document.activeElement===input)input.blur();},{passive:true});
  });
- const bales=[{meters:'',weight:''}];
+ const bales=[];let pendingMeters=null;
  const parsePositive=value=>{const normalized=String(value??'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);
- const usesMeters=()=>true,usesWeight=()=>true;
+ const mode=()=>form.querySelector('[data-receipt-mode]:checked')?.value||'meters';
+ const usesMeters=()=>mode()!=='weight',usesWeight=()=>mode()!=='meters';
  const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
- const rowHtml=(bale,index)=>`<div class="finishing-receive-bale-row" data-receipt-bale-row><strong>Sztuka ${index+1}</strong><label><span>Metry (mb)</span><input type="text" inputmode="decimal" maxlength="5" autocomplete="off" data-receipt-meter aria-label="Metry sztuki ${index+1}" value="${escapeHtml(bale.meters)}"></label><label><span>Masa (kg)</span><input type="text" inputmode="decimal" maxlength="5" autocomplete="off" data-receipt-weight aria-label="Masa sztuki ${index+1}" value="${escapeHtml(bale.weight)}"></label><button type="button" class="finishing-receive-remove" data-receipt-remove aria-label="Usuń sztukę ${index+1}" title="Usuń sztukę">×</button></div>`;
- const renderBales=()=>{baleList.innerHTML=bales.map(rowHtml).join('');baleList.querySelectorAll('[data-receipt-meter],[data-receipt-weight]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-receipt-bale-row]'),index=[...baleList.children].indexOf(row),key=input.hasAttribute('data-receipt-meter')?'meters':'weight';bales[index][key]=input.value.slice(0,5);if(input.value.length>5)input.value=input.value.slice(0,5);refresh();}));baleList.querySelectorAll('[data-receipt-remove]').forEach(button=>button.addEventListener('click',()=>{const index=[...baleList.children].indexOf(button.closest('[data-receipt-bale-row]'));bales.splice(index,1);renderBales();refresh();}));bindEnter();};
+ const updateEntryPrompt=()=>{const unit=mode()==='weight'?'kg':mode()==='both'&&pendingMeters!==null?'kg':'metry (mb)';entryPrompt.textContent=`Sztuka ${bales.length+1} — ${unit}`;};
+ const updateModeLock=()=>modeInputs.forEach(input=>{input.disabled=bales.length>0||pendingMeters!==null;});
+ const rowHtml=(bale,index)=>`<div class="finishing-receive-bale-row" data-receipt-bale-row><span class="finishing-receive-bale-index">${index+1}</span>${usesMeters()?`<label><span>mb</span><input type="text" inputmode="decimal" maxlength="5" autocomplete="off" data-receipt-meter aria-label="Metry sztuki ${index+1}" value="${escapeHtml(bale.meters)}"></label>`:''}${usesWeight()?`<label><span>kg</span><input type="text" inputmode="decimal" maxlength="5" autocomplete="off" data-receipt-weight aria-label="Masa sztuki ${index+1}" value="${escapeHtml(bale.weight)}"></label>`:''}<button type="button" class="finishing-receive-remove" data-receipt-remove aria-label="Usuń sztukę ${index+1}" title="Usuń sztukę">×</button></div>`;
+ const renderBales=()=>{baleList.innerHTML=bales.map(rowHtml).join('');baleList.querySelectorAll('[data-receipt-meter],[data-receipt-weight]').forEach(input=>{input.addEventListener('input',()=>{const row=input.closest('[data-receipt-bale-row]'),index=[...baleList.children].indexOf(row),key=input.hasAttribute('data-receipt-meter')?'meters':'weight';bales[index][key]=input.value.slice(0,5);if(input.value.length>5)input.value=input.value.slice(0,5);if(key==='weight')weightOverride.value='0';refresh();});input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});});baleList.querySelectorAll('[data-receipt-remove]').forEach(button=>button.addEventListener('click',()=>{const index=[...baleList.children].indexOf(button.closest('[data-receipt-bale-row]'));bales.splice(index,1);renderBales();refresh();}));updateModeLock();updateEntryPrompt();};
  const paramRows=[...form.querySelectorAll('[data-finishing-param-row]')];
  const refreshParamRows=()=>paramRows.forEach(row=>{
   const input=row.querySelector('input'),status=row.querySelector('[data-param-status]'),actual=Number(String(input.value||'').trim().replace(',','.')),target=Number(row.dataset.paramTarget),minusRaw=row.dataset.paramMinus,plusRaw=row.dataset.paramPlus;
@@ -514,8 +517,6 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   status.classList.add('is-danger');
  });
  paramRows.forEach(row=>row.querySelector('input')?.addEventListener('input',refreshParamRows));
- const focusNext=(input)=>{const row=input.closest('[data-receipt-bale-row]'),index=[...baleList.children].indexOf(row);if(input.hasAttribute('data-receipt-meter')){row.querySelector('[data-receipt-weight]').focus();return;}if(index+1<bales.length)baleList.children[index+1].querySelector('[data-receipt-meter]').focus();else{bales.push({meters:'',weight:''});renderBales();refresh();baleList.lastElementChild.querySelector('[data-receipt-meter]').focus();}};
- const bindEnter=()=>baleList.querySelectorAll('[data-receipt-meter],[data-receipt-weight]').forEach(input=>input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();focusNext(input);}}));
  const refresh=()=>{
   const useMeters=usesMeters(),useWeight=usesWeight();
   form.dataset.measureMeters=String(useMeters);form.dataset.measureWeight=String(useWeight);
@@ -526,9 +527,10 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   weightsList.value=weightValues.map(value=>value===null?'':String(value)).join('+');
   const meterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0),weightTotal=weightValues.reduce((sum,value)=>sum+(value||0),0);
   form.querySelector('[data-receipt-total-meters]').textContent=meterValues.some(value=>value!==null)?fmt(meterTotal)+' mb':'—';
-  receivedWeightInput.value=weightValues.some(value=>value!==null)?String(Math.round(weightTotal*100)/100):'';
+  const weightsComplete=weightValues.length>0&&weightValues.every(value=>value!==null);
+  if(useWeight&&weightsComplete&&weightOverride.value!=='1'){receivedWeightInput.value=String(Math.round(weightTotal*100)/100);weightOverride.value='0';}
   const typedWeight=String(receivedWeightInput.value||'').trim().replace(',','.');
-  const receivedKg=useWeight&&weightValues.length&&weightValues.every(value=>value!==null)?weightTotal:typedWeight!==''&&Number.isFinite(Number(typedWeight))?Number(typedWeight):null;
+  const receivedKg=typedWeight!==''&&Number.isFinite(Number(typedWeight))?Number(typedWeight):useWeight&&weightsComplete?weightTotal:null;
   const weightDifference=form.querySelector('[data-receipt-weight-difference-value]');
   if(receivedKg===null)weightDifference.textContent='—';
   else{const difference=Number(form.dataset.rawWeight)-receivedKg;weightDifference.textContent=difference>0.005?'Strata '+fmt(difference)+' kg':difference< -0.005?'Zysk '+fmt(Math.abs(difference))+' kg':'0 kg · bez straty';}
@@ -537,17 +539,31 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const theory=form.querySelector('[data-receipt-theoretical]'),loss=form.querySelector('[data-receipt-loss]'),note=form.querySelector('[data-receipt-calculation-note]');
   theory.textContent=expected?new Intl.NumberFormat('pl-PL',{maximumFractionDigits:0}).format(Math.round(expected))+' mb':'—';
   if(!expected){loss.textContent='—';note.textContent='Do wyliczenia potrzebne są planowana gramatura, planowana szerokość i liczba odebranych sztuk surowych.';}
-  else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Włącz pomiar mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
+  else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Wybierz tryb mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
   const receivedForClose=receivedKg===null?null:receivedKg,previousPieces=Number(form.dataset.previousReceivedPieces),previousWeight=Number(form.dataset.previousReceivedWeight);
   const closesByMatch=sentPieces>0&&Number.isFinite(returned)&&previousPieces+returned===sentPieces&&rawWeight>0&&receivedForClose!==null&&Math.abs(previousWeight+receivedForClose-rawWeight)<=0.01;
   form.querySelector('[data-receipt-auto-close-message]').hidden=!closesByMatch;
-  const incomplete=bales.some(bale=>parsePositive(bale.meters)===null||parsePositive(bale.weight)===null);
-  form.querySelector('button[type="submit"]').disabled=bales.length===0||incomplete;
-  printLabelsButton.disabled=bales.length===0||incomplete;
+  const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
+  form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete;
+  printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
- addBaleButton.addEventListener('click',()=>{bales.push({meters:'',weight:''});renderBales();refresh();baleList.lastElementChild.querySelector('[data-receipt-meter]').focus();});
+ modeInputs.forEach(input=>input.addEventListener('change',()=>{bales.splice(0,bales.length);pendingMeters=null;entryInput.value='';entryStatus.textContent='';receivedWeightInput.value='';weightOverride.value='0';renderBales();refresh();entryInput.focus();}));
+ entryInput.addEventListener('input',()=>{entryStatus.textContent='';});
+ entryInput.addEventListener('keydown',event=>{
+  if(event.key!=='Enter')return;
+  event.preventDefault();
+  const value=parsePositive(entryInput.value);
+  if(value===null){entryStatus.textContent='Wpisz liczbę większą od zera.';entryInput.focus();return;}
+  entryInput.value='';
+  if(mode()==='both'&&pendingMeters===null){pendingMeters=value;entryStatus.textContent='Metry zapisane. Teraz wpisz kg tej samej sztuki.';updateEntryPrompt();entryInput.focus();return;}
+  if(mode()==='both'){bales.push({meters:pendingMeters,weight:value});pendingMeters=null;weightOverride.value='0';}
+  else if(mode()==='meters')bales.push({meters:value,weight:null});
+  else{bales.push({meters:null,weight:value});weightOverride.value='0';}
+  entryStatus.textContent='Zapisano sztukę '+bales.length+'.';renderBales();refresh();entryInput.focus();
+ });
  rawPieces.addEventListener('input',refresh);
+ receivedWeightInput.addEventListener('input',()=>{weightOverride.value='1';refresh();});
  printLabelsButton.addEventListener('click',()=>{
   if(!bales.length)return;
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -562,11 +578,12 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  });
  form.addEventListener('submit',event=>{
   refresh();
-  const incompleteIndex=bales.findIndex(bale=>parsePositive(bale.meters)===null||parsePositive(bale.weight)===null);
-  if(!bales.length||incompleteIndex!==-1){event.preventDefault();const row=baleList.children[Math.max(0,incompleteIndex)];row?.querySelector(parsePositive(bales[Math.max(0,incompleteIndex)]?.meters)===null?'[data-receipt-meter]':'[data-receipt-weight]')?.focus();return;}
+  if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej sztuki.';entryInput.focus();return;}
+  const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
+  if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent='Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
-  form.reset();bales.splice(0,bales.length,{meters:'',weight:''});
+  form.reset();bales.splice(0,bales.length);pendingMeters=null;entryStatus.textContent='';
   renderBales();refreshParamRows();refresh();
  });
  renderBales();refresh();refreshParamRows();

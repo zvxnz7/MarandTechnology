@@ -569,17 +569,17 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-entry-status{min-height:18px;color:var(--muted);font-size:12px}
 .finishing-receive-unit-options{display:flex;gap:7px}
 .finishing-receive-unit-options label{display:flex;align-items:center;gap:6px;margin:0;padding:6px 10px;border:1px solid #cfd8df;border-radius:6px;background:#f8fafb;font-size:12px;cursor:pointer}
-.finishing-receive-bale-row{display:grid;grid-template-columns:76px minmax(0,1fr) minmax(0,1fr) 34px;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;background:#f6f8f9}
-.finishing-receive-bale-row>strong{font-size:13px}
-.finishing-receive-bale-row label{display:grid;gap:2px;min-width:0;margin:0;font-size:11px}
+.finishing-receive-bale-row{display:inline-flex;align-items:center;gap:5px;width:max-content;max-width:100%;padding:4px 6px;border-radius:6px;background:#f6f8f9}
+.finishing-receive-bale-index{min-width:12px;font-size:13px;font-weight:400}
+.finishing-receive-bale-row label{display:flex;align-items:center;gap:3px;min-width:0;margin:0;font-size:10px}
 .finishing-receive-bale-row label span{color:var(--muted)}
-.finishing-receive-bale-row input{height:32px;padding:5px 8px;font-size:12px}
+.finishing-receive-bale-row input{width:58px;height:27px;margin:0;padding:3px 5px;font-size:11px}
 .finishing-receive-accepted-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px;padding:9px 10px;border:1px solid #d7eadb;border-radius:7px;background:#edf7ef}
 .finishing-receive-accepted-summary label{display:grid;gap:4px;margin:0;font-size:11px;font-weight:600;color:#236438}
 .finishing-receive-accepted-summary input{height:32px;margin:0;background:#fff;border-color:#cfe3d3;color:#1f3825}
-.finishing-receive-bale-list{display:grid;gap:6px}
+.finishing-receive-bale-list{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .finishing-receive-empty-bales{margin:0;color:var(--muted);font-size:12px}
-.finishing-receive-remove{align-self:end;width:34px;height:34px;padding:0;color:#9d3436;font-size:20px}
+.finishing-receive-remove{align-self:center;width:22px;height:24px;padding:0;border:0;color:#9d3436;font-size:17px}
 .finishing-receive-remove:disabled{opacity:.35;cursor:default}
 .finishing-receive-add-bale{justify-self:start;padding:6px 10px;font-size:12px}
 .finishing-receive-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
