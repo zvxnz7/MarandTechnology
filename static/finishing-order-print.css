@@ -1,0 +1,26 @@
+/* Compact the order header while leaving the item table untouched. */
+.sheet .head{gap:7mm;padding-bottom:4px}
+.sheet .head h1{font-size:14pt}
+.sheet .brand{margin-top:2px;font-size:7pt}
+.sheet .head-fields{gap:5px}
+.sheet .blank-field{min-height:13mm;padding:3px;font-size:7pt}
+.sheet .blank-line{height:5mm;margin-top:1mm}
+.sheet .symbols-line{display:flex;gap:18px;align-items:center;margin:5px 0;padding:4px 6px;border:1px solid #aaa;background:#f7f7f7}
+.sheet .symbols-line>div{display:flex;gap:6px;align-items:baseline;min-width:0}
+.sheet .symbols-line small{font-size:7pt;color:#555;white-space:nowrap}
+.sheet .symbols-line strong{font-size:9pt;overflow-wrap:anywhere}
+.sheet .meta{gap:3px;margin:4px 0}
+.sheet .field{padding:2px}
+.sheet .field b{font-size:7pt;margin-bottom:1px}
+.sheet .field strong{font-size:9pt}
+.sheet .raw-sale-banner{margin:5px 0;padding:4px 7px;font-size:10pt}
+.sheet .order-notes{margin:5px 0;padding:5px;border-width:3px}
+.sheet .recipe-params{gap:4px}
+.sheet .recipe-param{min-height:8mm;padding:3px 5px}
+.sheet .recipe-param small{font-size:7pt;margin-bottom:1px}
+.sheet .recipe-param strong{font-size:9pt}
+.sheet .recipe-param .raw-material{font-size:10pt}
+.sheet .recipe-notes{margin-top:4px;padding:4px;border-width:2px}
+.sheet .notes-label{display:block;margin-bottom:2px;font-size:8pt;font-weight:700}
+.sheet .order-notes div,.sheet .recipe-notes div{font-size:9pt;line-height:1.25}
+.sheet .pieces{margin-top:6px}
