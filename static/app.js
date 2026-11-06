@@ -481,16 +481,18 @@ document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
- const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),emptyBales=form.querySelector('[data-receipt-empty-bales]'),summary=form.querySelector('[data-receipt-bale-summary]'),summaryError=form.querySelector('[data-receipt-summary-error]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg;
+ const baleList=form.querySelector('[data-receipt-bale-list]'),addBaleButton=form.querySelector('[data-receipt-add-bale]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg;
  form.querySelectorAll('input[type="number"]').forEach(input=>{
   input.addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown')event.preventDefault();});
   input.addEventListener('wheel',()=>{if(document.activeElement===input)input.blur();},{passive:true});
  });
- const bales=[];let pendingMeters=null;
+ const bales=[{meters:'',weight:''}];
  const parsePositive=value=>{const normalized=String(value??'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);
- const mode=()=>form.querySelector('[data-receipt-mode]:checked')?.value||'meters';
- const usesMeters=()=>mode()!=='weight',usesWeight=()=>mode()!=='meters';
+ const usesMeters=()=>true,usesWeight=()=>true;
+ const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+ const rowHtml=(bale,index)=>`<div class="finishing-receive-bale-row" data-receipt-bale-row><strong>Sztuka ${index+1}</strong><label><span>Metry (mb)</span><input type="text" inputmode="decimal" maxlength="5" autocomplete="off" data-receipt-meter aria-label="Metry sztuki ${index+1}" value="${escapeHtml(bale.meters)}"></label><label><span>Masa (kg)</span><input type="text" inputmode="decimal" maxlength="5" autocomplete="off" data-receipt-weight aria-label="Masa sztuki ${index+1}" value="${escapeHtml(bale.weight)}"></label><button type="button" class="finishing-receive-remove" data-receipt-remove aria-label="Usuń sztukę ${index+1}" title="Usuń sztukę">×</button></div>`;
+ const renderBales=()=>{baleList.innerHTML=bales.map(rowHtml).join('');baleList.querySelectorAll('[data-receipt-meter],[data-receipt-weight]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-receipt-bale-row]'),index=[...baleList.children].indexOf(row),key=input.hasAttribute('data-receipt-meter')?'meters':'weight';bales[index][key]=input.value.slice(0,5);if(input.value.length>5)input.value=input.value.slice(0,5);refresh();}));baleList.querySelectorAll('[data-receipt-remove]').forEach(button=>button.addEventListener('click',()=>{const index=[...baleList.children].indexOf(button.closest('[data-receipt-bale-row]'));bales.splice(index,1);renderBales();refresh();}));bindEnter();};
  const paramRows=[...form.querySelectorAll('[data-finishing-param-row]')];
  const refreshParamRows=()=>paramRows.forEach(row=>{
   const input=row.querySelector('input'),status=row.querySelector('[data-param-status]'),actual=Number(String(input.value||'').trim().replace(',','.')),target=Number(row.dataset.paramTarget),minusRaw=row.dataset.paramMinus,plusRaw=row.dataset.paramPlus;
@@ -503,61 +505,21 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   status.classList.add('is-danger');
  });
  paramRows.forEach(row=>row.querySelector('input')?.addEventListener('input',refreshParamRows));
- const updateEntryPrompt=()=>{
-  const label=mode()==='weight'?'masa (kg)':mode()==='both'&&pendingMeters!==null?'masa (kg)':'metry (mb)';
-  entryPrompt.textContent='Belka '+(bales.length+1)+' — '+label;
- };
- const updateModeLock=()=>modeInputs.forEach(input=>{input.disabled=pendingMeters!==null||bales.length>0;});
- const summaryText=()=>bales.map((bale,index)=>{
-  const prefix=(index+1)+'-';
-  if(usesMeters()&&usesWeight())return prefix+fmt(bale.meters)+'m, '+fmt(bale.weight)+'kg';
-  if(usesMeters())return prefix+fmt(bale.meters)+'m';
-  return prefix+fmt(bale.weight)+'kg';
- }).join(' | ');
- const renderBales=()=>{
-  summary.value=summaryText();summaryError.textContent='';emptyBales.hidden=bales.length>0;
-  if(!bales.length)emptyBales.textContent='Wpisane belki pojawią się tutaj.';
-  updateModeLock();updateEntryPrompt();
- };
- const parseSummary=raw=>{
-  const segments=raw.split('|').map(value=>value.trim());
-  if(!raw.trim())return [];
-  if(segments.some(value=>!value))return null;
-  const numeric='(\\d+(?:[.,]\\d+)?)';
-  const parseNumber=value=>Number(value.replace(',','.'));
-  const parsed=[];
-  for(const segment of segments){
-   const value=segment.replace(/^\\s*\\d+\\s*[-:]\\s*/,'');let match;
-   if(mode()==='both'){
-    match=value.match(new RegExp('^\\s*'+numeric+'\\s*m(?:b)?\\s*[,;]\\s*'+numeric+'\\s*kg\\s*$','i'));
-    if(!match)return null;
-    const meters=parseNumber(match[1]),weight=parseNumber(match[2]);if(!(meters>0&&weight>0))return null;
-    parsed.push({meters,weight});
-   }else if(mode()==='meters'){
-    match=value.match(new RegExp('^\\s*'+numeric+'\\s*(?:mb|m)?\\s*$','i'));
-    if(!match)return null;const meters=parseNumber(match[1]);if(!(meters>0))return null;parsed.push({meters,weight:null});
-   }else{
-    match=value.match(new RegExp('^\\s*'+numeric+'\\s*(?:kg)?\\s*$','i'));
-    if(!match)return null;const weight=parseNumber(match[1]);if(!(weight>0))return null;parsed.push({meters:null,weight});
-   }
-  }
-  return parsed;
- };
+ const focusNext=(input)=>{const row=input.closest('[data-receipt-bale-row]'),index=[...baleList.children].indexOf(row);if(input.hasAttribute('data-receipt-meter')){row.querySelector('[data-receipt-weight]').focus();return;}if(index+1<bales.length)baleList.children[index+1].querySelector('[data-receipt-meter]').focus();else{bales.push({meters:'',weight:''});renderBales();refresh();baleList.lastElementChild.querySelector('[data-receipt-meter]').focus();}};
+ const bindEnter=()=>baleList.querySelectorAll('[data-receipt-meter],[data-receipt-weight]').forEach(input=>input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();focusNext(input);}}));
  const refresh=()=>{
   const useMeters=usesMeters(),useWeight=usesWeight();
   form.dataset.measureMeters=String(useMeters);form.dataset.measureWeight=String(useWeight);
   measureMeters.value=useMeters?'1':'0';measureWeight.value=useWeight?'1':'0';
   form.querySelector('[data-receipt-weight-difference]').hidden=!useWeight;
-  const meterValues=bales.map(bale=>bale.meters),weightValues=bales.map(bale=>bale.weight);
-  metersList.value=useMeters?meterValues.map(value=>value===null?'':String(value)).join('+'):'';
-  weightsList.value=useWeight?weightValues.map(value=>value===null?'':String(value)).join('+'):'';
+  const meterValues=bales.map(bale=>parsePositive(bale.meters)),weightValues=bales.map(bale=>parsePositive(bale.weight));
+  metersList.value=meterValues.map(value=>value===null?'':String(value)).join('+');
+  weightsList.value=weightValues.map(value=>value===null?'':String(value)).join('+');
   const meterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0),weightTotal=weightValues.reduce((sum,value)=>sum+(value||0),0);
-  form.querySelector('[data-receipt-total-meters]').textContent=useMeters&&meterValues.length?fmt(meterTotal)+' mb':'—';
-  form.querySelector('[data-receipt-total-weight]').textContent=useWeight&&weightValues.length?fmt(weightTotal)+' kg':'—';
-  receivedWeightInput.readOnly=useWeight;
-  if(useWeight)receivedWeightInput.value=weightValues.length?String(Math.round(weightTotal*100)/100):'';
+  form.querySelector('[data-receipt-total-meters]').textContent=meterValues.some(value=>value!==null)?fmt(meterTotal)+' mb':'—';
+  receivedWeightInput.value=weightValues.some(value=>value!==null)?String(Math.round(weightTotal*100)/100):'';
   const typedWeight=String(receivedWeightInput.value||'').trim().replace(',','.');
-  const receivedKg=useWeight&&weightValues.length?weightTotal:typedWeight!==''&&Number.isFinite(Number(typedWeight))?Number(typedWeight):null;
+  const receivedKg=useWeight&&weightValues.length&&weightValues.every(value=>value!==null)?weightTotal:typedWeight!==''&&Number.isFinite(Number(typedWeight))?Number(typedWeight):null;
   const weightDifference=form.querySelector('[data-receipt-weight-difference-value]');
   if(receivedKg===null)weightDifference.textContent='—';
   else{const difference=Number(form.dataset.rawWeight)-receivedKg;weightDifference.textContent=difference>0.005?'Strata '+fmt(difference)+' kg':difference< -0.005?'Zysk '+fmt(Math.abs(difference))+' kg':'0 kg · bez straty';}
@@ -571,34 +533,12 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const receivedForClose=receivedKg===null?null:receivedKg,previousPieces=Number(form.dataset.previousReceivedPieces),previousWeight=Number(form.dataset.previousReceivedWeight);
   const closesByMatch=sentPieces>0&&Number.isFinite(returned)&&previousPieces+returned===sentPieces&&rawWeight>0&&receivedForClose!==null&&Math.abs(previousWeight+receivedForClose-rawWeight)<=0.01;
   form.querySelector('[data-receipt-auto-close-message]').hidden=!closesByMatch;
-  const incomplete=bales.some(bale=>(useMeters&&(bale.meters===null||bale.meters<=0))||(useWeight&&(bale.weight===null||bale.weight<=0)));
-  form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete||Boolean(summaryError.textContent);
-  printLabelsButton.disabled=bales.length===0;
+  const incomplete=bales.some(bale=>parsePositive(bale.meters)===null||parsePositive(bale.weight)===null);
+  form.querySelector('button[type="submit"]').disabled=bales.length===0||incomplete;
+  printLabelsButton.disabled=bales.length===0||incomplete;
  };
- modeInputs.forEach(input=>input.addEventListener('change',()=>{entryInput.value='';entryStatus.textContent='';bales.splice(0,bales.length);summary.value='';if(input.value==='meters'){receivedWeightInput.readOnly=false;receivedWeightInput.value='';}renderBales();refresh();entryInput.focus();}));
- summary.addEventListener('input',()=>{
-  const parsed=parseSummary(summary.value);
-  if(parsed===null){summaryError.textContent=mode()==='both'?'Użyj formatu: 1-123m, 21,5kg | 2-122m, 21,4kg.':'Popraw wartości, rozdziel belki znakiem | i dodaj jednostkę.';refresh();return;}
-  bales.splice(0,bales.length,...parsed);summaryError.textContent='';emptyBales.hidden=bales.length>0;updateModeLock();updateEntryPrompt();refresh();
- });
- entryInput.addEventListener('input',()=>{entryStatus.textContent='';});
- entryInput.addEventListener('keydown',event=>{
-  if(event.key!=='Enter')return;event.preventDefault();
-  const value=parsePositive(entryInput.value);
-  if(value===null){entryStatus.textContent='Wpisz liczbę większą od zera.';entryInput.focus();return;}
-  entryInput.value='';
-  if(mode()==='both'&&pendingMeters===null){
-   pendingMeters=value;entryStatus.textContent='Metry zapisane. Teraz wpisz kg tej samej belki.';
-   updateModeLock();updateEntryPrompt();entryInput.focus();return;
-  }
-  if(mode()==='both'){bales.push({meters:pendingMeters,weight:value});pendingMeters=null;}
-  else if(mode()==='meters')bales.push({meters:value,weight:null});
-  else bales.push({meters:null,weight:value});
-  entryStatus.textContent='Zapisano belkę '+bales.length+'.';
-  renderBales();refresh();entryInput.focus();
- });
+ addBaleButton.addEventListener('click',()=>{bales.push({meters:'',weight:''});renderBales();refresh();baleList.lastElementChild.querySelector('[data-receipt-meter]').focus();});
  rawPieces.addEventListener('input',refresh);
- receivedWeightInput.addEventListener('input',refresh);
  printLabelsButton.addEventListener('click',()=>{
   if(!bales.length)return;
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -613,14 +553,11 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  });
  form.addEventListener('submit',event=>{
   refresh();
-  if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej belki.';entryInput.focus();return;}
-  if(!bales.length){event.preventDefault();entryStatus.textContent='Dodaj co najmniej jedną belkę.';entryInput.focus();return;}
-  const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&(bale.meters===null||bale.meters<=0))||(useWeight&&(bale.weight===null||bale.weight<=0)));
-  if(incompleteIndex!==-1){event.preventDefault();entryStatus.textContent='Uzupełnij pomiary belki '+(incompleteIndex+1)+'.';summary.focus();return;}
-  if(summaryError.textContent){event.preventDefault();summary.focus();return;}
+  const incompleteIndex=bales.findIndex(bale=>parsePositive(bale.meters)===null||parsePositive(bale.weight)===null);
+  if(!bales.length||incompleteIndex!==-1){event.preventDefault();const row=baleList.children[Math.max(0,incompleteIndex)];row?.querySelector(parsePositive(bales[Math.max(0,incompleteIndex)]?.meters)===null?'[data-receipt-meter]':'[data-receipt-weight]')?.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
-  form.reset();bales.splice(0,bales.length);pendingMeters=null;entryInput.value='';entryStatus.textContent='';summaryError.textContent='';
+  form.reset();bales.splice(0,bales.length,{meters:'',weight:''});
   renderBales();refreshParamRows();refresh();
  });
  renderBales();refresh();refreshParamRows();

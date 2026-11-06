@@ -8,3 +8,4 @@ Ustalenia do późniejszego wdrożenia. Na razie bez zmian w aplikacji.
 - Przy sekcji „Sztuki załadowane do zlecenia” dodać strzałkę wskazującą możliwość rozwinięcia.
 - Przy załadowanej recepturze dodać ikonkę otwierającą podgląd całej receptury.
 - Sekcję „Historia wykonań” w recepturze zrobić zwijaną i rozwijaną strzałką.
+- Przy przyjmowaniu sztuk ręczna korekta metrów po błędzie się nie zapisuje; dodać przycisk „Zapisz zmiany”.
