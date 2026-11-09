@@ -554,7 +554,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  const rawGrammage=form.elements.actual_grammage,rawWidth=form.elements.actual_width_cm;
  receivedWeightInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawPieces.focus();}});
- rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
+ rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawGrammage?.focus();}});
  rawGrammage?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawWidth?.focus();}});
  rawWidth?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  modeInputs.forEach(input=>input.addEventListener('change',()=>{bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryInput.value='';entryCount.value='1';entryStatus.textContent='';receivedWeightInput.value='';weightOverride.value='0';renderBales();refresh();entryInput.focus();}));
@@ -576,7 +576,6 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   }
   pendingMeters=null;pendingCount=1;entryCount.value='1';entryCount.disabled=false;
   entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
-  if(mode()==='meters'&&bales.length===repeat)rawGrammage?.focus();
  });
  rawPieces.addEventListener('input',refresh);
  receivedWeightInput.addEventListener('input',()=>{weightOverride.value='1';refresh();});
