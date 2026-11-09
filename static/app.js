@@ -38,7 +38,7 @@ document.querySelectorAll('[data-print-page]').forEach(button=>button.addEventLi
  window.print();
 }));
 document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
- const orderTypeInputs=[...form.querySelectorAll('[name="order_type"]')],plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]'),recipeSearch=form.querySelector('[data-finishing-recipe-search]'),recipeResults=form.querySelector('[data-finishing-recipe-results]'),recipeSelected=form.querySelector('[data-finishing-recipe-selected]'),recipeEditShortcut=form.querySelector('[data-finishing-recipe-edit-shortcut]'),selectedRecipeDetails=form.querySelector('[data-finishing-selected-recipe]'),selectedRecipeText=form.querySelector('[data-finishing-selected-recipe-text]'),source=form.querySelector('[data-finishing-source]'),sourceDetails=form.querySelector('[data-finishing-source-details]');
+ const orderTypeInputs=[...form.querySelectorAll('[name="order_type"]')],plant=form.querySelector('[data-finishing-plant]'),recipe=form.querySelector('[data-finishing-recipe]'),recipeSearch=form.querySelector('[data-finishing-recipe-search]'),recipeResults=form.querySelector('[data-finishing-recipe-results]'),recipeSelected=form.querySelector('[data-finishing-recipe-selected]'),recipeEditShortcut=form.querySelector('[data-finishing-recipe-edit-shortcut]'),selectedRecipeDetails=form.querySelector('[data-finishing-selected-recipe]'),selectedRecipeText=form.querySelector('[data-finishing-selected-recipe-text]'),source=form.querySelector('[data-finishing-source]'),sourceDetails=form.querySelector('[data-finishing-source-details]'),lastProductionNote=form.querySelector('[data-finishing-last-production-note]');
  const checkDialog=document.querySelector('[data-finishing-production-check]'),checkContent=checkDialog?.querySelector('[data-finishing-production-check-content]'),checkConfirm=checkDialog?.querySelector('[data-finishing-production-check-confirm]'),confirmValue=form.elements.namedItem('confirm_last_production'),submitButton=form.querySelector('[type="submit"]');
  let recipeTimer=null,recipeController=null,sourceController=null,activeRecipeIndex=-1;
  const recipeOptions=()=>[...recipeResults.querySelectorAll('[data-finishing-recipe-option]')];
@@ -116,7 +116,9 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
     addCheckRow('LOT z poprzedniej produkcji',data.previousLot||'Brak');
    }
    addCheckRow('LOT z wybranego PM',data.currentLot);
-   addCheckRow('Porównanie LOT-u',data.lotComparison,data.lotComparison==='Ten sam LOT'?'is-ok':data.lotComparison==='LOT się zmienił'?'is-warning':'');checkConfirm.disabled=false;
+   addCheckRow('Porównanie LOT-u',data.lotComparison,data.lotComparison==='Ten sam LOT'?'is-ok':data.lotComparison==='LOT się zmienił'?'is-warning':'');
+   const noteLabel=document.createElement('label');noteLabel.className='finishing-production-check-note';noteLabel.textContent='Notatka dla wykańczalni';
+   const noteInput=document.createElement('textarea');noteInput.rows=3;noteInput.maxLength=3000;noteInput.placeholder='Wpisz dodatkową informację dla wykańczalni';noteInput.dataset.finishingLastProductionNoteInput='';noteLabel.appendChild(noteInput);checkContent.appendChild(noteLabel);checkConfirm.disabled=false;
   }catch(error){checkContent.replaceChildren();const note=document.createElement('p');note.className='notice warning';note.textContent=error.message;checkContent.appendChild(note);}
  };
  form.addEventListener('submit',event=>{
@@ -126,7 +128,7 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
   if(confirmValue?.value==='1')return;
   event.preventDefault();showCheck();
  });
- checkConfirm?.addEventListener('click',()=>{if(checkConfirm.disabled)return;confirmValue.value='1';form.requestSubmit(submitButton);});
+ checkConfirm?.addEventListener('click',()=>{if(checkConfirm.disabled)return;lastProductionNote.value=checkContent.querySelector('[data-finishing-last-production-note-input]')?.value.trim()||'';confirmValue.value='1';form.requestSubmit(submitButton);});
  checkDialog?.querySelectorAll('[data-finishing-production-check-close],[data-finishing-production-check-cancel]').forEach(button=>button.addEventListener('click',()=>checkDialog.close()));
  document.addEventListener('click',event=>{if(!form.contains(event.target))closeRecipeResults();});
  sync();
@@ -294,7 +296,7 @@ document.querySelectorAll('[data-shipment-live-search]').forEach(form=>{
   const q=input.value.trim();controller?.abort();controller=null;
   if(!q){results.replaceChildren();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');return;}
   controller=new AbortController();
-  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'',article=form.querySelector('input[name="article_id"]')?.value||'',plant=form.querySelector('select[name="plant_id"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}${article?`&article_id=${encodeURIComponent(article)}`:''}${plant&&plant!=='0'?`&plant_id=${encodeURIComponent(plant)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded',String(Boolean(options().length)));}
+  try{const spec=form.querySelector('input[name="specification_id"]')?.value||'',article=form.querySelector('input[name="article_id"]')?.value||'',plant=form.querySelector('select[name="plant_id"]')?.value||'',status=form.querySelector('input[name="status"]')?.value||'';const response=await fetch(`${form.action}?partial=search&q=${encodeURIComponent(q)}${spec?`&specification_id=${encodeURIComponent(spec)}`:''}${article?`&article_id=${encodeURIComponent(article)}`:''}${plant&&plant!=='0'?`&plant_id=${encodeURIComponent(plant)}`:''}${status?`&status=${encodeURIComponent(status)}`:''}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();activeIndex=-1;input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded',String(Boolean(options().length)));}
   catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać artykułów.';input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');}}
  };
  input.addEventListener('input',()=>{activeIndex=-1;controller?.abort();results.replaceChildren();input.removeAttribute('aria-activedescendant');input.setAttribute('aria-expanded','false');clearTimeout(timer);timer=setTimeout(search,180);});
@@ -490,13 +492,14 @@ document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
- const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg,weightOverride=form.elements.finished_weight_override;
+ const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryCount=form.querySelector('[data-receipt-entry-count]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg,weightOverride=form.elements.finished_weight_override;
  form.querySelectorAll('input[type="number"]').forEach(input=>{
   input.addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown')event.preventDefault();});
   input.addEventListener('wheel',()=>{if(document.activeElement===input)input.blur();},{passive:true});
  });
- const bales=[];let pendingMeters=null;
+ const bales=[];let pendingMeters=null,pendingCount=1;
  const parsePositive=value=>{const normalized=String(value??'').trim().replace(',','.');if(!/^\d+(?:\.\d+)?$/.test(normalized))return null;const parsed=Number(normalized);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
+ const parseCount=value=>{const normalized=String(value??'').trim();if(!/^\d{1,3}$/.test(normalized))return null;const parsed=Number(normalized);return Number.isInteger(parsed)&&parsed>0&&parsed<=999?parsed:null;};
  const fmt=value=>new Intl.NumberFormat('pl-PL',{maximumFractionDigits:2}).format(value);
  const mode=()=>form.querySelector('[data-receipt-mode]:checked')?.value||'meters';
  const usesMeters=()=>mode()!=='weight',usesWeight=()=>mode()!=='meters';
@@ -548,19 +551,27 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
- modeInputs.forEach(input=>input.addEventListener('change',()=>{bales.splice(0,bales.length);pendingMeters=null;entryInput.value='';entryStatus.textContent='';receivedWeightInput.value='';weightOverride.value='0';renderBales();refresh();entryInput.focus();}));
+ entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
+ receivedWeightInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
+ modeInputs.forEach(input=>input.addEventListener('change',()=>{bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryInput.value='';entryCount.value='1';entryStatus.textContent='';receivedWeightInput.value='';weightOverride.value='0';renderBales();refresh();entryInput.focus();}));
  entryInput.addEventListener('input',()=>{entryStatus.textContent='';});
  entryInput.addEventListener('keydown',event=>{
   if(event.key!=='Enter')return;
   event.preventDefault();
   const value=parsePositive(entryInput.value);
   if(value===null){entryStatus.textContent='Wpisz liczbę większą od zera.';entryInput.focus();return;}
+  const count=parseCount(entryCount.value);
+  if(count===null){entryStatus.textContent='Wpisz liczbę jednakowych sztuk od 1 do 999.';entryCount.focus();return;}
   entryInput.value='';
-  if(mode()==='both'&&pendingMeters===null){pendingMeters=value;entryStatus.textContent='Metry zapisane. Teraz wpisz kg tej samej sztuki.';updateEntryPrompt();entryInput.focus();return;}
-  if(mode()==='both'){bales.push({meters:pendingMeters,weight:value});pendingMeters=null;weightOverride.value='0';}
-  else if(mode()==='meters')bales.push({meters:value,weight:null});
-  else{bales.push({meters:null,weight:value});weightOverride.value='0';}
-  entryStatus.textContent='Zapisano sztukę '+bales.length+'.';renderBales();refresh();entryInput.focus();
+  if(mode()==='both'&&pendingMeters===null){pendingMeters=value;pendingCount=count;entryCount.disabled=true;entryStatus.textContent=`Metry zapisane. Teraz wpisz kg dla ${count} ${count===1?'sztuki':'sztuk'}.`;updateEntryPrompt();entryInput.focus();return;}
+  const repeat=mode()==='both'?pendingCount:count;
+  for(let index=0;index<repeat;index++){
+   if(mode()==='both')bales.push({meters:pendingMeters,weight:value});
+   else if(mode()==='meters')bales.push({meters:value,weight:null});
+   else bales.push({meters:null,weight:value});
+  }
+  pendingMeters=null;pendingCount=1;entryCount.value='1';entryCount.disabled=false;
+  entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
  rawPieces.addEventListener('input',refresh);
  receivedWeightInput.addEventListener('input',()=>{weightOverride.value='1';refresh();});
@@ -583,7 +594,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent='Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
-  form.reset();bales.splice(0,bales.length);pendingMeters=null;entryStatus.textContent='';
+  form.reset();bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryCount.disabled=false;entryStatus.textContent='';
   renderBales();refreshParamRows();refresh();
  });
  renderBales();refresh();refreshParamRows();

@@ -564,8 +564,11 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-mode input{width:auto;margin:0;accent-color:#385f7d}
 .finishing-receive-mode input:checked+span{font-weight:700}
 .finishing-receive-mode input:disabled{opacity:.45}
-.finishing-receive-entry{display:grid;gap:4px;margin:0;font-size:12px;font-weight:650}
-.finishing-receive-entry input{width:min(360px,100%);height:38px;margin:0;padding:7px 10px;font-size:15px}
+.finishing-receive-entry-box{display:flex;align-items:end;flex-wrap:wrap;gap:10px}
+.finishing-receive-entry{display:grid;flex:1 1 240px;min-width:0;gap:4px;margin:0;font-size:12px;font-weight:650}
+.finishing-receive-entry input{width:100%;max-width:360px;height:38px;margin:0;padding:7px 10px;font-size:15px}
+.finishing-receive-entry-count{display:grid;gap:4px;margin:0;font-size:11px;font-weight:650}
+.finishing-receive-entry-count input{width:78px;height:38px;margin:0;padding:6px 8px;text-align:center}
 .finishing-receive-entry-status{min-height:18px;color:var(--muted);font-size:12px}
 .finishing-receive-unit-options{display:flex;gap:7px}
 .finishing-receive-unit-options label{display:flex;align-items:center;gap:6px;margin:0;padding:6px 10px;border:1px solid #cfd8df;border-radius:6px;background:#f8fafb;font-size:12px;cursor:pointer}
@@ -599,6 +602,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-close-row{display:flex;justify-content:flex-end}
 .finishing-receive-close-batch{font-size:12px;color:var(--muted)}
 .finishing-receive-actions{justify-content:flex-end;padding-top:12px;border-top:1px solid var(--line)}
+.finishing-production-check-note{display:grid;gap:5px;margin-top:14px;color:#293d50;font-size:13px;font-weight:650}
+.finishing-production-check-note textarea{width:100%;min-height:74px;padding:8px 10px;border:1px solid #ccd4dc;border-radius:6px;font:inherit;font-weight:400;resize:vertical}
 .finishing-receive-print:disabled{cursor:not-allowed;color:#899097;background:#f2f3f4}
 .finishing-receipts-list{min-width:1300px}
 .finishing-receipts-list td{vertical-align:middle}
@@ -618,6 +623,25 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe summary{display:flex;justify-content:space-between;gap:12px;padding:12px;cursor:pointer}
 .finishing-recipe summary span{color:var(--muted);font-size:12px}.finishing-recipe-detail{padding:0 12px 12px}
 .finishing-recipe-text{max-height:420px;overflow:auto;padding:10px;border:1px solid #e2e5e8;border-radius:5px;background:#fafafa}
+.finishing-source-pieces>summary{align-items:center;list-style:none}
+.finishing-source-pieces>summary::-webkit-details-marker{display:none}
+.finishing-source-pieces-arrow{display:inline-grid;place-items:center;width:18px;flex:0 0 18px;color:#496278;font-size:22px;line-height:1;transition:transform .15s}
+.finishing-source-pieces[open]>summary .finishing-source-pieces-arrow{transform:rotate(90deg)}
+.finishing-source-pieces-title{flex:1;color:var(--ink)!important;font-size:13px!important;font-weight:650!important}
+.finishing-selected-recipe>summary{display:flex;align-items:center;gap:8px}
+.finishing-selected-recipe>summary svg{width:17px;height:17px;flex:0 0 17px}
+.finishing-recipe-history>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none}
+.finishing-recipe-history>summary::-webkit-details-marker{display:none}
+.finishing-recipe-history>summary:before{content:'›';display:inline-block;width:16px;color:#496278;font-size:22px;line-height:1;transition:transform .15s}
+.finishing-recipe-history[open]>summary:before{transform:rotate(90deg)}
+.finishing-recipe-history>summary span{flex:1}
+.finishing-recipe-history>summary small{color:var(--muted);font-size:12px;font-weight:500}
+.finishing-recipe-history-content{display:grid;gap:10px}
+.finishing-recipe-status-filter{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.finishing-recipe-status-filter .selected{border-color:#29445d;background:#edf3f7;color:#20384e}
+.finishing-recipe-status-form{display:flex;margin:0}
+.finishing-recipe-status-button{white-space:nowrap;font-size:12px}
+.finishing-source-pieces>summary .finishing-source-pieces-title{flex:1;color:var(--ink);font-size:13px;font-weight:650}
 @media(max-width:1000px){.finishing-recipe-top-row{grid-template-columns:1fr}.finishing-recipe-copy{grid-template-columns:minmax(220px,1fr) auto}}
 @media(max-width:800px){.finishing-recipe-identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-process-grid>.finishing-check-option{grid-column:span 1}.finishing-process-described{grid-column:span 2;grid-template-columns:minmax(140px,.7fr) minmax(0,1.3fr)}}
 @media(max-width:1400px){.finishing-recipe-technical-row{grid-template-columns:1fr}}
