@@ -13,3 +13,6 @@ Ustalenia i zmiany wykańczania. Nierozwiązane punkty są oznaczone [ ].
 - [x] Korekta specyfikacji wysyłkowej PM synchronizuje usunięte i dodane belki w powiązanej specyfikacji wykańczania, zachowując ręcznie wybrany podzbiór oraz historię przyjęć.
 - [x] Pole „Powtórz ×” znajduje się bezpośrednio przy polu metrów, bez odsuwania na prawą stronę formularza.
 - [x] Przy liczniku problemów na liście zleceń dodać dymek z typem i opisem otwartych problemów.
+- [x] Przyjęcie z przycisku „DO POPRAWY” nie zapisuje odbioru; oznacza pierwotną partię, tworzy osobny wiersz „POPRAWKA” z tym samym PM i belkami oraz miejscem na nowy numer z farbiarni.
+- [x] Sprzedaż surowej od razu tworzy pozycję w przyjęciach i rozliczeniach PM, bez kosztu wykończenia.
+- [x] Korekta PM aktualizuje też zapisaną masę i liczbę sztuk w otwartych, jeszcze nieprzyjętych partiach wykańczania.

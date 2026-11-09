@@ -740,7 +740,32 @@ function syncFinishingOrderBalesForShipmentCorrection(db,shipmentArticleId,remov
     if(wasComplete)includedAdditions=addedBales;
     else if(includedRemoved.length)includedAdditions=addedBales.slice(0,includedRemoved.length);
     for(const bale of includedAdditions)addBale.run(order.id,bale.local_id,bale.bale_number,bale.machine,bale.production_date,bale.weight_kg,bale.meters,bale.lot||'');
-    if(removedSet.size||includedAdditions.length)db.prepare('UPDATE finishing_orders SET updated_at=?,updated_by=? WHERE id=?').run(updatedAt,actorId,order.id);
+    if(removedSet.size||includedAdditions.length){
+      const totals=db.prepare('SELECT count(*) pieces,round(coalesce(sum(weight_kg),0),2) weight FROM finishing_order_bales WHERE order_id=?').get(order.id);
+      const batches=db.prepare(`SELECT b.id,b.sent_pieces,b.raw_weight_kg,b.closed_at,b.workflow_status,
+          EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id) has_receipt
+        FROM finishing_batches b WHERE b.order_id=? AND b.correction_of_batch_id IS NULL ORDER BY b.id`).all(order.id);
+      const fixed=batches.filter(batch=>batch.closed_at||batch.has_receipt);
+      const adjustable=batches.filter(batch=>!batch.closed_at&&!batch.has_receipt);
+      if(adjustable.length){
+        const fixedPieces=fixed.reduce((sum,batch)=>sum+Number(batch.sent_pieces||0),0),fixedWeight=fixed.reduce((sum,batch)=>sum+Number(batch.raw_weight_kg||0),0);
+        const targets=[Math.max(0,Number(totals.pieces)-fixedPieces),Math.max(0,Math.round((Number(totals.weight)-fixedWeight)*100)/100)];
+        const spread=(field,target,integer)=>{
+          let remaining=integer?Math.round(target):Math.round(target*100)/100;
+          const currentTotal=adjustable.reduce((sum,batch)=>sum+Number(batch[field]||0),0);
+          for(const [index,batch] of adjustable.entries()){
+            const proportional=currentTotal>0?target*Number(batch[field]||0)/currentTotal:0;
+            const value=index===adjustable.length-1?remaining:Math.min(remaining,Math.max(0,integer?Math.floor(proportional):Math.round(proportional*100)/100));
+            if(integer)remaining-=value;else remaining=Math.round((remaining-value)*100)/100;
+            db.prepare(`UPDATE finishing_batches SET ${field}=?,updated_at=?,updated_by=? WHERE id=?`).run(value,updatedAt,actorId,batch.id);
+          }
+        };
+        // The common one-batch case is exact. Closed and received batches stay historical.
+        spread('sent_pieces',targets[0],true);
+        spread('raw_weight_kg',targets[1],false);
+      }
+      db.prepare('UPDATE finishing_orders SET updated_at=?,updated_by=? WHERE id=?').run(updatedAt,actorId,order.id);
+    }
   }
 }
 

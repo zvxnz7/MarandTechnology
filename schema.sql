@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS finishing_batches(
   order_id INTEGER NOT NULL REFERENCES finishing_orders(id) ON DELETE CASCADE,
   correction_of_batch_id INTEGER REFERENCES finishing_batches(id),
   complaint_status TEXT NOT NULL DEFAULT 'normal' CHECK(complaint_status IN ('normal','reklamowana','poprawiona')),
+  workflow_status TEXT NOT NULL DEFAULT 'normal' CHECK(workflow_status IN ('normal','do_poprawy','poprawka')),
   finishing_lot TEXT NOT NULL DEFAULT '',
   sent_at TEXT NOT NULL,
   sent_pieces INTEGER NOT NULL CHECK(sent_pieces >= 0),

@@ -592,6 +592,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   printWindow.document.open();printWindow.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>Etykiety ${esc(orderNumber)}</title><style>@page{size:50mm 74mm;margin:0}*{box-sizing:border-box}body{margin:0;font:10pt/1.22 Arial,sans-serif;color:#111}.label{width:50mm;height:74mm;padding:4mm 3.5mm;overflow:hidden;page-break-after:always;break-after:page;border:1px solid #bbb;position:relative}.symbol{display:block;font-size:15pt;text-align:center;margin:0 0 3mm}.label>div{margin:1.6mm 0}.qty{font-size:13pt;font-weight:700;margin-top:3mm!important}.label small{position:absolute;bottom:2mm;right:3mm;font-size:7pt}@media print{.label{border:0}}</style></head><body>${labels}</body></html>`);printWindow.document.close();
  });
  form.addEventListener('submit',event=>{
+  if(event.submitter?.hasAttribute('data-correction-action'))return;
   refresh();
   if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej sztuki.';entryInput.focus();return;}
   const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));

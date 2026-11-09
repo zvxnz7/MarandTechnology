@@ -58,14 +58,14 @@ function calculationContext(db,batchId){
   return {batch,root,rootReceipt,output,current,price,priceImport,settlement,usedWeight:Number(settlement?.used_weight_kg??rootReceipt.used_weight_kg??0)||Number(root.raw_weight_kg||0)};
 }
 function settlementRows(db){
-  const rows=db.prepare(`SELECT b.id batch_id,b.order_id,b.correction_of_batch_id,b.complaint_status,b.finishing_lot,b.sent_at,b.raw_weight_kg,b.sent_pieces,b.closed_at,
+  const rows=db.prepare(`SELECT b.id batch_id,b.order_id,b.correction_of_batch_id,b.complaint_status,b.workflow_status,b.finishing_lot,b.sent_at,b.raw_weight_kg,b.sent_pieces,b.closed_at,
       o.raw_symbol,o.trade_symbol,o.client_name,o.order_type,o.status order_status,o.source_shipment_no,
       fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
       (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
     LEFT JOIN shipments s ON s.id=sa.shipment_id
-    WHERE o.order_type<>'raw_sale' AND o.status<>'cancelled' AND b.closed_at IS NOT NULL
+    WHERE o.status<>'cancelled' AND b.closed_at IS NOT NULL
       AND EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id)
     ORDER BY o.created_at DESC,o.id DESC,b.id`).all();
   return rows.map(row=>({row,context:calculationContext(db,row.batch_id)}));
