@@ -627,9 +627,9 @@ function receiptsPage(ctx) {
   const q=String(ctx.url.searchParams.get('q')||'').trim(),query=q.length>=2?q.split(/\s+/).map(normalizeSearch).filter(Boolean):[];
   const db=ctx.db,all=Costing.settlementRows(db),view=ctx.url.searchParams.get('view')==='settled'?'settled':'pending',year=String(ctx.url.searchParams.get('year')||''),month=String(ctx.url.searchParams.get('month')||''),from=String(ctx.url.searchParams.get('from')||''),to=String(ctx.url.searchParams.get('to')||'');
   const dateOf=row=>String(row.receipt_date||row.closed_at||row.sent_at||'').slice(0,10);
-  const filtered=all.filter(({row})=>{
+  const filtered=all.filter(({row,context})=>{
     const haystack=[row.raw_symbol,row.client_name,row.trade_symbol,row.source_shipment_no,row.finishing_lot,row.finishing_plant_name,row.article_sequence?`PM ${articleNo({sequence:row.shipment_sequence},{sequence:row.article_sequence})}`:'',String(row.order_id),String(row.batch_id),row.complaint_status].map(normalizeSearch).join(' '),date=dateOf(row);
-    const isSettled=item.context?.settlement?.status==='settled';
+    const isSettled=context?.settlement?.status==='settled';
     return query.every(token=>haystack.includes(token))&&(!year||date.startsWith(`${year}-`))&&(!month||date.slice(5,7)===month)&&(!from||date>=from)&&(!to||date<=to)&&(view==='settled'?isSettled:!isSettled);
   });
   const latest=Costing.latestImport(db),groups=new Map(),years=[...new Set(all.map(({row})=>dateOf(row).slice(0,4)).filter(value=>/^\d{4}$/.test(value)))].sort((a,b)=>b.localeCompare(a));
