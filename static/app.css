@@ -399,9 +399,11 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-correction-form{margin:14px 0;padding:14px;border:1px solid #c8d0d5;border-radius:8px;background:#f6f8f9}
 .finishing-correction-form[hidden]{display:none}
 .finishing-correction-form h3{margin:0 0 10px}
-.finishing-correction-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.finishing-correction-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.finishing-correction-instruction{grid-column:1/-1}
 .finishing-correction-fields label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:650}
 .finishing-correction-fields label:nth-child(-n+2){grid-column:span 2}
+.finishing-correction-fields label.finishing-correction-instruction{grid-column:1/-1}
 .finishing-correction-fields input,.finishing-correction-fields textarea{width:100%;min-width:0}
 .finishing-correction-form>.actions{justify-content:flex-end;margin-top:10px}
 .finishing-correction-details{margin:8px 0;padding:10px 12px;border:1px solid #d4d9dd;border-left:4px solid #454b52;border-radius:5px;background:#f7f8f9}
@@ -709,6 +711,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-settlement-head{align-items:center}
 .finishing-settlement-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .finishing-settlement-title h1{margin:0}
+.finishing-receipt-tabs{display:flex;gap:8px;margin:12px 0 14px;border-bottom:1px solid var(--line)}
+.finishing-receipt-tabs a{display:inline-flex;padding:9px 13px;border-bottom:3px solid transparent;color:var(--muted);font-weight:650;text-decoration:none}
+.finishing-receipt-tabs a.selected{border-color:var(--red);color:var(--ink)}
+.finishing-settlements-list input[readonly]{background:#f3f5f6;color:#48525c}
 .finishing-load-calculation{display:inline-flex;align-items:center;gap:7px}
 .finishing-load-calculation svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .finishing-calculation-dialog{width:min(520px,calc(100vw - 28px))}
