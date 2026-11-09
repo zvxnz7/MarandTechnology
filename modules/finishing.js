@@ -1174,7 +1174,7 @@ function handle(ctx) {
       db.prepare("UPDATE finishing_batches SET workflow_status='do_poprawy',updated_at=?,updated_by=? WHERE id=?").run(stamp,req.user.id,batchId);
       db.prepare(`INSERT INTO finishing_batches(order_id,workflow_status,finishing_lot,sent_at,sent_pieces,raw_weight_kg,yarn_lot,notes,created_at,created_by,updated_at,updated_by)
         VALUES(?,'poprawka','',?,?,?,?,?,?,?,?,?)`).run(newId,sentAt,pieces,weight,batch.yarn_lot||'','',stamp,req.user.id,stamp,req.user.id);
-      audit(req.user,'Skierowano zlecenie do poprawy i utworzono poprawkę',null,JSON.stringify({orderId:order.id,batchId,newOrderId,pieces,weightKg:weight}),null);
+      audit(req.user,'Skierowano zlecenie do poprawy i utworzono poprawkę',null,JSON.stringify({orderId:order.id,batchId,newOrderId:newId,pieces,weightKg:weight}),null);
       return newId;
     });
     return redirect(req,res,'/finishing/orders',`PM ${order.article_sequence?articleNo({sequence:order.shipment_sequence},{sequence:order.article_sequence}):order.source_shipment_no} skierowano do poprawy. Utworzono osobne zlecenie POPRAWKA — wpisz nowy numer z farbiarni.`,'warning');
