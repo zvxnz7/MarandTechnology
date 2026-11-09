@@ -12,3 +12,4 @@ Ustalenia i zmiany wykańczania. Nierozwiązane punkty są oznaczone [ ].
 - [x] Przy wpisywaniu sztuk dodać możliwość powielenia tej samej wartości dla wielu belek, np. wpisać 300 mb i liczbę 7, aby dodać 7 osobnych belek po 300 mb.
 - [x] Korekta specyfikacji wysyłkowej PM synchronizuje usunięte i dodane belki w powiązanej specyfikacji wykańczania, zachowując ręcznie wybrany podzbiór oraz historię przyjęć.
 - [x] Pole „Powtórz ×” znajduje się bezpośrednio przy polu metrów, bez odsuwania na prawą stronę formularza.
+- [x] Przy liczniku problemów na liście zleceń dodać dymek z typem i opisem otwartych problemów.
