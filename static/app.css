@@ -399,6 +399,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-correction-form{margin:14px 0;padding:14px;border:1px solid #c8d0d5;border-radius:8px;background:#f6f8f9}
 .finishing-correction-form[hidden]{display:none}
 .finishing-correction-form h3{margin:0 0 10px}
+.finishing-correction-editor{margin:8px 0}.finishing-correction-editor>summary{cursor:pointer;color:var(--green);font-weight:650}.finishing-correction-editor[open]>summary{margin-bottom:8px}
 .finishing-correction-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
 .finishing-correction-instruction{grid-column:1/-1}
 .finishing-correction-fields label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:650}

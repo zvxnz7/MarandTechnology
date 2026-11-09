@@ -554,9 +554,10 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
   const receivedForClose=receivedKg===null?null:receivedKg,previousPieces=Number(form.dataset.previousReceivedPieces),previousWeight=Number(form.dataset.previousReceivedWeight);
   const closesByMatch=sentPieces>0&&Number.isFinite(returned)&&previousPieces+returned===sentPieces&&rawWeight>0&&receivedForClose!==null&&Math.abs(previousWeight+receivedForClose-rawWeight)<=0.01;
-  form.querySelector('[data-receipt-auto-close-message]').hidden=!closesByMatch;
+  const incompleteSelected=form.elements.incomplete?.checked===true;
   const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
-  form.querySelector('button[type="submit"]').disabled=bales.length===0||pendingMeters!==null||incomplete;
+  const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
+  if(saveButton)saveButton.disabled=(bales.length===0&&!incompleteSelected)||pendingMeters!==null||incomplete;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
@@ -586,6 +587,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
  rawPieces.addEventListener('input',refresh);
+ form.elements.incomplete?.addEventListener('change',refresh);
  receivedWeightInput.addEventListener('input',()=>{weightOverride.value='1';refresh();});
  printLabelsButton.addEventListener('click',()=>{
   if(!bales.length)return;
@@ -603,7 +605,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   refresh();
   if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej sztuki.';entryInput.focus();return;}
   const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
-  if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent='Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
+  if((!bales.length&&form.elements.incomplete?.checked!==true)||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent=!bales.length?'Dodaj sztukę albo zaznacz przyjęcie niekompletne.':'Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
   form.reset();bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryCount.disabled=false;entryStatus.textContent='';
