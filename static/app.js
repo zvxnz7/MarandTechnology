@@ -491,6 +491,14 @@ document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
  const stop=()=>{drag=null;};handle.addEventListener('pointerup',stop);handle.addEventListener('pointercancel',stop);
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
+document.querySelectorAll('[data-open-correction-form]').forEach(button=>button.addEventListener('click',()=>{
+ const area=button.closest('.dialog-body'),form=document.getElementById(button.dataset.openCorrectionForm),save=area?.querySelector('[data-receipt-save-button]');
+ if(!form)return;form.hidden=false;button.hidden=true;if(save)save.hidden=true;form.querySelector('textarea')?.focus();
+}));
+document.querySelectorAll('[data-cancel-correction]').forEach(button=>button.addEventListener('click',()=>{
+ const form=button.closest('.finishing-correction-form'),area=form?.closest('.dialog-body'),open=area?.querySelector('[data-open-correction-form]'),save=area?.querySelector('[data-receipt-save-button]');
+ if(form)form.hidden=true;if(open)open.hidden=false;if(save)save.hidden=false;
+}));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryCount=form.querySelector('[data-receipt-entry-count]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg,weightOverride=form.elements.finished_weight_override;
  form.querySelectorAll('input[type="number"]').forEach(input=>{
