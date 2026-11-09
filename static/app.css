@@ -406,7 +406,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-lot{font-size:inherit;font-weight:750}
 .finishing-order-lot-list{display:grid;align-items:center;gap:6px;min-width:220px}
 .finishing-order-lot-entry{display:flex;align-items:center;flex:0 1 auto;min-width:0;min-height:34px;gap:5px}
-.finishing-lot-edit-button{width:30px;min-width:30px;height:30px;padding:0;margin:0;font-size:11px;font-weight:650;white-space:nowrap}
+.finishing-lot-edit-button{width:auto;min-width:0;flex:0 0 auto;height:auto;padding:10px 12px;margin:0;font-size:13px;font-weight:650;white-space:nowrap}
 .finishing-order-lot-inline{display:flex;align-items:center;flex:1 1 140px;width:140px;max-width:140px}
 .finishing-order-lot-inline input{width:140px;max-width:100%;min-width:0;padding:6px 8px;font-size:12px}
 .finishing-order-lot-inline[data-save-state="saved"] input{border-color:#8dbb98}
