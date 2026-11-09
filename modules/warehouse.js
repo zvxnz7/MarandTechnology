@@ -718,6 +718,32 @@ function correctionPage(ctx, shipment, correctionId) {
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Korekta WZ ${shipmentNo(shipment)}</title><style>@page{size:A4 portrait;margin:15mm}body{font:12px/1.5 Arial,sans-serif;color:#111}.sheet{max-width:180mm;margin:20px auto}.bar{margin-bottom:24px}h1{text-align:center;font-size:21px}.meta{border:1px solid #555;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px}.row{margin:28px 0;padding:16px;border:1px solid #555}.label{color:#666}.sign{display:flex;gap:30px;margin-top:55px}.sign span{flex:1;border-bottom:1px solid #555;padding-bottom:35px}@media print{.bar{display:none}.sheet{margin:0}}</style><script defer src="/static/app.js"></script></head><body><div class="bar"><button data-print>Drukuj / zapisz jako PDF</button> <a href="/shipments/${shipment.id}">Wróć do wysyłki</a></div><main class="sheet"><h1>KOREKTA SPECYFIKACJI WYSYŁKI</h1><div class="meta"><div><b>Wysyłka:</b> ${shipmentNo(shipment)}</div><div><b>Data wysyłki:</b> ${date(shipment.shipment_date)}</div><div><b>Korekta nr:</b> ${correctionId}</div><div><b>Data korekty:</b> ${V.datepl(c.created_at)}</div></div><section class="row"><p><span class="label">Usunięto z wykazu:</span> <b>${V.esc(c.old_symbol)} · ${V.esc(c.old_number)}</b></p>${c.new_number?`<p><span class="label">Dodano:</span> <b>${V.esc(c.new_symbol)} · ${V.esc(c.new_number)}</b></p>`:''}<p><span class="label">Rozliczenie błędnej belki:</span> <b>${disposition}</b></p><p><span class="label">Powód:</span> ${V.esc(c.reason)}</p></section><p>Wystawił(a): ${V.esc(c.author||'')}</p><div class="sign"><span>Wydano</span><span>Odebrano</span></div></main></body></html>`;
 }
 
+function syncFinishingOrderBalesForShipmentCorrection(db,shipmentArticleId,removedIds,addedBaleIds,actorId,updatedAt) {
+  const orders=db.prepare("SELECT id FROM finishing_orders WHERE shipment_article_id=? AND status<>'cancelled'").all(shipmentArticleId);
+  if(!orders.length)return;
+  const beforeIds=new Set(db.prepare('SELECT bale_local_id FROM shipment_bales WHERE shipment_article_id=? AND removed_at IS NULL').all(shipmentArticleId).map(row=>row.bale_local_id));
+  const removedSet=new Set(removedIds.map(item=>item.id));
+  // The caller invokes this inside the correction transaction, before changing
+  // shipment_bales, so the finishing snapshot can retain any manual subset.
+  const deleteBale=db.prepare('DELETE FROM finishing_order_bales WHERE order_id=? AND bale_local_id=?');
+  const addedBales=addedBaleIds.map(item=>db.prepare('SELECT local_id,bale_number,machine,production_date,weight_kg,meters,lot FROM production_bales WHERE local_id=?').get(typeof item==='string'?item:item.local_id)).filter(Boolean);
+  const addBale=db.prepare(`INSERT INTO finishing_order_bales(order_id,bale_local_id,bale_number,machine,production_date,weight_kg,meters,lot)
+    VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(order_id,bale_local_id) DO UPDATE SET bale_number=excluded.bale_number,machine=excluded.machine,production_date=excluded.production_date,weight_kg=excluded.weight_kg,meters=excluded.meters,lot=excluded.lot`);
+  for(const order of orders){
+    const saved=db.prepare('SELECT bale_local_id FROM finishing_order_bales WHERE order_id=?').all(order.id);
+    if(!saved.length)continue; // legacy orders display the live PM specification
+    const savedIds=new Set(saved.map(row=>row.bale_local_id));
+    const wasComplete=savedIds.size===beforeIds.size&&[...beforeIds].every(id=>savedIds.has(id));
+    const includedRemoved=[...removedSet].filter(id=>savedIds.has(id));
+    for(const id of removedSet)deleteBale.run(order.id,id);
+    let includedAdditions=[];
+    if(wasComplete)includedAdditions=addedBales;
+    else if(includedRemoved.length)includedAdditions=addedBales.slice(0,includedRemoved.length);
+    for(const bale of includedAdditions)addBale.run(order.id,bale.local_id,bale.bale_number,bale.machine,bale.production_date,bale.weight_kg,bale.meters,bale.lot||'');
+    if(removedSet.size||includedAdditions.length)db.prepare('UPDATE finishing_orders SET updated_at=?,updated_by=? WHERE id=?').run(updatedAt,actorId,order.id);
+  }
+}
+
 function saveShipmentCorrection(ctx) {
   const {req,res,db,transaction}=ctx;
   const shipmentId=Number(ctx.form.shipment_id||0),itemId=Number(ctx.form.specification_id||0),reason=String(ctx.form.reason||'').trim().slice(0,500);
@@ -748,6 +774,7 @@ function saveShipmentCorrection(ctx) {
       if(!bale||Number(bale.article_id)!==Number(currentItem.article_id)) throw Object.assign(new Error(`Belka ${baleId} nie jest już dostępna w bieżącym stanie tego artykułu.`),{status:409});
       additions.push(baleId);
     }
+    syncFinishingOrderBalesForShipmentCorrection(db,itemId,removals,additions,req.user.id,ctx.now());
     const batchId=Number(db.prepare('INSERT INTO shipment_correction_batches(shipment_id,shipment_article_id,reason,created_at,created_by) VALUES(?,?,?,?,?)').run(shipmentId,itemId,reason,ctx.now(),req.user.id).lastInsertRowid);
     const addCorrectionItem=db.prepare('INSERT INTO shipment_correction_items(correction_batch_id,bale_local_id,action,disposition) VALUES(?,?,?,?)');
     for(const old of removals){
@@ -781,6 +808,7 @@ function saveLegacyShipmentCorrection(ctx, shipmentId, itemId) {
     if(!old) throw Object.assign(new Error('Wybrana belka nie należy do tej specyfikacji.'),{status:409});
     let replacement=null;
     if(newId){replacement=baleAvailableForNewShipment(db,newId);if(!replacement||Number(replacement.article_id)!==Number(item.article_id))throw Object.assign(new Error('Belka zastępcza musi być dostępna i należeć do tego samego artykułu.'),{status:409});}
+    syncFinishingOrderBalesForShipmentCorrection(db,itemId,[{id:oldId}],replacement?[newId]:[],req.user.id,ctx.now());
     db.prepare('UPDATE shipment_bales SET removed_at=?,removed_by=?,removal_reason=? WHERE id=?').run(ctx.now(),req.user.id,`Korekta: ${reason}`,old.id);
     const result=db.prepare('INSERT INTO shipment_corrections(shipment_id,shipment_article_id,removed_bale_local_id,replacement_bale_local_id,disposition,reason,created_at,created_by) VALUES(?,?,?,?,?,?,?,?)').run(shipmentId,itemId,oldId,newId||null,disposition,reason,ctx.now(),req.user.id);
     if(disposition==='lost'||disposition==='shipped_out') db.prepare('INSERT INTO warehouse_bale_flags(bale_local_id,status,reason,updated_at,updated_by) VALUES(?,?,?,?,?) ON CONFLICT(bale_local_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at,updated_by=excluded.updated_by').run(oldId,disposition,reason,ctx.now(),req.user.id);

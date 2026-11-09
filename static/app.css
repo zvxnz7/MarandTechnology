@@ -565,7 +565,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-mode input:checked+span{font-weight:700}
 .finishing-receive-mode input:disabled{opacity:.45}
 .finishing-receive-entry-box{display:flex;align-items:end;flex-wrap:wrap;gap:10px}
-.finishing-receive-entry{display:grid;flex:1 1 240px;min-width:0;gap:4px;margin:0;font-size:12px;font-weight:650}
+.finishing-receive-entry{display:grid;flex:0 1 240px;min-width:0;gap:4px;margin:0;font-size:12px;font-weight:650}
 .finishing-receive-entry input{width:100%;max-width:360px;height:38px;margin:0;padding:7px 10px;font-size:15px}
 .finishing-receive-entry-count{display:grid;gap:4px;margin:0;font-size:11px;font-weight:650}
 .finishing-receive-entry-count input{width:78px;height:38px;margin:0;padding:6px 8px;text-align:center}
