@@ -396,7 +396,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-add-batch-form button{white-space:nowrap}
 .finishing-send-to-correction{background:#252b31!important;border-color:#252b31!important;color:#fff!important}
 .finishing-send-to-correction:hover{background:#111519!important;border-color:#111519!important}
-.finishing-correction-submit-form{display:none}
+.finishing-correction-submit-form{display:inline-flex;margin:0}
 .finishing-order-notes-view{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}
 .finishing-row-actions{white-space:nowrap;text-align:right!important;vertical-align:middle!important}
 .finishing-order-actions-cell{vertical-align:top!important;padding-top:8px!important}
