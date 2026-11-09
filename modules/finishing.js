@@ -468,7 +468,8 @@ function ordersPage(ctx) {
       }
       receiveButtonForBatch(batch);
       const workflowBadge=batch.workflow_status==='do_poprawy'?'<span class="badge archived">Do poprawy</span>':batch.workflow_status==='poprawka'?'<span class="badge status-finishing">POPRAWKA</span>':'';
-      return `<div class="finishing-order-lot-entry${batch.workflow_status==='do_poprawy'?' is-correction-requested':''}">${workflowBadge}<span class="muted">Do uzupełnienia</span>${removeSpec}${addSpec}</div>`;
+      const lotDisplay=String(batch.finishing_lot||'').trim()?`<strong class="finishing-order-lot">${V.esc(batch.finishing_lot)}</strong>`:'<span class="muted">Do uzupełnienia</span>';
+      return `<div class="finishing-order-lot-entry${batch.workflow_status==='do_poprawy'?' is-correction-requested':''}">${workflowBadge}${lotDisplay}${removeSpec}${addSpec}</div>`;
     }).join('')}</div>`:'—';
     const receiveActionStack=receiveActions.length?`<div class="finishing-order-receive-actions">${receiveActions.join('')}</div>`:'';
     const incidentTooltip=String(order.open_incident_descriptions||'').trim();
