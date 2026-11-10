@@ -597,7 +597,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
    else bales.push({meters:null,weight:value});
   }
   pendingMeters=null;pendingCount=1;entryCount.value='1';entryCount.disabled=false;
-  entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryCount.focus();entryCount.select();
+  entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
  rawPieces.addEventListener('input',refresh);
  form.elements.incomplete?.addEventListener('change',refresh);
