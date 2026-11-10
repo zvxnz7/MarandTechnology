@@ -501,11 +501,11 @@ function ordersPage(ctx) {
       if(batch.cancelled_at)return `<div class="finishing-order-lot-entry"><span class="badge archived">Anulowana</span>${String(batch.finishing_lot||'').trim()?`<strong class="finishing-order-lot">${V.esc(finishingOrderNo(batch))}</strong>`:'<span class="muted">Próba anulowana</span>'}${removeSpec}</div>`;
       if(canEditLots&&batch.workflow_status!=='do_poprawy'){
         receiveButtonForBatch(batch);
-        const workflowBadge=batch.workflow_status==='do_poprawy'?'<span class="badge archived">Do poprawy</span>':batch.workflow_status==='poprawka'?'<span class="badge status-finishing">POPRAWKA</span>':'';
+        const workflowBadge=batch.workflow_status==='do_poprawy'?'<span class="badge archived">Do poprawy</span>':batch.workflow_status==='poprawka'?`<span class="badge status-finishing">POPRAWKA</span>${batch.closed_at?'<span class="badge approved">Przyjęte</span>':''}`:'';
         return `<div class="finishing-order-lot-entry${batch.workflow_status==='do_poprawy'?' is-correction-requested':''}">${workflowBadge}<form method="post" action="/finishing/orders/${order.id}/lot" class="finishing-order-lot-inline" data-finishing-lot-autosave>${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',batch.id)}${hidden('return_to','orders')}<input name="finishing_lot" maxlength="120" value="${V.esc(batch.finishing_lot||'')}" placeholder="Wpisz nr zlecenia" aria-label="Nr zlecenia" required></form>${removeSpec}${addSpec}</div>`;
       }
       receiveButtonForBatch(batch);
-      const workflowBadge=batch.workflow_status==='do_poprawy'?'<span class="badge archived">Do poprawy</span>':batch.workflow_status==='poprawka'?'<span class="badge status-finishing">POPRAWKA</span>':'';
+      const workflowBadge=batch.workflow_status==='do_poprawy'?'<span class="badge archived">Do poprawy</span>':batch.workflow_status==='poprawka'?`<span class="badge status-finishing">POPRAWKA</span>${batch.closed_at?'<span class="badge approved">Przyjęte</span>':''}`:'';
       const lotDisplay=String(batch.finishing_lot||'').trim()?`<strong class="finishing-order-lot">${V.esc(finishingOrderNo(batch))}</strong>`:'<span class="muted">Do uzupełnienia</span>';
       return `<div class="finishing-order-lot-entry${batch.workflow_status==='do_poprawy'?' is-correction-requested':''}">${workflowBadge}${lotDisplay}${removeSpec}${addSpec}</div>`;
     }).join('')}</div>`:'—';
@@ -613,7 +613,7 @@ function orderPage(ctx,id) {
     const batchQuantities=Number(batch.sent_pieces)>0?`${batch.sent_pieces} szt. surowe · ${money(batch.raw_weight_kg)} kg`:batch.receipt_count?`${batch.raw_received_pieces} szt. przyjęte · ${money(batch.finished_weight_kg||0)} kg przyjęte`:'Ilość sztuk i masa zostaną uzupełnione przy przyjęciu';
     const complaintBadge=batch.complaint_status==='reklamowana'?'<span class="badge archived">Reklamowana</span>':batch.complaint_status==='poprawiona'?'<span class="badge approved">Poprawiona</span>':'';
     const complaintAction=canEdit&&batch.closed_at&&batch.complaint_status==='normal'?`<form method="post" action="/finishing/batches/${batch.id}/complaint">${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Oznacz jako reklamowaną</button></form>`:'';
-    const batchStatusLabel=batch.workflow_status==='do_poprawy'?'Do poprawy':batch.workflow_status==='poprawka'?'POPRAWKA':batch.closed_at?'Przyjęte':batch.receipt_count?'Przyjęcie niekompletne':String(batch.finishing_lot||'').trim()?'W farbiarni':'Do uzupełnienia';
+    const batchStatusLabel=batch.workflow_status==='do_poprawy'?'Do poprawy':batch.workflow_status==='poprawka'?`POPRAWKA${batch.closed_at?' · Przyjęte':''}`:batch.closed_at?'Przyjęte':batch.receipt_count?'Przyjęcie niekompletne':String(batch.finishing_lot||'').trim()?'W farbiarni':'Do uzupełnienia';
     const correctionAction=canEdit&&!batch.cancelled_at&&batch.workflow_status!=='poprawka'?correctionForm(ctx,order,batch):'';
     const cancelAttempt=canEdit&&batch.workflow_status==='poprawka'&&batch.correction_parent_batch_id&&!batch.cancelled_at&&!batch.closed_at?`<form method="post" action="/finishing/batches/${batch.id}/cancel-attempt">${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Anuluj próbę poprawki</button></form>`:'';
     const correctionInstruction=[batch.correction_instruction,batch.correction_notes].filter(value=>String(value||'').trim()).join('\n\n');

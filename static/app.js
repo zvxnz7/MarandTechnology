@@ -482,7 +482,14 @@ document.addEventListener('click',event=>{
  const button=event.target.closest('[data-open-dialog]');if(!button)return;
  const dialog=document.getElementById(button.dataset.openDialog);
  if(!dialog)return;
+ if(dialog.classList.contains('finishing-receive-dialog')){
+  ['position','inset','margin','left','top'].forEach(property=>dialog.style.removeProperty(property));
+ }
  if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+ if(dialog.classList.contains('finishing-receive-dialog'))requestAnimationFrame(()=>{
+  const body=dialog.querySelector('.dialog-body');if(body)body.scrollTop=0;
+  dialog.querySelector('[data-receipt-entry-input]')?.focus({preventScroll:true});
+ });
 });
 document.querySelectorAll('dialog[data-draggable-dialog]').forEach(dialog=>{
  const handle=dialog.querySelector('[data-dialog-drag-handle]');if(!handle)return;
@@ -579,7 +586,8 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawGrammage?.focus();}});
  rawGrammage?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawWidth?.focus();}});
  rawWidth?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
- modeInputs.forEach(input=>input.addEventListener('change',()=>{bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryInput.value='';entryCount.value='1';entryStatus.textContent='';receivedWeightInput.value='';weightOverride.value='0';renderBales();refresh();entryInput.focus();}));
+ entryCount.addEventListener('focus',()=>entryCount.select());
+ modeInputs.forEach(input=>input.addEventListener('change',()=>{bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryInput.value='';entryCount.value='1';entryCount.disabled=false;entryStatus.textContent='';receivedWeightInput.value='';weightOverride.value='0';renderBales();refresh();entryInput.focus();}));
  entryInput.addEventListener('input',()=>{entryStatus.textContent='';});
  entryInput.addEventListener('keydown',event=>{
   if(event.key!=='Enter')return;
