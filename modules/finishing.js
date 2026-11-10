@@ -71,12 +71,15 @@ function notesEditorField({name='notes',label='Uwagi dodatkowe',ariaLabel='Uwagi
 }
 const shipmentNo = row => `${String(row.sequence).padStart(2,'0')}/${row.shipment_year}`;
 // PM sequences restart every shipment year, so the year is part of the displayed identifier.
-const articleNo = (shipment,item) => `${String(shipment.sequence).padStart(2,'0')}-${String(item.sequence).padStart(2,'0')}/${shipment.shipment_year}`;
+const articleNo = (shipment,item) => `${String(shipment.sequence).padStart(2,'0')}-${String(item.sequence).padStart(2,'0')}/${String(shipment.shipment_year).slice(-2)}`;
 const finishingOrderNo = row => {
   const lot=String(row?.finishing_lot||'').trim();
   if(!lot)return '';
   const year=String(row?.sent_at||row?.received_at||row?.created_at||row?.order_created_at||row?.source_shipment_date||'').slice(0,4);
-  return /^\d{4}$/.test(year)&&!/(?:^|\/)\d{4}$/.test(lot)?`${lot}/${year}`:lot;
+  if(!/^\d{4}$/.test(year))return lot;
+  const qualified=lot.match(/^(.*)\/(\d{4})$/);
+  if(qualified)return `${qualified[1]}/${qualified[2].slice(-2)}`;
+  return `${lot}/${year.slice(-2)}`;
 };
 
 function recipeRecord(db,id) {
