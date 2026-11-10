@@ -49,8 +49,8 @@ function yarnContributions(row) {
   const platesRaw = String(row.tarczowki ?? '').trim();
   const threadsPerPlateRaw = String(row.threads_per_tarczowka ?? '').trim();
   const hasSplitCount = Boolean(platesRaw || threadsPerPlateRaw);
-  const product = Number(platesRaw) * Number(threadsPerPlateRaw);
-  const splitProduct = /^\d+$/.test(platesRaw) && /^\d+$/.test(threadsPerPlateRaw) && Number.isSafeInteger(product)
+  const product = Number(platesRaw.replace(',', '.')) * Number(threadsPerPlateRaw.replace(',', '.'));
+  const splitProduct = /^\d+(?:[,.]\d{1,6})?$/.test(platesRaw) && /^\d+$/.test(threadsPerPlateRaw) && Number.isFinite(product) && product <= Number.MAX_SAFE_INTEGER
     ? product
     : NaN;
   const legacyThreads = /^\d+$/.test(rawThreads)
@@ -276,8 +276,9 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const gbRows = Array.from({ length: gbCount }, (_, i) => {
     const row = v.gb[i] || {};
     const number = row.number || String(Math.max(0,...v.gb.map(g=>Number(g.number))) + i - v.gb.length + 1);
-    const numericThreadOptions={type:'number',inputmode:'numeric',pattern:'[0-9]+',min:1,step:1,title:'Wpisz dodatnią liczbę całkowitą.'};
-    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share', 'threads'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='tarczowki'||k==='threads_per_tarczowka'?numericThreadOptions:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + hidden(`gb_${i}_threads`,row.threads||'') + threadingEditor(i, row.threading || 'pełne');
+    const plateOptions={inputmode:'decimal',pattern:'[0-9]+([,.][0-9]{1,6})?',maxlength:12,min:1,placeholder:'np. 3,33',title:'Wpisz dodatnią liczbę; możesz użyć przecinka, np. 3,33 (maks. 6 miejsc po przecinku).'};
+    const threadOptions={type:'number',inputmode:'numeric',pattern:'[0-9]+',min:1,step:1,title:'Wpisz dodatnią liczbę całkowitą.'};
+    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share', 'threads'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='tarczowki'?plateOptions:k==='threads_per_tarczowka'?threadOptions:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + hidden(`gb_${i}_threads`,row.threads||'') + threadingEditor(i, row.threading || 'pełne');
     const legacyThreadNote=row.threads&&!row.tarczowki&&!row.threads_per_tarczowka?`<p class="muted small gb-legacy-thread-count">Stary zapis: ${esc(row.threads)} nici łącznie. Uzupełnij oba pola powyżej, gdy będziesz znać podział.</p>`:'';
     return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${yarnEditor(i,row)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div>${legacyThreadNote}</div></section>`;
   }).join('');
@@ -295,7 +296,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
   const form = `<form method="post" class="editor" data-dirty${r.base_id ? ' data-inherited-values' : ''}>${hidden('csrf', csrf)}${hidden('revision', r.revision)}
 <section class="panel padded"><h2>Artykuł i opis</h2><div class="form-grid">${field('Symbol artykułu', 'symbol', v.symbol || r.symbol, { required: 'required' })}${field('Nr projektu', 'number', r.project_trial_number || '', { readonly: 'readonly' })}${field('Data źródłowa / założenia', 'date', v.date || '', v.date ? { readonly: 'readonly' } : {})}${field('Klient', 'client', v.client || '')}</div>${descriptionField}</section>
 <section class="panel padded"><h2>Ustawienia maszyny</h2><div class="form-grid">${tech}</div></section>
-<section class="panel padded"><h2>GB — przędze i sploty</h2><p class="muted">Wybierz jedno oznaczenie z pary FDY/DTY oraz jedno z grupy FD/SD/BR. Domyślnie zaznaczone: FDY i SD. Jeden filament wyświetla się jako mono. Wpisz liczbę tarczówek i liczbę nici na jednej tarczówce; skład liczy łączną liczbę nici jako ich iloczyn. Domyślnie GB1 i GB2. Dodaj kolejne w razie potrzeby.</p><datalist id="yarn-fiber-options"><option value="PES"></option><option value="PA"></option><option value="PA 6"></option><option value="PA 6.6"></option><option value="LYCRA"></option><option value="WEŁNA"></option></datalist><div data-gb-list>${gbRows}</div><button type="button" data-add-gb>+ Dodaj GB</button></section>
+<section class="panel padded"><h2>GB — przędze i sploty</h2><p class="muted">Wybierz jedno oznaczenie z pary FDY/DTY oraz jedno z grupy FD/SD/BR. Domyślnie zaznaczone: FDY i SD. Jeden filament wyświetla się jako mono. Wpisz liczbę tarczówek (może być ułamkowa, np. 3,33) oraz całkowitą liczbę nici na jednej tarczówce; skład liczy łączną liczbę nici jako ich iloczyn. Domyślnie GB1 i GB2. Dodaj kolejne w razie potrzeby.</p><datalist id="yarn-fiber-options"><option value="PES"></option><option value="PA"></option><option value="PA 6"></option><option value="PA 6.6"></option><option value="LYCRA"></option><option value="WEŁNA"></option></datalist><div data-gb-list>${gbRows}</div><button type="button" data-add-gb>+ Dodaj GB</button></section>
 <section class="panel padded"><h2>Uwagi dla dziewiarza</h2>${field('Uwagi dla dziewiarza', 'knitter_notes', v.knitter_notes || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Parametry dzianiny surowej</h2><div class="target-grid raw-grid">${rawGrid}</div>${field('Komentarz do dzianiny surowej', 'raw_comments', v.raw_comments || '', { multiline: true })}</section>
 <section class="panel padded"><h2>Parametry dzianiny wykończonej</h2><p class="muted">Pola opcjonalne. Wartości można uzupełnić później.</p><div class="target-grid">${targetGrid}</div>${field('Komentarz do dzianiny wykończonej', 'finished_comments', v.finished_comments || '', { multiline: true })}</section>
@@ -357,8 +358,8 @@ function cardPage({ r, v, machine, instructions, productionNotes = '', cardno, i
   const machineSpecs = TECH.slice(0, 5).map(([key, label]) => key === 'machine_type' ? ['machine_number', 'Nr maszyny'] : [key, label]);
   const yarnRows = (v.gb || []).map(row => {
     const plates=String(row.tarczowki||'').trim(),perPlate=String(row.threads_per_tarczowka||'').trim();
-    const product=Number(plates)*Number(perPlate);
-    const total=plates&&perPlate&&/^\d+$/.test(plates)&&/^\d+$/.test(perPlate)&&Number.isSafeInteger(product)?String(product):row.threads||'';
+    const product=Number(plates.replace(',', '.'))*Number(perPlate);
+    const total=plates&&perPlate&&/^\d+(?:[,.]\d{1,6})?$/.test(plates)&&/^\d+$/.test(perPlate)&&Number.isFinite(product)&&product<=Number.MAX_SAFE_INTEGER?String(Number(product.toFixed(6))).replace('.', ','):row.threads||'';
     const cells=[row.number,Yarn.compose(Yarn.fields(row))||row.yarn||'',row.pattern,plates,perPlate,total,row.run_in,row.threading];
     return `<tr>${cells.map(value=>`<td>${esc(value||'')}</td>`).join('')}</tr>`;
   }).join('');

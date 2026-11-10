@@ -324,9 +324,9 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
-    if (row.tarczowki && (!/^\d+$/.test(row.tarczowki) || Number(row.tarczowki) < 1)) fail(400, 'Liczba tarczówek musi być dodatnią liczbą całkowitą.');
+    if (row.tarczowki && (!/^\d+(?:[,.]\d{1,6})?$/.test(row.tarczowki) || !Number.isFinite(Number(row.tarczowki.replace(',', '.'))) || Number(row.tarczowki.replace(',', '.')) < 1 || Number(row.tarczowki.replace(',', '.')) > Number.MAX_SAFE_INTEGER)) fail(400, 'Liczba tarczówek musi być dodatnią liczbą, np. 3,33 (maks. 6 miejsc po przecinku).');
     if (row.threads_per_tarczowka && (!/^\d+$/.test(row.threads_per_tarczowka) || Number(row.threads_per_tarczowka) < 1)) fail(400, 'Liczba nici na jednej tarczówce musi być dodatnią liczbą całkowitą.');
-    if (row.tarczowki && row.threads_per_tarczowka && !Number.isSafeInteger(Number(row.tarczowki) * Number(row.threads_per_tarczowka))) fail(400, 'Łączna liczba nici jest zbyt duża.');
+    if (row.tarczowki && row.threads_per_tarczowka && (!Number.isFinite(Number(row.tarczowki.replace(',', '.')) * Number(row.threads_per_tarczowka)) || Number(row.tarczowki.replace(',', '.')) * Number(row.threads_per_tarczowka) > Number.MAX_SAFE_INTEGER)) fail(400, 'Łączna liczba nici jest zbyt duża.');
     if (row.run_in.length > 6) fail(400, 'Wartość mm/rack może mieć maksymalnie 6 znaków.');
     row.yarn_material = formText(form, `gb_${i}_yarn_material`);
     if (row.yarn_material.length > 10) fail(400, 'Rodzaj przędzy może mieć maksymalnie 10 znaków.');
@@ -397,10 +397,10 @@ function validateReady(row) {
     const hasSplitThreadCount=Boolean(g.tarczowki||g.threads_per_tarczowka);
     if (hasSplitThreadCount) {
       if (!g.tarczowki) fields.push('liczba tarczówek');
-      else if (!/^\d+$/.test(g.tarczowki) || Number(g.tarczowki) < 1) fields.push('liczba tarczówek musi być dodatnią liczbą całkowitą');
+      else if (!/^\d+(?:[,.]\d{1,6})?$/.test(g.tarczowki) || !Number.isFinite(Number(g.tarczowki.replace(',', '.'))) || Number(g.tarczowki.replace(',', '.')) < 1 || Number(g.tarczowki.replace(',', '.')) > Number.MAX_SAFE_INTEGER) fields.push('liczba tarczówek musi być dodatnią liczbą, np. 3,33 (maks. 6 miejsc po przecinku)');
       if (!g.threads_per_tarczowka) fields.push('nici na jednej tarczówce');
       else if (!/^\d+$/.test(g.threads_per_tarczowka) || Number(g.threads_per_tarczowka) < 1) fields.push('nici na jednej tarczówce muszą być dodatnią liczbą całkowitą');
-      if (g.tarczowki&&g.threads_per_tarczowka&&!Number.isSafeInteger(Number(g.tarczowki)*Number(g.threads_per_tarczowka))) fields.push('łączna liczba nici jest zbyt duża');
+      if (g.tarczowki&&g.threads_per_tarczowka&&(!Number.isFinite(Number(g.tarczowki.replace(',', '.'))*Number(g.threads_per_tarczowka))||Number(g.tarczowki.replace(',', '.'))*Number(g.threads_per_tarczowka)>Number.MAX_SAFE_INTEGER)) fields.push('łączna liczba nici jest zbyt duża');
     } else if (!g.threads) fields.push('liczba tarczówek i nici na jednej tarczówce');
     else if (!/^\d+$/.test(g.threads)) fields.push('stary zapis liczby nici musi być liczbą całkowitą; uzupełnij nowe pola');
     if (!g.run_in) fields.push('mm/rack');
