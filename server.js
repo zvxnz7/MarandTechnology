@@ -866,7 +866,14 @@ async function handle(req, res) {
     const context = {db,req,res,p,url,form,send,redirect,fail,transaction,audit,now,blank,role,normalize,makeArticle,project,todayWarsaw,getFlashes,photos:Photos,readBackup:()=>readJsonIfExists(path.join(DATA,'backup_status.json'))};
     if (p === '/archive' && req.method === 'GET') {
       const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      const records = db.prepare('SELECT r.id,r.kind,r.symbol,r.archived_at,p.name project_name FROM records r LEFT JOIN projects p ON p.id=r.project_id WHERE r.archived_at IS NOT NULL AND r.archived_at>=? ORDER BY r.archived_at DESC,r.id DESC').all(cutoff);
+      const records = db.prepare(`SELECT r.id,r.kind,r.symbol,r.archived_at,p.name project_name,
+        CASE WHEN r.kind='spec' AND r.state='draft'
+          AND NOT EXISTS(SELECT 1 FROM cards c WHERE c.record_id=r.id)
+          AND NOT EXISTS(SELECT 1 FROM articles a WHERE a.active_spec=r.id)
+          AND NOT EXISTS(SELECT 1 FROM records child WHERE child.base_id=r.id AND child.state='approved')
+        THEN 1 ELSE 0 END can_purge
+        FROM records r LEFT JOIN projects p ON p.id=r.project_id
+        WHERE r.archived_at IS NOT NULL AND r.archived_at>=? ORDER BY r.archived_at DESC,r.id DESC`).all(cutoff);
       const projects = db.prepare('SELECT id,name,trial_number,short_description,archived_at FROM projects WHERE archived_at IS NOT NULL AND archived_at>=? ORDER BY archived_at DESC,id DESC').all(cutoff);
       const articles = db.prepare('SELECT id,symbol,archived_at FROM articles WHERE archived_at IS NOT NULL AND archived_at>=? AND purged_at IS NULL ORDER BY archived_at DESC,id DESC').all(cutoff);
       return send(req,res,200,V.archivePage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),records,projects,articles}));
@@ -1251,7 +1258,7 @@ async function handle(req, res) {
       return send(req, res, 200, V.recordPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), r, v: parsePayload(r), history, photoPanel: Photos.panel('record',id,{...req,readOnly:Boolean(r.archived_at||r.article_archived_at||r.project_archived_at)}) }));
     }
 
-    const recordArchiveMatch=p.match(/^\/records\/(\d+)\/(delete|restore)$/);
+    const recordArchiveMatch=p.match(/^\/records\/(\d+)\/(delete|restore|purge)$/);
     if(recordArchiveMatch&&req.method==='GET'&&recordArchiveMatch[2]==='delete') {
       role(req.user,'technologist','approver','admin');const r=record(Number(recordArchiveMatch[1]));
       if(r.archived_at)fail(409,'Ten wpis jest już w archiwum.');
@@ -1267,6 +1274,28 @@ async function handle(req, res) {
       role(req.user,'technologist','approver','admin');const rid=Number(recordArchiveMatch[1]);
       transaction(()=>{const r=record(rid);if(!r.archived_at)fail(409,'Ten wpis nie jest w archiwum.');if(Date.now()-Date.parse(r.archived_at)>30*86400000)fail(409,'Minęło 30 dni. Wpis pozostaje zachowany, ale nie można go już przywrócić z archiwum.');if(r.state!=='draft'||!['trial','spec'].includes(r.kind))fail(409,'Tego wpisu nie można przywrócić jako roboczego.');db.prepare('UPDATE records SET archived_at=NULL WHERE id=?').run(rid);audit(req.user,'Przywrócono roboczy wpis z archiwum',rid,`${r.kind==='trial'?'Próba':'Specyfikacja'} ${r.symbol}`);});
       return redirect(req,res,`/records/${rid}`,'Roboczy wpis został przywrócony.');
+    }
+    if(recordArchiveMatch&&req.method==='GET'&&recordArchiveMatch[2]==='purge') {
+      role(req.user,'technologist','approver','admin');const rid=Number(recordArchiveMatch[1]),r=record(rid);
+      if(!r.archived_at||r.kind!=='spec'||r.state!=='draft')fail(409,'Można trwale usunąć wyłącznie archiwalną roboczą specyfikację.');
+      if(db.prepare('SELECT 1 FROM cards WHERE record_id=? LIMIT 1').get(rid)||db.prepare('SELECT 1 FROM articles WHERE active_spec=? LIMIT 1').get(rid)||db.prepare("SELECT 1 FROM records WHERE base_id=? AND state='approved' LIMIT 1").get(rid))fail(409,'Ta specyfikacja jest używana przez kartę lub zatwierdzony wpis i nie można jej usunąć.');
+      return send(req,res,200,V.confirmPurgeRecordPage({user:req.user,csrf:req.session.csrf,flashes:getFlashes(req),r}));
+    }
+    if(recordArchiveMatch&&req.method==='POST'&&recordArchiveMatch[2]==='purge') {
+      role(req.user,'technologist','approver','admin');const rid=Number(recordArchiveMatch[1]);
+      const photoFiles=transaction(()=>{
+        const r=record(rid);
+        if(!r.archived_at||r.kind!=='spec'||r.state!=='draft')fail(409,'Można trwale usunąć wyłącznie archiwalną roboczą specyfikację.');
+        if(db.prepare('SELECT 1 FROM cards WHERE record_id=? LIMIT 1').get(rid)||db.prepare('SELECT 1 FROM articles WHERE active_spec=? LIMIT 1').get(rid)||db.prepare("SELECT 1 FROM records WHERE base_id=? AND state='approved' LIMIT 1").get(rid))fail(409,'Ta specyfikacja jest używana przez kartę lub zatwierdzony wpis i nie można jej usunąć.');
+        const files=db.prepare('SELECT file FROM photos WHERE record_id=?').all(rid).map(row=>row.file);
+        db.prepare('UPDATE records SET base_id=? WHERE base_id=?').run(r.base_id===rid?null:r.base_id,rid);
+        db.prepare('DELETE FROM photos WHERE record_id=?').run(rid);
+        db.prepare('DELETE FROM records WHERE id=?').run(rid);
+        audit(req.user,'Trwale usunięto archiwalną specyfikację',rid,`Specyfikacja ${r.symbol}`);
+        return files;
+      });
+      for(const file of photoFiles){try{fs.rmSync(path.join(DATA,'photos',path.basename(file)),{force:true});}catch(error){console.warn(`Nie udało się usunąć zdjęcia archiwalnej specyfikacji: ${file}`,error.message);}}
+      return redirect(req,res,'/archive','Archiwalna specyfikacja została trwale usunięta.');
     }
 
     id = matchId(p, /^\/records\/(\d+)\/edit$/);
