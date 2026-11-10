@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS finishing_orders(
   target_grammage REAL,
   notes TEXT NOT NULL DEFAULT '',
   manual_entry INTEGER NOT NULL DEFAULT 0 CHECK(manual_entry IN (0,1)),
+  manual_reference TEXT NOT NULL DEFAULT '',
   manual_input_description TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','sent','partial','received','raw_sale','cancelled')),
   created_at TEXT NOT NULL,

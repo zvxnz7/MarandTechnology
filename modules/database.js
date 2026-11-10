@@ -457,7 +457,7 @@ function migrateV22(db){
 function migrateV23(db){
   const version=db.prepare('PRAGMA user_version').get().user_version;
   db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
-  if(version>=23)return;
+  if(version>=23){migrateV24(db);return;}
   db.exec('BEGIN IMMEDIATE');
   try{
     const orderColumns=new Set(db.prepare("PRAGMA table_info('finishing_orders')").all().map(column=>column.name));
@@ -474,6 +474,26 @@ function migrateV23(db){
     if(!receiptColumns.has('incomplete'))db.exec('ALTER TABLE finishing_receipts ADD COLUMN incomplete INTEGER NOT NULL DEFAULT 0 CHECK(incomplete IN (0,1))');
     db.exec('PRAGMA user_version=23; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+  migrateV24(db);
+}
+function migrateV24(db){
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  if(version>=24)return;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const columns=new Set(db.prepare("PRAGMA table_info('finishing_orders')").all().map(column=>column.name));
+    if(!columns.has('manual_reference'))db.exec("ALTER TABLE finishing_orders ADD COLUMN manual_reference TEXT NOT NULL DEFAULT ''");
+    const orders=db.prepare("SELECT id,created_at FROM finishing_orders WHERE manual_entry=1 ORDER BY created_at,id").all();
+    const counters=new Map(),update=db.prepare('UPDATE finishing_orders SET manual_reference=? WHERE id=?');
+    for(const order of orders){
+      const stamp=String(order.created_at||'');
+      const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Warsaw',year:'numeric',month:'2-digit'}).formatToParts(new Date(stamp)).map(part=>[part.type,part.value])),year=parts.year,month=parts.month;
+      const key=`${year}-${month}`,sequence=(counters.get(key)||0)+1;counters.set(key,sequence);
+      update.run(`PMR ${sequence}/${month}/${year.slice(-2)}`,order.id);
+    }
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS finishing_manual_reference ON finishing_orders(manual_reference) WHERE manual_entry=1 AND manual_reference<>''; PRAGMA user_version=24; COMMIT");
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
 }
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
@@ -482,8 +502,9 @@ function migrate(db, dbPath) {
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
   if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>23)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===23) { db.exec(schema); return; }
+  if(version>24)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===24) { db.exec(schema); return; }
+  if(version===23) { migrateV24(db); return; }
   if(version===22) { migrateV23(db); return; }
   if(version===21) { migrateV22(db); return; }
   if(version===20) { migrateV21(db); return; }

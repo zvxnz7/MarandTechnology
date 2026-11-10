@@ -10,19 +10,21 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
  const matchingRemoveForm=()=>[...form.closest('.finishing-order-lot-list')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);
  const updateRemoveForm=()=>{const removeForm=matchingRemoveForm();if(!removeForm)return;removeForm.hidden=false;const button=removeForm.querySelector('button');if(button)button.disabled=saving||input.value.trim()!==lastSaved;};
- const updateReceiveButton=savedValue=>{
+ const updateReceiveButton=(savedValue,displayValue=savedValue)=>{
   const batchId=String(form.elements.batch_id?.value||''),button=[...document.querySelectorAll('[data-batch-receive]')].find(item=>item.dataset.batchReceive===batchId);
   if(!button||input.value.trim()!==savedValue)return;
   const dialog=document.getElementById(`finishing-receive-${batchId}`);if(!dialog)return;
-  const orderNumber=dialog.querySelector('[data-receipt-order-number]');if(orderNumber)orderNumber.textContent=savedValue;
-  button.disabled=false;button.dataset.openDialog=`finishing-receive-${batchId}`;button.title='Przyjmij sztuki';button.setAttribute('aria-label',`Przyjmij sztuki · nr zlecenia ${savedValue}`);
+  const orderNumber=dialog.querySelector('[data-receipt-order-number]');if(orderNumber)orderNumber.textContent=displayValue;
+  button.disabled=false;button.dataset.openDialog=`finishing-receive-${batchId}`;button.title='Przyjmij sztuki';button.setAttribute('aria-label',`Przyjmij sztuki · nr zlecenia ${displayValue}`);
  };
  const save=async()=>{
   const value=input.value.trim();if(!value||value===lastSaved)return;if(saving){queued=true;return;}saving=true;
   try{
-   const response=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:new URLSearchParams(new FormData(form))});
-   const result=await response.json();if(!response.ok||!result.ok)throw new Error('Nie udało się zapisać numeru LOT.');
-   lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia zapisany';updateRemoveForm();updateReceiveButton(value);
+   const payload=new URLSearchParams(new FormData(form)),send=()=>fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:payload});
+   let response=await send(),result=await response.json();
+   if(result.duplicate){if(!window.confirm(result.message)){form.dataset.saveState='duplicate';input.title=result.message;return;}payload.set('confirm_duplicate','1');response=await send();result=await response.json();}
+   if(!response.ok||!result.ok)throw new Error(result.message||'Nie udało się zapisać numeru LOT.');
+   lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia zapisany';updateRemoveForm();updateReceiveButton(value,result.display_order_number||value);
    const orderRow=form.closest('tr'),statusBadge=orderRow?.querySelector('td:nth-child(8) .badge');
    if(statusBadge&&result.status_label){statusBadge.textContent=result.status_label;statusBadge.className=`badge ${result.status_class||'submitted'}`;}
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
@@ -32,6 +34,16 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  input.addEventListener('input',schedule);input.addEventListener('change',()=>{clearTimeout(timer);save();});
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);save();});
 });
+document.querySelectorAll('[data-finishing-lot-confirm]').forEach(form=>form.addEventListener('submit',async event=>{
+ event.preventDefault();const button=form.querySelector('[type="submit"]');if(button)button.disabled=true;
+ try{
+  const payload=new URLSearchParams(new FormData(form)),send=()=>fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:payload});
+  let response=await send(),result=await response.json();
+  if(result.duplicate){if(!window.confirm(result.message)){if(button)button.disabled=false;return;}payload.set('confirm_duplicate','1');response=await send();result=await response.json();}
+  if(!response.ok||!result.ok)throw new Error(result.message||'Nie udało się zapisać numeru.');
+  location.reload();
+ }catch(error){window.alert(error.message||'Nie udało się zapisać numeru.');if(button)button.disabled=false;}
+}));
 document.querySelectorAll('[data-print-page]').forEach(button=>button.addEventListener('click',()=>{
  const timestamp=document.querySelector('[data-print-timestamp]');
  if(timestamp)timestamp.textContent=new Intl.DateTimeFormat('pl-PL',{timeZone:'Europe/Warsaw',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date());

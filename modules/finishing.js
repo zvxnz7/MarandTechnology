@@ -72,6 +72,31 @@ function notesEditorField({name='notes',label='Uwagi dodatkowe',ariaLabel='Uwagi
 const shipmentNo = row => `${String(row.sequence).padStart(2,'0')}/${row.shipment_year}`;
 // PM sequences restart every shipment year, so the year is part of the displayed identifier.
 const articleNo = (shipment,item) => `${String(shipment.sequence).padStart(2,'0')}-${String(item.sequence).padStart(2,'0')}/${String(shipment.shipment_year).slice(-2)}`;
+const manualPm = order => String(order?.manual_reference||`PMR ${order?.id||'—'}`);
+function nextManualReference(db,stamp) {
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Warsaw',year:'numeric',month:'2-digit'}).formatToParts(new Date(stamp)).map(part=>[part.type,part.value]));
+  const year=parts.year,month=parts.month,yearShort=year.slice(-2),suffix=`/${month}/${yearShort}`;
+  const existing=db.prepare("SELECT manual_reference FROM finishing_orders WHERE manual_entry=1 AND manual_reference LIKE ?").all(`%${suffix}`);
+  const sequence=existing.reduce((max,row)=>Math.max(max,Number(String(row.manual_reference).match(/^PMR\s+(\d+)\//)?.[1]||0)),0)+1;
+  return `PMR ${sequence}${suffix}`;
+}
+function duplicateFinishingLots(db,batchId,lot,sentAt) {
+  const year=localYear(sentAt);
+  if(!String(lot||'').trim()||!/^\d{4}$/.test(year))return [];
+  const candidates=db.prepare(`SELECT b.id batch_id,b.finishing_lot,b.sent_at,o.created_at order_created_at,o.id order_id,o.manual_entry,o.manual_reference,o.source_shipment_no,
+      s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence
+    FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
+    LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
+    WHERE lower(trim(b.finishing_lot))=lower(?) AND b.id<>? ORDER BY b.id`).all(String(lot).trim(),Number(batchId)||0);
+  return candidates.filter(row=>localYear(row.sent_at||row.order_created_at)===year);
+}
+function localYear(value) {
+  const stamp=String(value||'');
+  if(/^\d{4}-\d{2}-\d{2}$/.test(stamp))return stamp.slice(0,4);
+  const date=new Date(stamp);if(Number.isNaN(date.getTime()))return '';
+  return new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Warsaw',year:'numeric'}).format(date);
+}
+const pmReference = order => order.manual_entry?manualPm(order):order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
 const finishingOrderNo = row => {
   const lot=String(row?.finishing_lot||'').trim();
   if(!lot)return '';
@@ -311,7 +336,7 @@ function lastProductionPreview(db,source,recipe) {
   const recipeSymbol=String(recipe?.raw_symbol||readRecipeDetails(recipe).rawSymbol||readRecipeDetails(recipe).raw_symbol||'').trim();
   const symbolMismatch=Boolean(recipeSymbol&&normalizeSearch(recipeSymbol)!==normalizeSearch(source.symbol));
   const symbolIssue=symbolMismatch?`Symbol z PM (${source.symbol}) różni się od symbolu receptury (${recipeSymbol}).`:!recipeSymbol?'Brak symbolu dzianiny w recepturze — nie można porównać go z PM.':'';
-  const previous=db.prepare(`SELECT o.id,o.source_shipment_no,o.source_shipment_date,o.recipe_snapshot,o.target_color,o.target_grammage,
+  const previous=db.prepare(`SELECT o.id,o.source_shipment_no,o.source_shipment_date,o.recipe_snapshot,o.target_color,o.target_grammage,o.manual_entry,o.manual_reference,
       s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
       r.received_at,r.actual_grammage,r.actual_width_cm,r.actual_color,r.color_status,r.stiffening_status,r.rubbing_status,r.process_checks,r.notes receipt_notes,b.finishing_lot,b.sent_at,b.yarn_lot,b.notes batch_notes,o.notes order_notes
     FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id JOIN finishing_orders o ON o.id=b.order_id
@@ -351,7 +376,7 @@ function lastProductionPreview(db,source,recipe) {
     return {label:item.label,status};
   });
   const comments=[previous.receipt_notes,previous.batch_notes,previous.order_notes].map(recipeNotesText).filter(Boolean);
-  const pm=previous.article_sequence?`PM ${articleNo({sequence:previous.shipment_sequence,shipment_year:previous.shipment_year},{sequence:previous.article_sequence})}`:`PM ${previous.source_shipment_no||'—'}`;
+  const pm=pmReference(previous);
   const finishingOrder=finishingOrderNo(previous);
   const previousOrderReference=finishingOrder?`zlecenia farbiarskiego nr ${finishingOrder}`:'ostatniego zlecenia farbiarskiego';
   const lotComparison=compareLots(currentLots,previous.yarn_lot);
@@ -448,10 +473,10 @@ function ordersPage(ctx) {
   for(const order of all)order.finishing_lots=(batchesByOrder.get(order.id)||[]).map(batch=>finishingOrderNo(batch)||'Do uzupełnienia').join(', ');
   const query=normalizeSearch(q);
   const receiveDialogs=[];
-  const rows=all.filter(order=>(!status||order.status===status||(status==='sent'&&order.status==='partial'))&&(!query||[order.source_shipment_no,order.raw_symbol,order.client_name,order.trade_symbol,order.finishing_plant_name,order.finishing_lots,order.manual_entry?`Ręczne ${order.id}`:order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:''].map(normalizeSearch).join(' ').includes(query))).map(order=>{
+  const rows=all.filter(order=>(!status||order.status===status||(status==='sent'&&order.status==='partial'))&&(!query||[order.source_shipment_no,order.raw_symbol,order.client_name,order.trade_symbol,order.finishing_plant_name,order.finishing_lots,order.manual_entry||order.article_sequence?pmReference(order):''].map(normalizeSearch).join(' ').includes(query))).map(order=>{
     const canReceive=editableRoles.includes(ctx.req.user.role)&&order.open_batch_id&&!['raw_sale','cancelled','received'].includes(order.status);
     const canEditLots=editableRoles.includes(ctx.req.user.role);
-    const pm=order.manual_entry?`Ręczne #${order.id}`:order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+    const pm=pmReference(order);
     const batches=batchesByOrder.get(order.id)||[];
   const canDelete=editableRoles.includes(ctx.req.user.role);
     const activeBatches=batches.filter(batch=>!batch.cancelled_at);
@@ -496,7 +521,7 @@ function ordersPage(ctx) {
 }
 function deleteOrderConfirmPage(ctx,order) {
   const cancelUrl='/finishing/orders';
-  const pm=order.manual_entry?`Ręczne #${order.id}`:order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+  const pm=pmReference(order);
   const explanation='Usunięte zostaną zlecenie barwiarskie, jego poprawki, przyjęcia, zgłoszenia zagubień i rozliczenia. Pozycja PM i jej belki wrócą do dostępnych wysyłek.';
   const body=`${navTabs('orders',ctx.db)}<a class="breadcrumb" href="${cancelUrl}">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Usuń zlecenie wykańczania</h1></div></div><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Potwierdź usunięcie zlecenia</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><p>Wybrane zlecenie:</p><h2 class="delete-confirm-object">${V.esc(pm)} · ${V.esc(order.raw_symbol)} · ${V.esc(order.client_name||'—')}</h2><div class="shipment-cancel-details"><div class="shipment-cancel-detail-row"><strong>Skutek</strong><span>${explanation}</span></div><div class="shipment-cancel-detail-row"><strong>Historia</strong><span>Wpis audytowy pozostanie zachowany.</span></div></div><form method="post" action="/finishing/orders/${order.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_order','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Usuń ${V.esc(pm)}</button></form></div></dialog>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Usuń zlecenie',body});
@@ -563,7 +588,7 @@ function orderPage(ctx,id) {
   const orderWorkflowStatus=allBatchesNeedCorrection?'do_poprawy':activeBatches.some(batch=>batch.workflow_status==='poprawka')?'poprawka':order.status;
   const incidents=db.prepare(`SELECT i.*,u.name author,ru.name resolver FROM finishing_incidents i LEFT JOIN users u ON u.id=i.created_by LEFT JOIN users ru ON ru.id=i.resolved_by WHERE i.order_id=? ORDER BY i.id DESC`).all(id);
   let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
-  const pm=order.manual_entry?`Ręczne #${order.id}`:order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+  const pm=pmReference(order);
   const source=order.source_shipment_no||'—';
   const piecesBody=orderPiecesView(db,order);
   const canEdit=editableRoles.includes(ctx.req.user.role)&&(order.manual_entry||!['cancelled','raw_sale'].includes(order.status));
@@ -571,7 +596,7 @@ function orderPage(ctx,id) {
   const canAddBatch=canEdit&&!allBatchesNeedCorrection&&order.order_type!=='raw_sale'&&order.status!=='received'&&receipts.length===0&&batches.length>0&&Number(baseBatch?.sent_pieces)>0;
   const lotBatch=batches.find(batch=>batch.workflow_status!=='do_poprawy'&&!String(batch.finishing_lot||'').trim())||batches.find(batch=>batch.workflow_status!=='do_poprawy')||batches[0];
   const lotControl=canEdit&&lotBatch?`<button type="button" class="finishing-lot-edit-button" data-open-dialog="finishing-lot-dialog">${lotBatch.finishing_lot?'Edytuj nr zlecenia':'Dodaj nr zlecenia'}</button>`:`<span class="muted">Nr zlecenia: ${V.esc(finishingOrderNo(lotBatch)||'do uzupełnienia')}</span>`;
-  const lotDialog=canEdit&&lotBatch?`<dialog id="finishing-lot-dialog" class="form-dialog finishing-lot-dialog"><div class="dialog-head"><strong>Nr zlecenia z wykończalni</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Numer można poprawić także po przyjęciu. Wpisz aktualny nr zlecenia z wykończalni.</p><form method="post" action="/finishing/orders/${id}/lot" class="finishing-lot-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',lotBatch.id)}<label>Nr zlecenia<input name="finishing_lot" maxlength="120" value="${V.esc(lotBatch.finishing_lot||'')}" autofocus></label><div class="actions"><button type="button" data-close-dialog>Wróć</button><button class="primary">Zapisz nr zlecenia</button></div></form></div></dialog>`:'';
+  const lotDialog=canEdit&&lotBatch?`<dialog id="finishing-lot-dialog" class="form-dialog finishing-lot-dialog"><div class="dialog-head"><strong>Nr zlecenia z wykończalni</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Numer można poprawić także po przyjęciu. Wpisz aktualny nr zlecenia z wykończalni.</p><form method="post" action="/finishing/orders/${id}/lot" class="finishing-lot-form" data-finishing-lot-confirm>${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',lotBatch.id)}<label>Nr zlecenia<input name="finishing_lot" maxlength="120" value="${V.esc(lotBatch.finishing_lot||'')}" autofocus></label><div class="actions"><button type="button" data-close-dialog>Wróć</button><button class="primary">Zapisz nr zlecenia</button></div></form></div></dialog>`:'';
   const receiptDialogs=[];
   const receiptViews=batches.map(batch=>{
     const recent=receipts.filter(receipt=>receipt.batch_id===batch.id);
@@ -632,7 +657,7 @@ function orderEditPage(ctx,order) {
   const batches=orderBatches(db,id);
   const batchRows=batches.map((batch,index)=>`<fieldset class="finishing-order-edit-batch"><legend>Specyfikacja · #${batch.id}</legend><input type="hidden" name="batch_${index}_id" value="${batch.id}">
     <div class="form-grid"><label>Nr zlecenia<input name="batch_${index}_lot" value="${V.esc(batch.finishing_lot||'')}" maxlength="120"></label><label>Data wysyłki<input name="batch_${index}_date" type="date" value="${V.esc(batch.sent_at||'')}"></label>${order.manual_entry||Number(batch.sent_pieces)>0||Number(batch.raw_weight_kg)>0?`<label>Sztuki wysłane<input name="batch_${index}_pieces" type="number" min="0" step="1" value="${V.esc(batch.sent_pieces)}"></label><label>Masa wysłana kg<input name="batch_${index}_weight" type="number" min="0" step="0.01" value="${V.esc(batch.raw_weight_kg)}"></label>`:`<p class="muted finishing-batch-quantity-hint">Sztuki i kilogramy uzupełnisz przy przyjęciu.</p><input type="hidden" name="batch_${index}_pieces" value="0"><input type="hidden" name="batch_${index}_weight" value="0">`}<label>LOT przędzy<input name="batch_${index}_yarn_lot" value="${V.esc(batch.yarn_lot||'')}" maxlength="250"></label><label>Uwagi partii<input name="batch_${index}_notes" value="${V.esc(batch.notes||'')}" maxlength="3000"></label>${batch.correction_parent_batch_id?`<label class="finishing-correction-instruction">Instrukcja poprawki<textarea name="batch_${index}_instruction" maxlength="3000" rows="3">${V.esc(batch.correction_instruction||'')}</textarea></label><label>Symbol handlowy<input name="batch_${index}_trade_symbol" value="${V.esc(batch.correction_trade_symbol||order.trade_symbol||'')}" maxlength="200"></label><label>Kolor poprawki<input name="batch_${index}_color" value="${V.esc(batch.correction_target_color||order.target_color||'')}" maxlength="160"></label><label>Gramatura g/m²<input name="batch_${index}_grammage" type="number" min="0.1" step="0.1" value="${V.esc(batch.correction_target_grammage??order.target_grammage??'')}"></label><label>Szerokość cm<input name="batch_${index}_width" type="number" min="0.1" step="0.1" value="${V.esc(batch.correction_target_width_cm??order.target_width_cm??'')}"></label>`:''}<label class="finishing-order-edit-bale-include"><input type="checkbox" name="batch_${index}_closed" value="1"${batch.closed_at?' checked':''}> Partia zamknięta</label></div></fieldset>`).join('');
-  const pm=order.manual_entry?`Ręczne #${order.id}`:order.article_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:`PM ${order.source_shipment_no||'—'}`;
+  const pm=pmReference(order);
   const body=`${navTabs('orders',ctx.db)}<a class="breadcrumb" href="/finishing/orders/${id}">← Zlecenie ${V.esc(pm)}</a><div class="pagehead"><div><span class="eyebrow">EDYCJA ZLECENIA · ${statusBadge(order.status)}</span><h1>Edytuj zlecenie wykańczania</h1><p class="muted">Możesz poprawiać dane, partie i belki także po wpisaniu LOT-u lub przyjęciu. Zmiany belek dotyczą kopii zlecenia; zamknięta WZ pozostaje bez zmian.</p></div></div>
   <form method="post" action="/finishing/orders/${id}/edit" class="panel padded finishing-order-edit-form">${hidden('csrf',ctx.req.session.csrf)}
     <section class="finishing-order-section"><h2>Dane zlecenia</h2><div class="form-grid"><label>Symbol dzianiny<input name="raw_symbol" value="${V.esc(order.raw_symbol)}" maxlength="200"${order.manual_entry?'':' required'}></label><label>Symbol handlowy<input name="trade_symbol" value="${V.esc(order.trade_symbol||'')}" maxlength="200"></label><label>Klient<input name="client_name" value="${V.esc(order.client_name||'')}" maxlength="200"></label><label>Wykańczalnia<select name="finishing_plant_id"><option value="">Dowolna</option>${plantOptions}</select></label><label>Kolor zadany<input name="target_color" value="${V.esc(order.target_color||'')}" maxlength="160"></label><label>Usztywnienie<input name="target_stiffening" value="${V.esc(order.target_stiffening||'')}" maxlength="2000"></label><label>Gramatura g/m²<input name="target_grammage" type="number" min="0.1" step="0.1" value="${V.esc(order.target_grammage??'')}"></label><label>Szerokość cm<input name="target_width_cm" type="number" min="0.1" step="0.1" value="${V.esc(order.target_width_cm??'')}"></label></div>${order.manual_entry?`<label>Źródła / opis materiału<textarea name="manual_input_description" rows="3" maxlength="3000">${V.esc(order.manual_input_description||'')}</textarea></label>`:''}${notesEditorField({label:'Uwagi do zlecenia',ariaLabel:'Uwagi do zlecenia',value:order.notes||''})}</section>
@@ -657,7 +682,7 @@ function receiptsPage(ctx) {
   const statusBadgeFor=status=>status==='settled'?'<span class="badge approved">Rozliczona</span>':status==='changed'?'<span class="badge archived">Rozliczona – zmieniona</span>':status==='partial'?'<span class="badge submitted">Częściowo rozliczona</span>':'<span class="badge submitted">Do rozliczenia</span>';
   const groupRows=[];
   for(const [orderId,items] of groups){
-    const first=items[0].row,pm=first.manual_entry?`Ręczne #${first.order_id}`:first.article_sequence?`PM ${articleNo({sequence:first.shipment_sequence,shipment_year:first.shipment_year},{sequence:first.article_sequence})}`:`PM ${first.source_shipment_no||'—'}`;
+    const first=items[0].row,pm=pmReference(first);
     const active=items.filter(item=>item.row.complaint_status!=='poprawiona'),settled=active.filter(item=>item.context?.settlement?.status==='settled').length,changed=active.some(item=>item.context?.settlement?.status==='changed');
     const parentStatus=changed?'changed':settled>0&&settled<active.length?'partial':active.length>0&&settled===active.length?'settled':'draft';
     groupRows.push(`<tr class="finishing-settlement-pm-row"><th colspan="10"><a class="finishing-order-pm" href="/finishing/orders/${orderId}">${V.esc(pm)}</a><span class="finishing-settlement-pm-status">${statusBadgeFor(parentStatus)}</span><span class="finishing-settlement-pm-symbols"><strong>${V.esc(first.raw_symbol||'—')}</strong>${first.trade_symbol?` · ${V.esc(first.trade_symbol)}`:''}</span></th></tr>`);
@@ -687,12 +712,12 @@ function receiptsPage(ctx) {
 }
 function lostPage(ctx) {
   const canManage=editableRoles.includes(ctx.req.user.role);
-  const rows=ctx.db.prepare(`SELECT i.*,b.finishing_lot,b.sent_at,o.created_at order_created_at,o.source_shipment_no,
+  const rows=ctx.db.prepare(`SELECT i.*,b.finishing_lot,b.sent_at,o.created_at order_created_at,o.source_shipment_no,o.manual_entry,o.manual_reference,
       s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence
     FROM finishing_incidents i JOIN finishing_batches b ON b.id=i.batch_id JOIN finishing_orders o ON o.id=i.order_id
     LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
     WHERE i.auto_generated=1 AND i.incident_type='lost' ORDER BY i.created_at DESC,i.id DESC`).all();
-  const pm=row=>row.article_sequence?`PM ${articleNo({sequence:row.shipment_sequence,shipment_year:row.shipment_year},{sequence:row.article_sequence})}`:`PM ${row.source_shipment_no||'—'}`;
+  const pm=row=>pmReference(row);
   const rowsHtml=rows.map(row=>{
     const action=(kind,label,doneAt)=>doneAt?`<span class="badge approved">${label}</span>`:canManage?`<form method="post" action="/finishing/lost/${row.id}/${kind}">${hidden('csrf',ctx.req.session.csrf)}<button class="button${kind==='found'?'':' primary'}">${label}</button></form>`:'<span class="muted">Oczekuje</span>';
     return `<tr><td>${row.lost_pieces} szt.</td><td>${money(row.lost_weight_kg)} kg</td><td><a class="finishing-order-pm" href="/finishing/orders/${row.order_id}">${V.esc(pm(row))}</a></td><td>${V.esc(finishingOrderNo(row)||'—')}</td><td>${V.datepl(row.order_created_at)}</td><td>${V.datepl(row.created_at)}</td><td class="finishing-lost-actions">${action('found','Odnaleziona',row.found_at)}${action('settle','Rozliczona z wykańczalnią',row.settled_at)}</td></tr>`;
@@ -796,7 +821,7 @@ function recipeDeleteConfirmPage(ctx,recipe) {
 }
 function receiptPage(ctx,id) {
   const order=orderRecord(ctx.db,id);if(!order)throw Object.assign(new Error('Nie znaleziono zlecenia.'),{status:404});
-  const pm=order.shipment_sequence?`PM ${articleNo({sequence:order.shipment_sequence,shipment_year:order.shipment_year},{sequence:order.article_sequence})}`:'PM —';
+  const pm=pmReference(order);
   let sourceBales=ctx.db.prepare(`SELECT f.bale_number,f.machine,f.production_date,f.weight_kg,f.meters,f.lot,
       coalesce(p.errors,0) errors,coalesce(p.stops,0) stops,coalesce(p.notes,'') notes
     FROM finishing_order_bales f LEFT JOIN production_bales p ON p.local_id=f.bale_local_id WHERE f.order_id=? ORDER BY f.id`).all(id);
@@ -909,7 +934,7 @@ function settlementReportPage(ctx,batchIds){
   const rows=[];
   for(const id of batchIds){
     const c=Costing.calculationContext(ctx.db,id),s=c?.settlement;if(!c||!s)continue;
-    const pm=c.batch.article_sequence?`PM ${articleNo({sequence:c.batch.shipment_sequence,shipment_year:c.batch.shipment_year},{sequence:c.batch.article_sequence})}`:`PM ${c.batch.source_shipment_no||'—'}`;
+    const pm=pmReference(c.batch);
     rows.push({...s,pm,orderNumber:finishingOrderNo(c.batch)||`#${id}`,trade_symbol:c.batch.trade_symbol||'—',raw_symbol:c.root.raw_symbol||'—'});
   }
   if(!rows.length)throw Object.assign(new Error('Zapisz przynajmniej jedno wybrane rozliczenie, aby przygotować raport.'),{status:400});
@@ -954,11 +979,11 @@ function handle(ctx) {
   if(p==='/finishing/orders/manual'&&req.method==='POST'){
     role(req.user,...editableRoles);
     const id=transaction(()=>{
-      const stamp=now(),result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_snapshot,notes,manual_entry,manual_input_description,status,created_at,created_by,updated_at,updated_by)
-        VALUES(NULL,'standard',NULL,'','', '', '', '', '{}','',1,'','draft',?,?,?,?)`).run(stamp,req.user.id,stamp,req.user.id);
+      const stamp=now(),manualReference=nextManualReference(db,stamp),result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_snapshot,notes,manual_entry,manual_reference,manual_input_description,status,created_at,created_by,updated_at,updated_by)
+        VALUES(NULL,'standard',NULL,'','', '', '', '', '{}','',1,?,'','draft',?,?,?,?)`).run(manualReference,stamp,req.user.id,stamp,req.user.id);
       const orderId=Number(result.lastInsertRowid);
       db.prepare("INSERT INTO finishing_batches(order_id,finishing_lot,sent_at,sent_pieces,raw_weight_kg,yarn_lot,notes,created_at,created_by,updated_at,updated_by) VALUES(?,'','',0,0,'','',?,?,?,?)").run(orderId,stamp,req.user.id,stamp,req.user.id);
-      audit(req.user,'Utworzono ręczne zlecenie wykańczania',null,JSON.stringify({orderId}),null);
+      audit(req.user,'Utworzono ręczne zlecenie wykańczania',null,JSON.stringify({orderId,manualReference}),null);
       return orderId;
     });
     return redirect(req,res,`/finishing/orders/${id}/edit`,'Utworzono puste zlecenie ręczne. Możesz zapisać je z brakami i uzupełniać później.');
@@ -1105,6 +1130,13 @@ function handle(ctx) {
         const correctionInstruction=text(form,`${prefix}instruction`,3000),correctionTradeSymbol=text(form,`${prefix}trade_symbol`,200),correctionTargetColor=text(form,`${prefix}color`,160),correctionTargetGrammage=number(form[`${prefix}grammage`]),correctionTargetWidth=number(form[`${prefix}width`]);
         editedBatches.push({id:batchId,finishingLot,sentAt,sentPieces,rawWeight,yarnLot,batchNotes,closed:form[`${prefix}closed`]==='1',oldClosedAt:current.closed_at,correctionInstruction:current.correction_parent_batch_id?correctionInstruction:current.correction_instruction,correctionTradeSymbol:current.correction_parent_batch_id?correctionTradeSymbol:current.correction_trade_symbol,correctionTargetColor:current.correction_parent_batch_id?correctionTargetColor:current.correction_target_color,correctionTargetGrammage:current.correction_parent_batch_id?correctionTargetGrammage:current.correction_target_grammage,correctionTargetWidth:current.correction_parent_batch_id?correctionTargetWidth:current.correction_target_width_cm});
       }
+      const lotDuplicates=editedBatches.flatMap(batch=>duplicateFinishingLots(db,batch.id,batch.finishingLot,batch.sentAt||currentBatches.find(current=>current.id===batch.id)?.created_at||order.created_at).map(existing=>({number:batch.finishingLot,year:localYear(batch.sentAt||currentBatches.find(current=>current.id===batch.id)?.created_at||order.created_at),existing}));
+      if(lotDuplicates.length&&form.confirm_duplicate_lots!=='1'){
+        const warningRows=lotDuplicates.map(item=>`<li>${V.esc(item.number)}/${item.year.slice(-2)} — ${V.esc(pmReference(item.existing))}, data ${V.datepl(item.existing.sent_at||item.existing.order_created_at)}</li>`).join('');
+        const preserved=Object.entries(form).flatMap(([name,value])=>(Array.isArray(value)?value:[value]).map(item=>hidden(name,item))).join('');
+        const warningBody=`<a class="breadcrumb" href="/finishing/orders/${id}/edit">← Wróć do edycji</a><div class="pagehead"><div><span class="eyebrow">POWTÓRZONY NUMER</span><h1>Numer zlecenia barwiarskiego już występuje</h1></div></div><section class="panel padded"><p>Ten sam numer został już użyty w tym roku:</p><ul>${warningRows}</ul><p>Możesz zapisać powtórzenie albo wrócić do edycji.</p><form method="post" action="/finishing/orders/${id}/edit">${preserved}${hidden('confirm_duplicate_lots','1')}<div class="actions"><a class="button" href="/finishing/orders/${id}/edit">Popraw numer</a><button class="primary">Zapisz mimo powtórzenia</button></div></form></section>`;
+        return send(req,res,409,header({user:req.user,csrf:req.session.csrf,flashes:ctx.getFlashes(req),title:'Powtórzony numer zlecenia',body:warningBody}));
+      }
 
       transaction(()=>{
         const current=orderRecord(db,id);
@@ -1139,8 +1171,15 @@ function handle(ctx) {
       role(req.user,...editableRoles);if(['raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już edytować.');
       const batchId=Number(form.batch_id),lot=text(form,'finishing_lot',120),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=? AND order_id=?').get(batchId,id);
       if(!batch)fail(400,'Nie znaleziono wyjścia PM dla tego zlecenia.');if(!lot)fail(400,'Wpisz numer partii otrzymany z farbiarni.');
+      const duplicates=duplicateFinishingLots(db,batchId,lot,batch.sent_at||batch.created_at||order.created_at);
+      if(duplicates.length&&form.confirm_duplicate!=='1'){
+        const year=localYear(batch.sent_at||batch.created_at||order.created_at);
+        const message=`Numer zlecenia ${lot}/${year.slice(-2)} jest już użyty w ${year}: ${duplicates.map(row=>pmReference(row)).join(', ')}. Czy zapisać mimo powtórzenia?`;
+        if(String(req.headers.accept||'').includes('application/json'))return send(req,res,409,JSON.stringify({ok:false,duplicate:true,message}),'application/json; charset=utf-8');
+        return send(req,res,409,message);
+      }
       const updatedStatus=transaction(()=>{db.prepare('UPDATE finishing_batches SET finishing_lot=?,updated_at=?,updated_by=? WHERE id=?').run(lot,now(),req.user.id,batchId);const status=updateOrderStatus(ctx,id);audit(req.user,'Uzupełniono LOT partii w farbiarni',null,JSON.stringify({orderId:id,batchId,finishingLot:lot,status}),null);return status;});
-      if(String(req.headers.accept||'').includes('application/json')){const displayStatus=batch.workflow_status==='poprawka'?'poprawka':updatedStatus;return send(req,res,200,JSON.stringify({ok:true,finishing_lot:lot,status:updatedStatus,status_label:orderStatusLabel(displayStatus),status_class:orderStatusBadgeClass(displayStatus)}),'application/json; charset=utf-8');}
+      if(String(req.headers.accept||'').includes('application/json')){const displayStatus=batch.workflow_status==='poprawka'?'poprawka':updatedStatus;return send(req,res,200,JSON.stringify({ok:true,finishing_lot:lot,display_order_number:finishingOrderNo({...batch,finishing_lot:lot}),status:updatedStatus,status_label:orderStatusLabel(displayStatus),status_class:orderStatusBadgeClass(displayStatus)}),'application/json; charset=utf-8');}
       const returnTo=form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${id}`;
       return redirect(req,res,returnTo,'Zapisano numer specyfikacji z farbiarni.');
     }
