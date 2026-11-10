@@ -766,3 +766,10 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-cost-report table{min-width:1050px}
 @media(max-width:950px){.finishing-settlement-filters{grid-template-columns:repeat(3,minmax(120px,1fr))}.finishing-settlement-filters>.shipment-list-search{grid-column:span 3}}
 @media(max-width:700px){.finishing-settlement-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.finishing-settlement-filters>.shipment-list-search{grid-column:span 2}.finishing-settlement-actions{flex-wrap:wrap}.finishing-settlement-actions [data-finishing-settlement-selection]{flex-basis:100%;margin-left:0}}
+.finishing-order-type-label.is-manual{display:inline-flex;align-items:center;margin:4px 0 0;padding:4px 9px;border:1px solid #4e5862;border-radius:999px;background:#343a40;color:#f4f6f8;font-size:10px;font-weight:750;letter-spacing:.02em}
+.finishing-order-pm.is-manual{display:inline-block;padding:4px 8px;border:1px solid #4e5862;border-radius:6px;background:#343a40;color:#f4f6f8;font-weight:750;text-decoration:none}
+.finishing-order-pm.is-manual:hover{background:#252a2f;color:#fff}
+.finishing-receive-completion{min-height:1.2em;margin:10px 0 0;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:700}
+.finishing-receive-completion.is-complete{background:#e9f5ed;color:#246b3b}
+.finishing-receive-completion.is-pending{background:#fff5df;color:#745419}
+.finishing-receive-completion.is-over{background:#fcebea;color:#982d26}
