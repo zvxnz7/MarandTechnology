@@ -324,6 +324,7 @@ function parseForm(form, old) {
   const numbers = new Set();
   for (let i = 0; i < 12; i++) {
     const row = Object.fromEntries(GB.map(([key]) => [key, formText(form, `gb_${i}_${key}`)]));
+    if (row.tarczowki || row.threads_per_tarczowka) row.threads = '';
     if (row.tarczowki && (!/^\d+(?:[,.]\d{1,6})?$/.test(row.tarczowki) || !Number.isFinite(Number(row.tarczowki.replace(',', '.'))) || Number(row.tarczowki.replace(',', '.')) < 1 || Number(row.tarczowki.replace(',', '.')) > Number.MAX_SAFE_INTEGER)) fail(400, 'Liczba tarczówek musi być dodatnią liczbą, np. 3,33 (maks. 6 miejsc po przecinku).');
     if (row.threads_per_tarczowka && (!/^\d+$/.test(row.threads_per_tarczowka) || Number(row.threads_per_tarczowka) < 1)) fail(400, 'Liczba nici na jednej tarczówce musi być dodatnią liczbą całkowitą.');
     if (row.tarczowki && row.threads_per_tarczowka && (!Number.isFinite(Number(row.tarczowki.replace(',', '.')) * Number(row.threads_per_tarczowka)) || Number(row.tarczowki.replace(',', '.')) * Number(row.threads_per_tarczowka) > Number.MAX_SAFE_INTEGER)) fail(400, 'Łączna liczba nici jest zbyt duża.');
