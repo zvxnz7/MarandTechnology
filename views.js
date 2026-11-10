@@ -23,7 +23,7 @@ const TARGET_METRICS = [
 ];
 const GB = [
   ['number', 'GB'], ['yarn', 'Rodzaj przędzy'], ['share', 'Udział %'], ['pattern', 'Raport ogniw wzorujących'],
-  ['tarczowki', 'Liczba tarczówek'], ['threads_per_tarczowka', 'Nici na jednej tarczówce'], ['threads', 'Liczba nici — stary zapis'],
+  ['tarczowki', 'Liczba tarczówek'], ['threads_per_tarczowka', 'Nici na jednej tarczówce'], ['threads_total', 'Nici łącznie na szal'], ['threads', 'Liczba nici — stary zapis'],
   ['run_in', 'mm/rack'], ['threading', 'Nawleczenie'],
 ];
 const FINISH = [
@@ -37,6 +37,15 @@ const PROJECT_STATUS_CLASS = { in_progress: 'status-progress', to_knitter: 'stat
 
 function esc(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+function totalThreads(row={}) {
+  const plates=String(row.tarczowki??'').trim().replace(',','.');
+  const perPlate=String(row.threads_per_tarczowka??'').trim();
+  if(/^\d+(?:\.\d{1,6})?$/.test(plates)&&/^\d+$/.test(perPlate)){
+    const product=Number(plates)*Number(perPlate);
+    if(Number.isFinite(product)&&product<=Number.MAX_SAFE_INTEGER)return new Intl.NumberFormat('pl-PL',{useGrouping:false,maximumFractionDigits:6}).format(product);
+  }
+  return String(row.threads_total||row.threads||'');
 }
 function yarnContributions(row) {
   const yarn = Yarn.fields(row);
@@ -278,7 +287,7 @@ function editPage({ user, csrf, flashes, r, v, newArticleFields = false }) {
     const number = row.number || String(Math.max(0,...v.gb.map(g=>Number(g.number))) + i - v.gb.length + 1);
     const plateOptions={inputmode:'decimal',pattern:'[0-9]+([,.][0-9]{1,6})?',maxlength:12,min:1,placeholder:'np. 3,33',title:'Wpisz dodatnią liczbę; możesz użyć przecinka, np. 3,33 (maks. 6 miejsc po przecinku).'};
     const threadOptions={type:'number',inputmode:'numeric',pattern:'[0-9]+',min:1,step:1,title:'Wpisz dodatnią liczbę całkowitą.'};
-    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share', 'threads'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='tarczowki'?plateOptions:k==='threads_per_tarczowka'?threadOptions:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + hidden(`gb_${i}_threads`,row.tarczowki||row.threads_per_tarczowka?'':row.threads||'') + threadingEditor(i, row.threading || 'pełne');
+    const values = GB.filter(([k]) => !['number', 'threading', 'yarn', 'share', 'threads_total', 'threads'].includes(k)).map(([k,label])=>field(label,`gb_${i}_${k}`,row[k]||'',k==='tarczowki'?plateOptions:k==='threads_per_tarczowka'?threadOptions:k==='run_in'?{maxlength:6,title:'Maksymalnie 6 znaków.'}:{})).join('') + hidden(`gb_${i}_threads`,row.tarczowki||row.threads_per_tarczowka?'':row.threads||'') + threadingEditor(i, row.threading || 'pełne');
     const legacyThreadNote=row.threads&&!row.tarczowki&&!row.threads_per_tarczowka?`<p class="muted small gb-legacy-thread-count">Stary zapis: ${esc(row.threads)} nici łącznie. Uzupełnij oba pola powyżej, gdy będziesz znać podział.</p>`:'';
     return `<section class="gb-row" data-gb-index="${i}" data-gb-number="${esc(number)}"><div class="gb-fields-scroll"><div class="gb-fields"><h3>GB${esc(number)}</h3>${hidden(`gb_${i}_number`,number)}${yarnEditor(i,row)}${values}<button type="button" class="gb-delete-x" data-remove-gb aria-label="Usuń GB ${esc(number)}" title="Usuń GB ${esc(number)}">×</button></div>${legacyThreadNote}</div></section>`;
   }).join('');
@@ -314,8 +323,8 @@ function recordPage({ user, csrf, flashes, r, v, history, photoPanel = '', aiNot
   const composition = yarnComposition(v.gb);
   const kgPerObrValue=kgPer10kObrText(v.raw||{},v.tech||{});
   const shares = yarnSharePercentages(v.gb);
-  const visibleGB=GB.filter(([key])=>key!=='threads'||v.gb.some(row=>row.threads&&!row.tarczowki&&!row.threads_per_tarczowka));
-  const gbTable = v.gb.length ? v.gb.map((row, index) => `<tr>${visibleGB.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : k === 'share' ? shares[index] : k==='threads'&&(row.tarczowki||row.threads_per_tarczowka)?'':row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${visibleGB.length}">Brak danych GB.</td></tr>`;
+  const visibleGB=GB.filter(([key])=>key!=='threads');
+  const gbTable = v.gb.length ? v.gb.map((row, index) => `<tr>${visibleGB.map(([k]) => `<td class="preline">${esc(k === 'yarn' ? (Yarn.compose(Yarn.fields(row)) || row.yarn || '') : k === 'share' ? shares[index] : k==='threads_total' ? totalThreads(row) : row[k] || '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${visibleGB.length}">Brak danych GB.</td></tr>`;
   const raw = RAW_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.raw || {})[k] || '—')}</dd>`).join('');
   const targets = TARGET_METRICS.map(([k, label]) => `<dt>${esc(label)}</dt><dd>${esc((v.targets || {})[k] || '—')}</dd>`).join('');
   const finishes = v.finished.length ? `<section class="panel padded"><h2>Warianty wykańczania / wyniki</h2>${v.finished.map((f, i) => `<h3>${esc(f.name || `Wariant ${i + 1}`)}</h3><p>Gramatura: ${esc(f.weight || '—')} g/m² · Szerokość: ${esc(f.width || '—')} cm · Pk: ${esc(f.pk || '—')} · Pr: ${esc(f.pr || '—')} · Dystans: ${esc(f.thickness || '—')}</p><p class="preline">${esc(f.finish || '')} ${esc(f.comments || '')}</p>`).join('')}</section>` : '';
