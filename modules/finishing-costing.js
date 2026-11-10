@@ -74,7 +74,7 @@ function settlementRows(db){
 function comparableHistory(db,tradeSymbol,unit,excludeBatchId,limit=5){
   if(!String(tradeSymbol||'').trim())return [];
   return db.prepare(`SELECT s.*,b.finishing_lot,b.order_id,b.complaint_status,b.correction_of_batch_id,o.raw_symbol,o.trade_symbol,o.source_shipment_no,
-      sh.shipment_year,sh.sequence shipment_sequence,sa.sequence article_sequence
+      sh.shipment_year,sh.sequence shipment_sequence,sa.sequence article_sequence,b.sent_at
     FROM finishing_settlements s JOIN finishing_batches b ON b.id=s.batch_id JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id LEFT JOIN shipments sh ON sh.id=sa.shipment_id
     WHERE s.status='settled' AND s.trade_symbol=? AND s.output_unit=? AND s.batch_id<>?

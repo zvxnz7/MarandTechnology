@@ -170,7 +170,8 @@ function initialize(db) {
 const money = value => Number(value || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = value => String(value || '').split('-').reverse().join('.');
 const shipmentNo = row => `${String(row.sequence).padStart(2, '0')}/${row.shipment_year}`;
-const articleNo = (shipment, item) => `PM ${String(shipment.sequence).padStart(2, '0')}-${String(item.sequence).padStart(2, '0')}`;
+// PM sequences restart every shipment year, so the year is part of the displayed identifier.
+const articleNo = (shipment, item) => `PM ${String(shipment.sequence).padStart(2, '0')}-${String(item.sequence).padStart(2, '0')}/${shipment.shipment_year}`;
 const plantColors=['plant-color-orange','plant-color-blue','plant-color-green','plant-color-purple','plant-color-teal','plant-color-red'];
 const plantColor = id => plantColors[(Math.max(1,Number(id)||1)-1)%plantColors.length];
 
