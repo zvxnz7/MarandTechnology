@@ -553,7 +553,6 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   measureMeters.value=useMeters?'1':'0';measureWeight.value=useWeight?'1':'0';
   form.querySelector('[data-receipt-weight-difference]').hidden=!useWeight;
   const meterValues=bales.map(bale=>parsePositive(bale.meters)),weightValues=bales.map(bale=>parsePositive(bale.weight));
-  rawPieces.value=String(bales.length);
   metersList.value=meterValues.map(value=>value===null?'':String(value)).join('+');
   weightsList.value=weightValues.map(value=>value===null?'':String(value)).join('+');
   const meterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0),weightTotal=weightValues.reduce((sum,value)=>sum+(value||0),0);
@@ -565,25 +564,26 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const weightDifference=form.querySelector('[data-receipt-weight-difference-value]');
   if(receivedKg===null)weightDifference.textContent='—';
   else{const difference=Number(form.dataset.rawWeight)-receivedKg;weightDifference.textContent=difference>0.005?'Strata '+fmt(difference)+' kg':difference< -0.005?'Zysk '+fmt(Math.abs(difference))+' kg':'0 kg · bez straty';}
-  const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value);
-  const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&returned>=0?rawWeight*Math.min(returned/sentPieces,1)*100000/(planGrammage*planWidth):0;
+  const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value),measuredBales=bales.length;
+  const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&measuredBales>0?rawWeight*Math.min(measuredBales/sentPieces,1)*100000/(planGrammage*planWidth):0;
   const theory=form.querySelector('[data-receipt-theoretical]'),loss=form.querySelector('[data-receipt-loss]'),note=form.querySelector('[data-receipt-calculation-note]');
   theory.textContent=expected?new Intl.NumberFormat('pl-PL',{maximumFractionDigits:0}).format(Math.round(expected))+' mb':'—';
   if(!expected){loss.textContent='—';note.textContent='Do wyliczenia potrzebne są planowana gramatura, planowana szerokość i liczba odebranych sztuk surowych.';}
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Wybierz tryb mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
-  const previousPieces=Number(form.dataset.previousReceivedPieces),receivedPieces=previousPieces+(Number.isFinite(returned)?returned:0);
-  if(completion){completion.className='finishing-receive-completion';if(sentPieces>0){if(receivedPieces===sentPieces){completion.classList.add('is-complete');completion.textContent=`Kompletne przyjęcie: ${receivedPieces} z ${sentPieces} szt.`;}else if(receivedPieces>sentPieces){completion.classList.add('is-over');completion.textContent=`Wpisano ${receivedPieces} z ${sentPieces} szt. — ilość przekracza wysyłkę.`;}else{completion.classList.add('is-pending');completion.textContent=`Przyjęto ${receivedPieces} z ${sentPieces} szt. — partia pozostanie otwarta na pozostałe sztuki.`;}}else{completion.classList.add('is-pending');completion.textContent='Brak ustalonej liczby wysłanych sztuk. Kompletność oznacza checkbox poniżej.';}}
   const incompleteSelected=form.elements.incomplete?.checked===true;
+  if(completion){completion.className='finishing-receive-completion';completion.classList.add(incompleteSelected?'is-pending':'is-complete');completion.textContent=rawPieces.value.trim()?incompleteSelected?`Przyjęcie niekompletne · wpisano ${Number.isFinite(returned)?returned:0} przyjętych belek.`:`Wpisano ${Number.isFinite(returned)?returned:0} przyjętych belek.`:'Wpisz ręcznie liczbę przyjętych belek.';}
   const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
+  const manualCount=Number.isInteger(returned)&&returned>=0&&rawPieces.value.trim()!=='';
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
-  if(saveButton)saveButton.disabled=(bales.length===0&&!incompleteSelected)||pendingMeters!==null||incomplete||sentPieces>0&&receivedPieces>sentPieces;
+  if(saveButton)saveButton.disabled=!manualCount||(bales.length===0&&!incompleteSelected)||pendingMeters!==null||incomplete||returned<1&&!incompleteSelected;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  const rawGrammage=form.elements.actual_grammage,rawWidth=form.elements.actual_width_cm;
  receivedWeightInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawPieces.focus();}});
  rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawGrammage?.focus();}});
+ rawPieces.addEventListener('input',refresh);
  rawGrammage?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawWidth?.focus();}});
  rawWidth?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  entryCount.addEventListener('focus',()=>entryCount.select());
@@ -607,7 +607,6 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   pendingMeters=null;pendingCount=1;entryCount.value='1';entryCount.disabled=false;
   entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
- rawPieces.addEventListener('input',refresh);
  form.elements.incomplete?.addEventListener('change',refresh);
  receivedWeightInput.addEventListener('input',()=>{weightOverride.value='1';refresh();});
  printLabelsButton.addEventListener('click',()=>{
