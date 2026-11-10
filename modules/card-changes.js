@@ -15,9 +15,15 @@ function changes(before,after){const a=flatten(before),b=flatten(after);return [
 function notice(db,r,v) {
  if(!r.article_id)return '';
  const old=db.prepare('SELECT c.* FROM cards c JOIN records r ON r.id=c.record_id WHERE r.article_id=? ORDER BY c.id DESC LIMIT 1').get(r.article_id);
- if(!old)return '';
- const diff=changes(JSON.parse(old.snapshot).data,v);if(!diff.length)return '';
+ let before,comparison;
+ if(old){before=JSON.parse(old.snapshot).data;comparison=`ostatnią kartą wydaną do druku #${old.id} (${V.datepl(old.created_at)})`;}
+ else if(r.base_id){
+  const base=db.prepare('SELECT id,symbol,payload FROM records WHERE id=?').get(r.base_id);
+  if(base){before=JSON.parse(base.payload||'{}');comparison=`specyfikacją bazową ${V.esc(base.symbol)} (#${base.id})`;}
+ }
+ if(!before)return '';
+ const diff=changes(before,v);if(!diff.length)return '';
  const author=db.prepare("SELECT u.name,a.at FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE a.record_id=? AND a.action='Zapisano zmiany' ORDER BY a.id DESC LIMIT 1").get(r.id)||db.prepare('SELECT u.name,r.updated_at at FROM records r LEFT JOIN users u ON u.id=r.approved_by WHERE r.id=?').get(r.id);
- return `<section class="change-alert" data-update-alert><h2>Uwaga — karta została zaktualizowana</h2><p>Porównanie z ostatnią kartą wydaną do druku #${old.id} (${V.datepl(old.created_at)}). Ostatnia zmiana danych: <strong>${V.esc(author?.name||'Autor nieznany')}</strong> · ${V.datepl(author?.at)}.</p><table class="change-table"><thead><tr><th>Pole</th><th>Poprzednio</th><th>Teraz</th></tr></thead><tbody>${diff.map(d=>`<tr><td>${V.esc(d.label)}</td><td><del class="previous-value">${V.esc(d.before)}</del></td><td class="changed-value">${V.esc(d.after)}</td></tr>`).join('')}</tbody></table></section>`;
+ return `<section class="change-alert" data-update-alert><h2>Uwaga — karta została zaktualizowana</h2><p>Porównanie z ${comparison}. Ostatnia zmiana danych: <strong>${V.esc(author?.name||'Autor nieznany')}</strong> · ${V.datepl(author?.at)}.</p><table class="change-table"><thead><tr><th>Pole</th><th>Poprzednio</th><th>Teraz</th></tr></thead><tbody>${diff.map(d=>`<tr><td>${V.esc(d.label)}</td><td><del class="previous-value">${V.esc(d.before)}</del></td><td class="changed-value">${V.esc(d.after)}</td></tr>`).join('')}</tbody></table></section>`;
 }
 module.exports={changes,notice};

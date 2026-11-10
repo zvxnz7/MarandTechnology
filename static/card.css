@@ -14,3 +14,13 @@
 @page{size:A4 portrait;margin:4mm 10mm 10mm}
 @media print{.sheet{padding:0}}
 @media print{th,td{padding:3px 3px;font-size:9px}}
+
+/* The yarn table has eight columns; reserve widths for all of them. */
+.gb th:nth-child(1),.gb td:nth-child(1){width:5%}
+.gb th:nth-child(2),.gb td:nth-child(2){width:20%}
+.gb th:nth-child(3),.gb td:nth-child(3){width:16%}
+.gb th:nth-child(4),.gb td:nth-child(4){width:10%}
+.gb th:nth-child(5),.gb td:nth-child(5){width:16%}
+.gb th:nth-child(6),.gb td:nth-child(6){width:10%}
+.gb th:nth-child(7),.gb td:nth-child(7){width:8%}
+.gb th:nth-child(8),.gb td:nth-child(8){width:15%}
