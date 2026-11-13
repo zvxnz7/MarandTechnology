@@ -597,6 +597,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-accepted-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px;padding:9px 10px;border:1px solid #d7eadb;border-radius:7px;background:#edf7ef}
 .finishing-receive-accepted-summary label{display:grid;gap:4px;margin:0;font-size:11px;font-weight:600;color:#236438}
 .finishing-receive-accepted-summary input{height:32px;margin:0;background:#fff;border-color:#cfe3d3;color:#1f3825}
+.finishing-batch-summary-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:12px;border-radius:8px;background:#eef1f3}
+.finishing-batch-summary-row label{margin:0}
+@media(max-width:760px){.finishing-batch-summary-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
 .finishing-receive-bale-list{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .finishing-receive-empty-bales{margin:0;color:var(--muted);font-size:12px}
 .finishing-receive-remove{align-self:center;width:22px;height:24px;padding:0;border:0;color:#9d3436;font-size:17px}

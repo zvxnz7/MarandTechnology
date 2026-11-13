@@ -564,7 +564,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const weightDifference=form.querySelector('[data-receipt-weight-difference-value]');
   if(receivedKg===null)weightDifference.textContent='—';
   else{const difference=Number(form.dataset.rawWeight)-receivedKg;weightDifference.textContent=difference>0.005?'Strata '+fmt(difference)+' kg':difference< -0.005?'Zysk '+fmt(Math.abs(difference))+' kg':'0 kg · bez straty';}
-  const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value),measuredBales=bales.length;
+  const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value),measuredBales=bales.length,previousReceivedPieces=Number(form.dataset.previousReceivedPieces)||0,previousReceivedWeight=Number(form.dataset.previousReceivedWeight)||0;
   const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&measuredBales>0?rawWeight*Math.min(measuredBales/sentPieces,1)*100000/(planGrammage*planWidth):0;
   const theory=form.querySelector('[data-receipt-theoretical]'),loss=form.querySelector('[data-receipt-loss]'),note=form.querySelector('[data-receipt-calculation-note]');
   theory.textContent=expected?new Intl.NumberFormat('pl-PL',{maximumFractionDigits:0}).format(Math.round(expected))+' mb':'—';
@@ -572,7 +572,17 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Wybierz tryb mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
   const incompleteSelected=form.elements.incomplete?.checked===true;
-  if(completion){completion.className='finishing-receive-completion';completion.classList.add(incompleteSelected?'is-pending':'is-complete');completion.textContent=rawPieces.value.trim()?incompleteSelected?`Przyjęcie niekompletne · wpisano ${Number.isFinite(returned)?returned:0} przyjętych belek.`:`Wpisano ${Number.isFinite(returned)?returned:0} przyjętych belek.`:'Wpisz ręcznie liczbę przyjętych belek.';}
+  if(completion){
+   completion.className='finishing-receive-completion';
+   const returnedCount=Number.isFinite(returned)?Math.max(0,Math.floor(returned)):0,totalReturnedCount=previousReceivedPieces+returnedCount,totalReceivedKg=receivedKg===null?null:previousReceivedWeight+receivedKg,missingPieces=Math.max(0,Math.floor(sentPieces)-totalReturnedCount),missingWeight=sentPieces>0?Math.round((rawWeight/sentPieces)*missingPieces*100)/100:0;
+   if(!rawPieces.value.trim()){completion.classList.add('is-pending');completion.textContent='Wpisz liczbę sztuk przyjętych z farbiarni.';}
+   else if(incompleteSelected){completion.classList.add('is-pending');completion.textContent=`Przyjęcie niekompletne — partia pozostaje otwarta. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; dotąd przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg.`;}
+   else if(sentPieces>0&&totalReturnedCount<sentPieces){completion.classList.add('is-over');completion.textContent=`Po zapisie partia się zamknie. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; łącznie przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg. Brak ${missingPieces} szt. (ok. ${fmt(missingWeight)} kg) zostanie automatycznie wpisany do „Zagubione/zniszczone”.`;}
+   else if(sentPieces>0&&totalReturnedCount>sentPieces){completion.classList.add('is-over');completion.textContent=`Liczba przyjętych sztuk (${totalReturnedCount}) jest większa niż wysłanych (${sentPieces}). Sprawdź ilości przed zamknięciem partii.`;}
+   else if(sentPieces>0&&totalReceivedKg!==null&&Math.abs(rawWeight-totalReceivedKg)<=0.01){completion.classList.add('is-complete');completion.textContent=`Zgadza się: ${sentPieces} / ${totalReturnedCount} szt. oraz ${fmt(rawWeight)} / ${fmt(totalReceivedKg)} kg. Zapis zamknie partię.`;}
+   else if(sentPieces>0){const delta=totalReceivedKg===null?null:Math.round((rawWeight-totalReceivedKg)*100)/100;completion.classList.add('is-pending');completion.textContent=`Sztuki się zgadzają: ${sentPieces} / ${totalReturnedCount}. Wysłano ${fmt(rawWeight)} kg, łącznie przyjęto ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}${delta===null?'':`; różnica ${fmt(Math.abs(delta))} kg`}. Różnica masy przy zgodnej liczbie sztuk nie jest liczona jako zagubiona belka. Zapis zamknie partię.`;}
+   else{completion.classList.add('is-pending');completion.textContent=`Wysłanych sztuk nie podano. Łącznie przyjęto ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}. Nie można automatycznie wyliczyć zagubionych sztuk.`;}
+  }
   const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
   const manualCount=Number.isInteger(returned)&&returned>=0&&rawPieces.value.trim()!=='';
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
