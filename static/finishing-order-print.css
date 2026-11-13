@@ -5,10 +5,6 @@
 .sheet .head-fields{gap:5px}
 .sheet .blank-field{min-height:13mm;padding:3px;font-size:7pt}
 .sheet .blank-line{height:5mm;margin-top:1mm}
-.sheet .symbols-line{display:flex;gap:18px;align-items:center;margin:5px 0;padding:4px 6px;border:1px solid #aaa;background:#f7f7f7}
-.sheet .symbols-line>div{display:flex;gap:6px;align-items:baseline;min-width:0}
-.sheet .symbols-line small{font-size:7pt;color:#555;white-space:nowrap}
-.sheet .symbols-line strong{font-size:9pt;overflow-wrap:anywhere}
 .sheet .meta{gap:3px;margin:4px 0}
 .sheet .field{padding:2px}
 .sheet .field b{font-size:7pt;margin-bottom:1px}
@@ -26,7 +22,6 @@
 .sheet .pieces{margin-top:6px}
 
 /* Keep the PM-to-piece details compact and put recipe labels beside values. */
-.sheet .symbols-line{display:none}
 .sheet .meta{grid-template-columns:repeat(3,minmax(0,1fr));gap:1px 4px;margin:3px 0}
 .sheet .field{padding:1px 3px;line-height:1.15}
 .sheet .field b{display:inline;margin:0 4px 0 0;font-size:6.5pt;white-space:nowrap}
