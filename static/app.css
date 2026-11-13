@@ -552,9 +552,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-param-result.is-ok{color:#19733a}
 .finishing-param-result.is-warning{padding:2px 5px;border-radius:4px;background:#ffe1e1;color:#a51f27}
 .finishing-param-result.is-danger{padding:2px 5px;border-radius:4px;background:#ffe1e1;color:#a51f27}
-.finishing-lost-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.finishing-lost-actions{display:flex;flex-wrap:nowrap;gap:6px;align-items:center}
 .finishing-lost-actions form{margin:0}
-.finishing-lost-actions .button{white-space:nowrap}
+.finishing-lost-status-pill{display:inline-flex;align-items:center;gap:5px;margin:0;padding:4px 8px;border:1px solid #cfd6dc;border-radius:999px;background:#f5f7f8;color:#43515c;font-size:11px;font-weight:650;white-space:nowrap;cursor:pointer}
+.finishing-lost-status-pill input{width:13px;height:13px;margin:0;accent-color:#27834b}
+.finishing-lost-status-pill.is-active{border-color:#b8dec5;background:#e9f5ed;color:#236438}
+.finishing-lost-status-pill:has(input:disabled){cursor:default}
+.finishing-lost-info-form{display:flex;gap:5px;align-items:center;min-width:230px;margin:0}
+.finishing-lost-info-form input{min-width:0;width:100%;height:30px;margin:0}
+.finishing-lost-info-form .button{padding:5px 8px;white-space:nowrap}
 .finishing-receive-measure-grid label small{display:block;margin-top:5px;color:var(--muted);font-weight:400}
 .finishing-receive-check-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .finishing-receive-process-checks{display:grid;gap:8px;padding:10px 12px;border:1px solid #e3e7ea;border-radius:6px;background:#f8fafb}

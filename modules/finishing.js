@@ -718,10 +718,12 @@ function lostPage(ctx) {
     WHERE i.auto_generated=1 AND i.incident_type='lost' ORDER BY i.created_at DESC,i.id DESC`).all();
   const pm=row=>pmReference(row);
   const rowsHtml=rows.map(row=>{
-    const action=(kind,label,doneAt)=>canManage?`<form method="post" action="/finishing/lost/${row.id}/${kind}">${hidden('csrf',ctx.req.session.csrf)}<button class="button${doneAt?' is-selected':kind==='found'?'':' primary'}">${doneAt?`Cofnij: ${label}`:`Oznacz: ${label}`}</button></form>`:doneAt?`<span class="badge approved">${label}</span>`:'<span class="muted">Oczekuje</span>';
-    return `<tr><td>${row.lost_pieces} szt.</td><td>${money(row.lost_weight_kg)} kg</td><td><a class="finishing-order-pm${row.manual_entry?' is-manual':''}" href="/finishing/orders/${row.order_id}">${V.esc(pm(row))}</a></td><td>${V.esc(finishingOrderNo(row)||'—')}</td><td>${V.datepl(row.order_created_at)}</td><td>${V.datepl(row.created_at)}</td><td class="finishing-lost-actions">${action('found','Odnaleziona',row.found_at)}${action('settle','Rozliczona z wykańczalnią',row.settled_at)}</td></tr>`;
+    const foundSelected=Boolean(row.found_at&&(!row.settled_at||row.found_at>=row.settled_at)),settledSelected=Boolean(row.settled_at&&(!row.found_at||row.settled_at>row.found_at));
+    const action=(kind,label,done)=>`<form method="post" action="/finishing/lost/${row.id}/${kind}">${hidden('csrf',ctx.req.session.csrf)}<label class="finishing-lost-status-pill${done?' is-active':''}"><input type="checkbox"${done?' checked':''}${canManage?` onchange="this.form.requestSubmit()"`:' disabled'} aria-label="${label}" title="${label}"><span>${label}</span></label></form>`;
+    const additionalInfo=canManage?`<form class="finishing-lost-info-form" method="post" action="/finishing/lost/${row.id}/info">${hidden('csrf',ctx.req.session.csrf)}<input name="additional_info" value="${V.esc(row.resolution||'')}" maxlength="1000" placeholder="Dodatkowe info" aria-label="Dodatkowe info"><button class="button">Zapisz</button></form>`:V.esc(row.resolution||'—');
+    return `<tr><td>${row.lost_pieces} szt.</td><td>${money(row.lost_weight_kg)} kg</td><td><a class="finishing-order-pm${row.manual_entry?' is-manual':''}" href="/finishing/orders/${row.order_id}">${V.esc(pm(row))}</a></td><td>${V.esc(finishingOrderNo(row)||'—')}</td><td>${V.datepl(row.order_created_at)}</td><td>${V.datepl(row.created_at)}</td><td>${additionalInfo}</td><td class="finishing-lost-actions">${action('found','Odnaleziona',foundSelected)}${action('settle','Rozliczona z wykańczalnią',settledSelected)}</td></tr>`;
   }).join('');
-  const body=`${navTabs('lost',ctx.db)}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Zagubione/zniszczone</h1><p class="muted">Braki są dopisywane automatycznie po zamknięciu przyjęcia partii.</p></div></div><div class="panel scroll"><table class="listing compact finishing-lost-list"><thead><tr><th>Brak</th><th>Masa</th><th>PM</th><th>Nr zlecenia</th><th>Data zlecenia</th><th>Data przyjęcia</th><th>Akcje</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="7">Brak zagubionych lub zniszczonych sztuk.</td></tr>'}</tbody></table></div>`;
+  const body=`${navTabs('lost',ctx.db)}<div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Zagubione/zniszczone</h1><p class="muted">Braki są dopisywane automatycznie po zamknięciu przyjęcia partii.</p></div></div><div class="panel scroll"><table class="listing compact finishing-lost-list"><thead><tr><th>Brak</th><th>Masa</th><th>PM</th><th>Nr zlecenia</th><th>Data zlecenia</th><th>Data przyjęcia</th><th>Dodatkowe info</th><th>Status</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="8">Brak zagubionych lub zniszczonych sztuk.</td></tr>'}</tbody></table></div>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Zagubione/zniszczone',body});
 }
 function recipeForm(ctx,recipe=null,initialRawSymbol='',returnToOrder=false) {
@@ -892,7 +894,7 @@ function syncAutoLostIncident(db,batchId,userId,stamp) {
   const lostWeight=sent>0?Costing.round2(Number(batch.raw_weight_kg||0)/sent*lostPieces):0,description=`Automatycznie po zamknięciu przyjęcia: brak ${lostPieces} szt.${lostWeight>0?` · ${money(lostWeight)} kg`:''}.`;
   if(!existing){db.prepare("INSERT INTO finishing_incidents(order_id,batch_id,incident_type,description,status,created_at,created_by,auto_generated,lost_pieces,lost_weight_kg) VALUES(?,?,'lost',?,'open',?,?,1,?,?)").run(batch.order_id,batchId,description,stamp,userId,lostPieces,lostWeight);return;}
   const changed=Number(existing.lost_pieces)!==lostPieces||Math.abs(Number(existing.lost_weight_kg||0)-lostWeight)>0.005;
-  if(changed)db.prepare("UPDATE finishing_incidents SET description=?,lost_pieces=?,lost_weight_kg=?,status='open',resolution='',resolved_at=NULL,resolved_by=NULL,found_at=NULL,found_by=NULL,settled_at=NULL,settled_by=NULL WHERE id=?").run(description,lostPieces,lostWeight,existing.id);
+  if(changed)db.prepare("UPDATE finishing_incidents SET description=?,lost_pieces=?,lost_weight_kg=?,status='open',resolved_at=NULL,resolved_by=NULL,found_at=NULL,found_by=NULL,settled_at=NULL,settled_by=NULL WHERE id=?").run(description,lostPieces,lostWeight,existing.id);
 }
 function settlementSnapshot(row){
   return {batch_id:row.batch_id,status:row.status,invoice_note:row.invoice_note,calculation_import_id:row.calculation_import_id,raw_symbol:row.raw_symbol,trade_symbol:row.trade_symbol,
@@ -1378,14 +1380,19 @@ function handle(ctx) {
     const returnTo=modalReceipt&&form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${batch.order_id}#batch-${batchId}`;
     return redirect(req,res,returnTo,receiptId.complete?'Przyjęcie kompletne — zgadza się liczba wysłanych i przyjętych sztuk.':'Zapisano przyjęcie częściowe. Partia pozostaje otwarta na pozostałe sztuki.');
   }
-  const lostAction=p.match(/^\/finishing\/lost\/(\d+)\/(found|settle)$/);
+  const lostAction=p.match(/^\/finishing\/lost\/(\d+)\/(found|settle|info)$/);
   if(lostAction&&req.method==='POST'){
     role(req.user,...editableRoles);const id=Number(lostAction[1]),kind=lostAction[2],incident=db.prepare("SELECT * FROM finishing_incidents WHERE id=? AND auto_generated=1 AND incident_type='lost'").get(id);
     if(!incident)fail(404,'Nie znaleziono wpisu o zagubionych sztukach.');
+    if(kind==='info'){
+      const additionalInfo=text(form,'additional_info',1000);
+      transaction(()=>{db.prepare('UPDATE finishing_incidents SET resolution=? WHERE id=?').run(additionalInfo,id);audit(req.user,'Zapisano dodatkowe informacje o brakujących sztukach',null,JSON.stringify({incidentId:id,orderId:incident.order_id,batchId:incident.batch_id}),null);});
+      return redirect(req,res,'/finishing/lost','Zapisano dodatkowe informacje.');
+    }
     const stamp=now(),column=kind==='found'?'found_at':'settled_at',userColumn=kind==='found'?'found_by':'settled_by';
     const wasMarked=Boolean(incident[column]),nextValue=wasMarked?null:stamp;
     transaction(()=>{
-      db.prepare(`UPDATE finishing_incidents SET ${column}=?,${userColumn}=? WHERE id=?`).run(nextValue,wasMarked?null:req.user.id,id);
+      db.prepare(`UPDATE finishing_incidents SET ${column}=?,${userColumn}=?,${otherColumn}=NULL,${otherUserColumn}=NULL WHERE id=?`).run(nextValue,wasMarked?null:req.user.id,id);
       audit(req.user,kind==='found'?(wasMarked?'Cofnięto oznaczenie odnalezienia sztuk':'Oznaczono brakujące sztuki jako odnalezione'):(wasMarked?'Cofnięto oznaczenie rozliczenia z wykańczalnią':'Oznaczono brakujące sztuki jako rozliczone z wykańczalnią'),null,JSON.stringify({incidentId:id,orderId:incident.order_id,batchId:incident.batch_id,marked:!wasMarked}),null);
     });
     return redirect(req,res,'/finishing/lost',wasMarked?(kind==='found'?'Cofnięto oznaczenie odnalezienia.':'Cofnięto oznaczenie rozliczenia z wykańczalnią.'):(kind==='found'?'Oznaczono sztuki jako odnalezione.':'Oznaczono sztuki jako rozliczone z wykańczalnią.'));

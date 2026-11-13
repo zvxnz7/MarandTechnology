@@ -34,11 +34,12 @@
 .sheet .order-notes{margin:3px 0;padding:4px;border-width:3px}
 .sheet .order-notes .notes-label{display:none}
 .sheet .order-notes div{font-size:8.5pt;line-height:1.2}
-.sheet .recipe-params{grid-template-columns:repeat(2,minmax(0,1fr));gap:1px 6px}
-.sheet .recipe-param{min-height:0;padding:2px 4px;border:0;border-bottom:1px solid #bbb;line-height:1.15}
-.sheet .recipe-param small{display:inline;margin:0 5px 0 0;font-size:7pt;white-space:nowrap}
-.sheet .recipe-param strong,.sheet .recipe-param .raw-material{font-size:8.5pt}
+.sheet .recipe-params{grid-template-columns:repeat(3,minmax(0,1fr));gap:0 4px}
+.sheet .recipe-param{min-height:0;padding:1px 3px;border:0;border-bottom:1px solid #bbb;line-height:1.05}
+.sheet .recipe-param small{display:inline;margin:0 3px 0 0;font-size:6pt;white-space:nowrap}
+.sheet .recipe-param strong,.sheet .recipe-param .raw-material{font-size:7pt;line-height:1.05}
 .sheet .recipe-param-wide{grid-column:1/-1}
-.sheet .recipe-notes{margin-top:3px;padding:3px;border-width:2px}
-.sheet .notes-label{display:block;margin:0 4px 0 0;font-size:7.5pt}
-.sheet .recipe-notes div{font-size:8pt;line-height:1.15}
+.sheet .recipe-notes{margin-top:2px;padding:2px 3px;border-width:1px}
+.sheet .notes-label{display:block;margin:0 4px 0 0;font-size:6.5pt}
+.sheet .recipe-notes div{font-size:7pt;line-height:1.05}
+.sheet .pieces{margin-top:4px}
