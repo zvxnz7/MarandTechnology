@@ -571,22 +571,20 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(!expected){loss.textContent='—';note.textContent='Do wyliczenia potrzebne są planowana gramatura, planowana szerokość i liczba odebranych sztuk surowych.';}
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Wybierz tryb mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
-  const incompleteSelected=form.elements.incomplete?.checked===true;
   if(completion){
    completion.className='finishing-receive-completion';
    const returnedCount=Number.isFinite(returned)?Math.max(0,Math.floor(returned)):0,totalReturnedCount=previousReceivedPieces+returnedCount,totalReceivedKg=receivedKg===null?null:previousReceivedWeight+receivedKg,missingPieces=Math.max(0,Math.floor(sentPieces)-totalReturnedCount),missingWeight=sentPieces>0?Math.round((rawWeight/sentPieces)*missingPieces*100)/100:0;
    if(!rawPieces.value.trim()){completion.classList.add('is-pending');completion.textContent='Wpisz liczbę sztuk przyjętych z farbiarni.';}
-   else if(incompleteSelected){completion.classList.add('is-pending');completion.textContent=`Przyjęcie niekompletne — partia pozostaje otwarta. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; dotąd przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg.`;}
-   else if(sentPieces>0&&totalReturnedCount<sentPieces){completion.classList.add('is-over');completion.textContent=`Po zapisie partia się zamknie. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; łącznie przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg. Brak ${missingPieces} szt. (ok. ${fmt(missingWeight)} kg) zostanie automatycznie wpisany do „Zagubione/zniszczone”.`;}
+   else if(sentPieces>0&&totalReturnedCount<sentPieces){completion.classList.add('is-pending');completion.textContent=`Przyjęcie będzie częściowe, a partia pozostanie otwarta. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; łącznie przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg. Brak ${missingPieces} szt. (ok. ${fmt(missingWeight)} kg) zostanie wpisany do „Zagubione/zniszczone” po użyciu przycisku „Przyjmij niekompletne zlecenie”.`;}
    else if(sentPieces>0&&totalReturnedCount>sentPieces){completion.classList.add('is-over');completion.textContent=`Liczba przyjętych sztuk (${totalReturnedCount}) jest większa niż wysłanych (${sentPieces}). Sprawdź ilości przed zamknięciem partii.`;}
-   else if(sentPieces>0&&totalReceivedKg!==null&&Math.abs(rawWeight-totalReceivedKg)<=0.01){completion.classList.add('is-complete');completion.textContent=`Zgadza się: ${sentPieces} / ${totalReturnedCount} szt. oraz ${fmt(rawWeight)} / ${fmt(totalReceivedKg)} kg. Zapis zamknie partię.`;}
-   else if(sentPieces>0){const delta=totalReceivedKg===null?null:Math.round((rawWeight-totalReceivedKg)*100)/100;completion.classList.add('is-pending');completion.textContent=`Sztuki się zgadzają: ${sentPieces} / ${totalReturnedCount}. Wysłano ${fmt(rawWeight)} kg, łącznie przyjęto ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}${delta===null?'':`; różnica ${fmt(Math.abs(delta))} kg`}. Różnica masy przy zgodnej liczbie sztuk nie jest liczona jako zagubiona belka. Zapis zamknie partię.`;}
+  else if(sentPieces>0&&totalReceivedKg!==null&&Math.abs(rawWeight-totalReceivedKg)<=0.01){completion.classList.add('is-complete');completion.textContent=`Zgadza się: ${sentPieces} / ${totalReturnedCount} szt. oraz ${fmt(rawWeight)} / ${fmt(totalReceivedKg)} kg. Zapis zamknie partię.`;}
+  else if(sentPieces>0){const delta=totalReceivedKg===null?null:Math.round((rawWeight-totalReceivedKg)*100)/100;completion.classList.add('is-pending');completion.textContent=`Sztuki się zgadzają: ${sentPieces} / ${totalReturnedCount}. Wysłano ${fmt(rawWeight)} kg, łącznie przyjęto ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}${delta===null?'':`; różnica ${fmt(Math.abs(delta))} kg`}. Różnica masy przy zgodnej liczbie sztuk nie jest liczona jako zagubiona belka. Zapis zamknie partię.`;}
    else{completion.classList.add('is-pending');completion.textContent=`Wysłanych sztuk nie podano. Łącznie przyjęto ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}. Nie można automatycznie wyliczyć zagubionych sztuk.`;}
   }
   const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
   const manualCount=Number.isInteger(returned)&&returned>=0&&rawPieces.value.trim()!=='';
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
-  if(saveButton)saveButton.disabled=!manualCount||(bales.length===0&&!incompleteSelected)||pendingMeters!==null||incomplete||returned<1&&!incompleteSelected;
+  if(saveButton)saveButton.disabled=!manualCount||bales.length===0||pendingMeters!==null||incomplete||returned<1;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
@@ -617,25 +615,28 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   pendingMeters=null;pendingCount=1;entryCount.value='1';entryCount.disabled=false;
   entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
- form.elements.incomplete?.addEventListener('change',refresh);
  receivedWeightInput.addEventListener('input',()=>{weightOverride.value='1';refresh();});
- printLabelsButton.addEventListener('click',()=>{
+ const labelConfig=form.closest('.dialog-body')?.querySelector('.finishing-label-config-dialog');
+ labelConfig?.querySelector('[data-label-include-client]')?.addEventListener('change',event=>{const field=labelConfig.querySelector('[data-label-client-field]');if(field)field.hidden=!event.currentTarget.checked;});
+ labelConfig?.querySelector('[data-label-print]')?.addEventListener('click',()=>{
   if(!bales.length)return;
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const actualWidth=String(form.elements.actual_width_cm.value||'').trim()||form.dataset.planWidth||'—';
   const actualGrammage=String(form.elements.actual_grammage.value||'').trim()||form.dataset.planGrammage||'—';
-  const symbol=form.dataset.tradeSymbol||form.dataset.rawSymbol||'—',color=form.dataset.targetColor||'—',orderNumber=form.dataset.orderNumber||'—';
-  const labels=bales.map((bale,index)=>`<article class="label"><strong class="symbol">${esc(symbol)}</strong><div><b>Kolor:</b> ${esc(color)}</div><div><b>Nr zlecenia:</b> ${esc(orderNumber)}</div><div><b>Szerokość:</b> ${esc(actualWidth)} cm</div><div><b>Gramatura:</b> ${esc(actualGrammage)} g/m²</div><div class="qty"><b>Ilość mb:</b> ${bale.meters===null?'—':esc(fmt(bale.meters))}</div>${usesWeight()?`<div class="qty"><b>Waga kg:</b> ${esc(fmt(bale.weight))}</div>`:''}<small>${index+1}/${bales.length}</small></article>`).join('');
+  const tradeSymbol=form.dataset.tradeSymbol||form.dataset.rawSymbol||'—',symbolParts=tradeSymbol.split('/'),symbol=(symbolParts.shift()||'').trim()||tradeSymbol,colorFromSymbol=symbolParts.join('/').trim(),color=String(form.elements.actual_color?.value||'').trim()||colorFromSymbol||form.dataset.targetColor||'—',orderNumber=(form.dataset.orderNumber||'—').replace(/\/(?:\d{2}|\d{4})$/,'');
+  const language=labelConfig?.querySelector('[data-label-language]')?.value==='en'?'en':'pl',includeClient=labelConfig?.querySelector('[data-label-include-client]')?.checked===true,client=labelConfig?.querySelector('[data-label-client]')?.value.trim()||'',includeWeight=labelConfig?.querySelector('[data-label-include-weight]')?.checked===true,brand=labelConfig?.querySelector('[data-label-include-brand]')?.checked?labelConfig.querySelector('[data-label-brand]')?.value.trim()||'':'';
+  const words=language==='en'?{color:'COLOR',lot:'BATCH NO.',width:'WIDTH',grammage:'GRAMMAGE',quantity:'QUANTITY [m]',client:'CLIENT',weight:'WEIGHT [kg]'}:{color:'KOLOR',lot:'NR PARTII',width:'SZEROKOŚĆ',grammage:'GRAMATURA',quantity:'ILOŚĆ [mb]',client:'KLIENT',weight:'WAGA [kg]'};
+  const labels=bales.map((bale,index)=>`<article class="label">${brand?`<div class="brand">${esc(brand)}</div>`:''}<strong class="symbol">${esc(symbol)}</strong>${includeClient&&client?`<div><b>${words.client}:</b> ${esc(client)}</div>`:''}<div><b>${words.color}:</b> ${esc(color)}</div><div><b>${words.lot}:</b> ${esc(orderNumber)}</div><div><b>${words.width}:</b> ${esc(actualWidth)} cm</div><div><b>${words.grammage}:</b> ${esc(actualGrammage)} g/m²</div><div class="qty"><b>${words.quantity}:</b> ${bale.meters===null?'—':esc(fmt(bale.meters))}</div>${includeWeight?`<div class="qty"><b>${words.weight}:</b> ${bale.weight===null?'—':esc(fmt(bale.weight))}</div>`:''}<small>${index+1}/${bales.length}</small></article>`).join('');
   const printWindow=window.open('','_blank','width=700,height=900');
   if(!printWindow){alert('Przeglądarka zablokowała okno etykiet. Zezwól na wyskakujące okna i spróbuj ponownie.');return;}
   printWindow.onload=()=>{printWindow.focus();printWindow.print();};
-  printWindow.document.open();printWindow.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>Etykiety ${esc(orderNumber)}</title><style>@page{size:50mm 74mm;margin:0}*{box-sizing:border-box}body{margin:0;font:10pt/1.22 Arial,sans-serif;color:#111}.label{width:50mm;height:74mm;padding:4mm 3.5mm;overflow:hidden;page-break-after:always;break-after:page;border:1px solid #bbb;position:relative}.symbol{display:block;font-size:15pt;text-align:center;margin:0 0 3mm}.label>div{margin:1.6mm 0}.qty{font-size:13pt;font-weight:700;margin-top:3mm!important}.label small{position:absolute;bottom:2mm;right:3mm;font-size:7pt}@media print{.label{border:0}}</style></head><body>${labels}</body></html>`);printWindow.document.close();
+  printWindow.document.open();printWindow.document.write(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><title>Etykiety ${esc(orderNumber)}</title><style>@page{size:50mm 74mm;margin:0}*{box-sizing:border-box}body{margin:0;font:10pt/1.22 Arial,sans-serif;color:#111}.label{width:50mm;height:74mm;padding:4mm 3.5mm;overflow:hidden;page-break-after:always;break-after:page;border:1px solid #bbb;position:relative}.symbol{display:block;font-size:15pt;text-align:center;margin:0 0 3mm}.brand{text-align:center;font-size:10pt;font-weight:700;margin:0 0 2mm}.label>div{margin:1.6mm 0}.qty{font-size:13pt;font-weight:700;margin-top:3mm!important}.label small{position:absolute;bottom:2mm;right:3mm;font-size:7pt}@media print{.label{border:0}}</style></head><body>${labels}</body></html>`);printWindow.document.close();labelConfig?.close();
  });
  form.addEventListener('submit',event=>{
   refresh();
   if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej sztuki.';entryInput.focus();return;}
   const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
-  if((!bales.length&&form.elements.incomplete?.checked!==true)||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent=!bales.length?'Dodaj sztukę albo zaznacz przyjęcie niekompletne.':'Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
+  if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent=!bales.length?'Dodaj zwróconą sztukę.':'Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
   form.reset();bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryCount.disabled=false;entryStatus.textContent='';
