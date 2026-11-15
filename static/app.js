@@ -554,15 +554,15 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const meterValues=bales.map(bale=>parsePositive(bale.meters)),weightValues=bales.map(bale=>parsePositive(bale.weight));
   metersList.value=meterValues.map(value=>value===null?'':String(value)).join('+');
   weightsList.value=weightValues.map(value=>value===null?'':String(value)).join('+');
-  const meterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0);
-  form.querySelector('[data-receipt-total-meters]').textContent=meterValues.some(value=>value!==null)?fmt(meterTotal)+' mb':'—';
+  const measuredMeterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0),outputWeightTotal=weightValues.reduce((sum,value)=>sum+(value||0),0),actualGrammage=Number(String(form.elements.actual_grammage?.value||'').trim().replace(',','.'))||Number(form.dataset.planGrammage),actualWidth=Number(String(form.elements.actual_width_cm?.value||'').trim().replace(',','.'))||Number(form.dataset.planWidth),estimatedMeterTotal=actualGrammage>0&&actualWidth>0?outputWeightTotal*100000/(actualGrammage*actualWidth):0,hasMeasuredMeters=useMeters&&meterValues.some(value=>value!==null),hasEstimatedMeters=!useMeters&&useWeight&&weightValues.some(value=>value!==null)&&estimatedMeterTotal>0,meterTotal=useMeters?measuredMeterTotal:estimatedMeterTotal;
+  form.querySelector('[data-receipt-total-meters]').textContent=hasMeasuredMeters?fmt(meterTotal)+' mb':hasEstimatedMeters?'~'+fmt(meterTotal)+' mb':'—';
   const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value),previousReceivedPieces=Number(form.dataset.previousReceivedPieces)||0,previousReceivedWeight=Number(form.dataset.previousReceivedWeight)||0,usedKgText=String(usedWeightInput?.value||'').trim().replace(',','.'),usedKg=usedKgText!==''&&Number.isFinite(Number(usedKgText))?Number(usedKgText):null;
   const expected=planGrammage>0&&planWidth>0&&usedKg!==null&&usedKg>0?usedKg*100000/(planGrammage*planWidth):0;
   const theory=form.querySelector('[data-receipt-theoretical]'),loss=form.querySelector('[data-receipt-loss]'),note=form.querySelector('[data-receipt-calculation-note]');
   theory.textContent=expected?new Intl.NumberFormat('pl-PL',{maximumFractionDigits:0}).format(Math.round(expected))+' mb':'—';
   if(!expected){loss.textContent='—';note.textContent='Wpisz rozliczane kg oraz planowaną gramaturę i szerokość, aby wyliczyć teorię.';}
-  else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Wybierz tryb mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
-  else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
+  else if(!hasMeasuredMeters&&!hasEstimatedMeters){loss.textContent='—';note.textContent='Wpisz metry belek albo kg belek, aby porównać wynik z teorią.';}
+  else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent=hasMeasuredMeters?'Porównanie wpisanych metrów z teorią wyliczoną z kg rozliczanych ze zleconych.':'Szacunkowe metry i strata wyliczone z kg belek oraz gramatury i szerokości.';}
   if(completion){
    completion.className='finishing-receive-completion';
    const returnedCount=Number.isFinite(returned)?Math.max(0,Math.floor(returned)):0,totalReturnedCount=previousReceivedPieces+returnedCount,totalReceivedKg=usedKg===null?null:Math.round((previousReceivedWeight+usedKg)*100)/100,missingPieces=Math.max(0,Math.floor(sentPieces)-totalReturnedCount),missingWeight=totalReceivedKg===null?null:Math.max(0,Math.round((rawWeight-totalReceivedKg)*100)/100);
@@ -574,13 +574,14 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
    else{completion.classList.add('is-pending');completion.textContent=`Wysłanych sztuk nie podano. Łącznie przyjęto ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}. Nie można automatycznie wyliczyć zagubionych sztuk.`;}
   }
   const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
-  const manualCount=Number.isInteger(returned)&&returned>=0&&rawPieces.value.trim()!=='';
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
-  if(saveButton)saveButton.disabled=!manualCount||bales.length===0||pendingMeters!==null||incomplete||returned<1;
+  if(saveButton)saveButton.disabled=false;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  const rawGrammage=form.elements.actual_grammage,rawWidth=form.elements.actual_width_cm;
+ rawGrammage?.addEventListener('input',refresh);
+ rawWidth?.addEventListener('input',refresh);
  usedWeightInput?.addEventListener('input',refresh);
  usedWeightInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawPieces.focus();}});
  rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawGrammage?.focus();}});
@@ -628,6 +629,9 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   refresh();
   if(pendingMeters!==null){event.preventDefault();entryStatus.textContent='Wpisz kg dla rozpoczętej sztuki.';entryInput.focus();return;}
   const useMeters=usesMeters(),useWeight=usesWeight(),incompleteIndex=bales.findIndex(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
+  const receivedRawPieces=Number(rawPieces.value),sentRawPieces=Number(form.dataset.sentPieces),previousRawPieces=Number(form.dataset.previousReceivedPieces)||0;
+  if(!rawPieces.value.trim()||!Number.isInteger(receivedRawPieces)||receivedRawPieces<1){event.preventDefault();completion?.classList.add('is-pending');if(completion)completion.textContent='Wpisz co najmniej jedną sztukę rozliczaną ze zleconych.';rawPieces.focus();return;}
+  if(sentRawPieces>0&&previousRawPieces+receivedRawPieces>sentRawPieces){event.preventDefault();completion?.classList.add('is-over');if(completion)completion.textContent=`Rozliczenie przekracza ilość wysłaną: ${previousRawPieces+receivedRawPieces} z ${sentRawPieces} szt. Popraw liczbę sztuk.`;rawPieces.focus();return;}
   if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent=!bales.length?'Dodaj zwróconą sztukę.':'Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
  });
  form.closest('dialog')?.addEventListener('close',()=>{
