@@ -25,8 +25,8 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
    if(result.duplicate){if(!window.confirm(result.message)){form.dataset.saveState='duplicate';input.title=result.message;return;}payload.set('confirm_duplicate','1');response=await send();result=await response.json();}
    if(!response.ok||!result.ok)throw new Error(result.message||'Nie udało się zapisać numeru LOT.');
    lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia zapisany';updateRemoveForm();updateReceiveButton(value,result.display_order_number||value);
-   const orderRow=form.closest('tr'),statusBadge=orderRow?.querySelector('td:nth-child(8) .badge');
-   if(statusBadge&&result.status_label){statusBadge.textContent=result.status_label;statusBadge.className=`badge ${result.status_class||'submitted'}`;}
+   const orderRow=form.closest('tr'),batchStatusRow=orderRow?.querySelector(`td:nth-child(8) [data-batch-status="${form.elements.batch_id?.value||''}"]`),statusBadge=batchStatusRow?.querySelector('.badge');
+   if(statusBadge&&result.batch_status_label){statusBadge.textContent=result.batch_status_label;statusBadge.className=`badge ${result.batch_status_class||'submitted'}`;}
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
   finally{saving=false;updateRemoveForm();if(queued){queued=false;timer=setTimeout(save,150);}}
  };
