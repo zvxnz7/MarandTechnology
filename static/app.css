@@ -430,7 +430,6 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-batch-status-row{display:flex;align-items:center;gap:5px;min-height:34px}
 .finishing-order-lot-entry.is-correction-attempt{gap:6px;flex-wrap:nowrap}
 .finishing-correction-sent{flex:0 0 auto;white-space:nowrap;background:#fff3e8;color:#9a4517;border:1px solid #f2d0b8}
-.finishing-correction-arrow{display:inline-block;margin-left:5px;font-size:16px;font-weight:800;line-height:.8;vertical-align:-1px}
 .finishing-order-lot-entry.is-correction-attempt .finishing-order-lot-inline{flex:0 0 140px}
 .finishing-order-lot-entry.is-correction-attempt .finishing-remove-spec-button{width:34px;height:34px}
 .finishing-lot-edit-button{width:auto;min-width:0;flex:0 0 auto;height:auto;padding:10px 12px;margin:0;font-size:13px;font-weight:650;white-space:nowrap}
