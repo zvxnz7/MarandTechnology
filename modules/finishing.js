@@ -223,7 +223,7 @@ function createRawSaleReceipt(db,orderId,pieces,actorId,stamp,receivedAt) {
   const batchId=Number(db.prepare(`INSERT INTO finishing_batches(order_id,finishing_lot,sent_at,sent_pieces,raw_weight_kg,closed_at,created_at,created_by,updated_at,updated_by)
     VALUES(?,'Sprzedaż surowej',?,?,?,?,?,?,?,?)`).run(orderId,receivedAt,count,weight,stamp,stamp,actorId,stamp,actorId).lastInsertRowid);
   const receiptId=Number(db.prepare(`INSERT INTO finishing_receipts(batch_id,received_at,raw_pieces_received,finished_pieces,finished_weight_kg,used_weight_kg,settlement_unit,finished_meters,created_at,created_by)
-    VALUES(?,?,?,?,?,'mb',?,?,?,?)`).run(batchId,receivedAt,count,count,weight,weight,meters,stamp,actorId).lastInsertRowid);
+    VALUES(?,?,?,?,?,?,'mb',?,?,?)`).run(batchId,receivedAt,count,count,weight,weight,meters,stamp,actorId).lastInsertRowid);
   const insertBale=db.prepare('INSERT INTO finishing_return_bales(receipt_id,sequence,meters,weight_kg) VALUES(?,?,?,?)');
   pieces.forEach((piece,index)=>insertBale.run(receiptId,index+1,piece.meters,piece.weight_kg));
   return {batchId,receiptId,count,weight,meters};
