@@ -287,6 +287,11 @@ function recipeProcessRequirements(details={}) {
     ['trimSygnits','Obcinanie sygnitów',''],
   ].filter(([key])=>details[key]==='yes').map(([key,label,description])=>({key,label,description}));
 }
+function orderRecipeDetails(db,order,snapshot={}) {
+  if(snapshot.details&&Object.keys(snapshot.details).length)return snapshot.details;
+  const recipe=order?.recipe_id?recipeRecord(db,order.recipe_id):null;
+  return recipe?readRecipeDetails(recipe):{};
+}
 function receiptProcessSummary(receipt,details={}) {
   let checks={};try{checks=JSON.parse(receipt.process_checks||'{}')||{};}catch{}
   return recipeProcessRequirements(details).map(item=>{
@@ -639,8 +644,9 @@ function labelPage(ctx,receiptId) {
 function receiptDialog(ctx,order,batch,pm,returnTo='orders') {
   const dialogId=`finishing-receive-${batch.id}`,labelConfigId=`finishing-label-config-${batch.id}`,targetWidth=order.target_width_cm??'',targetGrammage=order.target_grammage??'';
   let recipeSnapshot={};try{recipeSnapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
-  const recipeSymbol=String(recipeSnapshot.rawSymbol||recipeSnapshot.raw_symbol||'').trim();
-  const recipeDetails=recipeSnapshot.details||{};
+  const linkedRecipe=order.recipe_id?recipeRecord(ctx.db,order.recipe_id):null;
+  const recipeSymbol=String(recipeSnapshot.rawSymbol||recipeSnapshot.raw_symbol||linkedRecipe?.raw_symbol||'').trim();
+  const recipeDetails=orderRecipeDetails(ctx.db,order,recipeSnapshot);
   const processRequirements=recipeProcessRequirements(recipeDetails);
   const capacity=receiptCapacity(ctx.db,order,batch),previousBatchTotals={pieces:capacity.batchTotals.pieces,weight:capacity.batchTotals.kg},allowIncompleteChoice=isMainPmBatch(ctx.db,order,batch),acceptWholeAdditionalBatch=isAdditionalPmBatch(ctx.db,order,batch);
   const otherBatchReceipts=ctx.db.prepare(`SELECT b.id,b.finishing_lot,b.sent_at,b.created_at,
@@ -711,7 +717,7 @@ function orderPage(ctx,id) {
     const rows=recent.map(receipt=>{
       const bales=db.prepare('SELECT meters,weight_kg FROM finishing_return_bales WHERE receipt_id=? ORDER BY sequence').all(receipt.id),hasMeters=bales.some(bale=>bale.meters!==null),hasWeights=bales.some(bale=>bale.weight_kg!==null);
       const edit=canEdit?`<details class="finishing-receipt-edit"><summary>Edytuj przyjęcie</summary><form method="post" action="/finishing/receipts/${receipt.id}/edit">${hidden('csrf',ctx.req.session.csrf)}<label>Rozliczamy ze zleconych · kg<input type="number" name="used_weight_kg" min="0" step="0.01" value="${V.esc(receipt.used_weight_kg??'')}"></label><label>Rozliczamy ze zleconych · szt.<input type="number" name="raw_pieces_received" min="0" step="1" value="${V.esc(receipt.raw_pieces_received??0)}" required></label><label>Kolor uzyskany<input name="actual_color" value="${V.esc(receipt.actual_color||'')}" maxlength="160"></label><label>Szerokość cm<input type="number" name="actual_width_cm" min="0.01" step="0.01" value="${V.esc(receipt.actual_width_cm??'')}"></label><label>Gramatura g/m²<input type="number" name="actual_grammage" min="0.01" step="0.01" value="${V.esc(receipt.actual_grammage??'')}"></label><label>Uwagi<textarea name="notes" rows="2" maxlength="3000">${V.esc(receipt.notes||'')}</textarea></label>${hasMeters?`<label>Metry belek (po jednej w wierszu)<textarea name="meters_list" rows="3">${V.esc(bales.map(bale=>bale.meters??'').join('\n'))}</textarea></label>`:''}${hasWeights?`<label>Kg belek (po jednej w wierszu)<textarea name="weights_list" rows="3">${V.esc(bales.map(bale=>bale.weight_kg??'').join('\n'))}</textarea></label>`:''}<label class="check"><input type="checkbox" name="incomplete" value="1"${receipt.incomplete?' checked':''}> Przyjęcie niekompletne</label><p class="muted">Zmiana ilości lub parametrów oznaczy zatwierdzone rozliczenie jako zmienione.</p><button class="button">Zapisz zmiany</button></form></details>`:'';
-      const processSummary=receiptProcessSummary(receipt,snapshot.details||{}),quality=[order.target_grammage!==null&&order.target_grammage!==undefined?`Gramatura: ${parameterStatusHtml(receipt.grammage_status)}`:'',order.target_width_cm!==null&&order.target_width_cm!==undefined?`Szerokość: ${parameterStatusHtml(receipt.width_status)}`:''].filter(Boolean).join(' · '),colorSummary=order.target_color?`Kolor: ${receipt.color_status==='ok'?'OK':receipt.color_status==='not_ok'?'NOK':'—'}`:'';
+      const processSummary=receiptProcessSummary(receipt,orderRecipeDetails(db,order,snapshot)),quality=[order.target_grammage!==null&&order.target_grammage!==undefined?`Gramatura: ${parameterStatusHtml(receipt.grammage_status)}`:'',order.target_width_cm!==null&&order.target_width_cm!==undefined?`Szerokość: ${parameterStatusHtml(receipt.width_status)}`:''].filter(Boolean).join(' · '),colorSummary=order.target_color?`Kolor: ${receipt.color_status==='ok'?'OK':receipt.color_status==='not_ok'?'NOK':'—'}`:'';
       return `<tr><td>${V.datepl(receipt.received_at)}</td><td>${receipt.raw_pieces_received} szt. · ${money(receipt.used_weight_kg)} kg rozliczone</td><td>${receipt.finished_pieces} belek · ${receipt.meters_sum===null?'—':`${qty(receipt.meters_sum)} mb`} · ${receipt.finished_weight_kg>0?`${money(receipt.finished_weight_kg)} kg`:'—'}</td><td>${quality}${colorSummary?`<small class="finishing-subline">${colorSummary}</small>`:''}${processSummary?`<small class="finishing-subline">${V.esc(processSummary)}</small>`:''}</td><td>${V.esc(receipt.notes||'—')}</td><td>${receipt.bale_count?`<a class="button" href="/finishing/receipts/${receipt.id}/labels">Etykiety</a>`:'<span class="muted small">Brak wymiarów pojedynczych belek</span>'}${edit}</td></tr>`;
     }).join('');
     const additionalPmBatch=isAdditionalPmBatch(db,order,batch);
@@ -1207,7 +1213,7 @@ function handle(ctx) {
       if(width!==null&&width<=0)fail(400,'Szerokość musi być większa od zera.');
       if(grammage!==null&&grammage<=0)fail(400,'Gramatura musi być większa od zera.');
       const recipeName=text(form,'recipe_name',200),recipeText=text(form,'recipe_text',20000),recipeNotes=recipeNotesData(text(form,'recipe_notes',100000)),noteData=recipeNotesData(text(form,'notes',100000)),manualDescription=text(form,'manual_input_description',3000),yarnLot=text(form,'yarn_lot',250);
-      const snapshot={name:recipeName,finishingPlant:plantId?(db.prepare('SELECT name FROM finishing_plants WHERE id=?').get(plantId)?.name||''):'',rawSymbol,tradeSymbol,recipeText,targetColor,targetStiffening,targetWidthCm:width,targetGrammage:grammage,notes:JSON.stringify(recipeNotes)};
+      const snapshot={name:recipeName,finishingPlant:plantId?(db.prepare('SELECT name FROM finishing_plants WHERE id=?').get(plantId)?.name||''):'',rawSymbol,tradeSymbol,recipeText,targetColor,targetStiffening,targetWidthCm:width,targetGrammage:grammage,details:selectedRecipe?readRecipeDetails(selectedRecipe):{},notes:JSON.stringify(recipeNotes)};
       const id=transaction(()=>{
         const stamp=now(),manualReference=nextManualReference(db,stamp);
         const created=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_id,recipe_snapshot,target_color,target_stiffening,target_width_cm,target_grammage,notes,manual_entry,manual_reference,manual_input_description,status,created_at,created_by,updated_at,updated_by)
@@ -1335,6 +1341,7 @@ function handle(ctx) {
       let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
       snapshot.name=recipeName;snapshot.rawSymbol=rawSymbol;snapshot.tradeSymbol=tradeSymbol;snapshot.finishingPlant=plantId?(db.prepare('SELECT name FROM finishing_plants WHERE id=?').get(plantId)?.name||''):'';
       snapshot.recipeText=recipeText;snapshot.targetColor=targetColor;snapshot.targetStiffening=targetStiffening;snapshot.targetWidthCm=width;snapshot.targetGrammage=grammage;snapshot.notes=recipeNotes;
+      if(order.manual_entry)snapshot.details=selectedRecipe?readRecipeDetails(selectedRecipe):{};
 
       const sourceRows=order.shipment_article_id?sourcePieces(db,order.shipment_article_id):[];
       const sourceIds=new Set(sourceRows.map(row=>String(row.bale_local_id)));
@@ -1570,7 +1577,7 @@ function handle(ctx) {
     const width=number(form.actual_width_cm),grammage=number(form.actual_grammage);
     if(width!==null&&width<=0||grammage!==null&&grammage<=0)fail(400,'Szerokość i gramatura muszą być większe od zera.');
     const order=orderRecord(db,batch.order_id);let savedRecipe={};try{savedRecipe=JSON.parse(order?.recipe_snapshot||'{}')}catch{}
-    const recipeDetails=savedRecipe.details||{};
+    const recipeDetails=orderRecipeDetails(db,order,savedRecipe);
     const requiredProcesses=recipeProcessRequirements(recipeDetails),processChecks={};
     if(modalReceipt)for(const requirement of requiredProcesses){
       const status=form[`process_check_${requirement.key}`];
