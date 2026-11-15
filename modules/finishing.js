@@ -969,12 +969,18 @@ function syncAutoLostIncident(db,batchId,userId,stamp) {
   const existing=db.prepare("SELECT * FROM finishing_incidents WHERE batch_id=? AND auto_generated=1 AND incident_type='lost'").get(batchId);
   if(!batch.closed_at){if(existing)db.prepare('DELETE FROM finishing_incidents WHERE id=?').run(existing.id);return;}
   const order=orderRecord(db,batch.order_id),capacity=order?receiptCapacity(db,order,batch):null,effectiveSentPieces=capacity?capacity.effectiveBatchPieces:Number(batch.sent_pieces||0),effectiveSentKg=capacity?capacity.effectiveBatchKg:Number(batch.raw_weight_kg||0);
-  const returned=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) count FROM finishing_receipts WHERE batch_id=?').get(batchId)?.count||0),sent=Math.max(0,Number(effectiveSentPieces||0)),lostPieces=Math.max(0,sent-returned);
+  const accounted=db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces,coalesce(sum(used_weight_kg),0) kg FROM finishing_receipts WHERE batch_id=?').get(batchId),returned=Number(accounted.pieces||0),sent=Math.max(0,Number(effectiveSentPieces||0)),lostPieces=Math.max(0,sent-returned);
   if(!lostPieces){if(existing)db.prepare('DELETE FROM finishing_incidents WHERE id=?').run(existing.id);return;}
-  const lostWeight=sent>0?Costing.round2(Number(effectiveSentKg||0)/sent*lostPieces):0,description=`Automatycznie po zamknięciu przyjęcia: brak ${lostPieces} szt.${lostWeight>0?` · ${money(lostWeight)} kg`:''}.`;
+  const lostWeight=Math.max(0,Costing.round2(Number(effectiveSentKg||0)-Number(accounted.kg||0))),description=`Automatycznie po zamknięciu przyjęcia: brak ${lostPieces} szt.${lostWeight>0?` · ${money(lostWeight)} kg`:''}.`;
   if(!existing){db.prepare("INSERT INTO finishing_incidents(order_id,batch_id,incident_type,description,status,created_at,created_by,auto_generated,lost_pieces,lost_weight_kg) VALUES(?,?,'lost',?,'open',?,?,1,?,?)").run(batch.order_id,batchId,description,stamp,userId,lostPieces,lostWeight);return;}
-  const changed=Number(existing.lost_pieces)!==lostPieces||Math.abs(Number(existing.lost_weight_kg||0)-lostWeight)>0.005;
-  if(changed)db.prepare("UPDATE finishing_incidents SET description=?,lost_pieces=?,lost_weight_kg=?,status='open',resolved_at=NULL,resolved_by=NULL,found_at=NULL,found_by=NULL,settled_at=NULL,settled_by=NULL WHERE id=?").run(description,lostPieces,lostWeight,existing.id);
+  const piecesChanged=Number(existing.lost_pieces)!==lostPieces,changed=piecesChanged||Math.abs(Number(existing.lost_weight_kg||0)-lostWeight)>0.005;
+  if(piecesChanged)db.prepare("UPDATE finishing_incidents SET description=?,lost_pieces=?,lost_weight_kg=?,status='open',resolved_at=NULL,resolved_by=NULL,found_at=NULL,found_by=NULL,settled_at=NULL,settled_by=NULL WHERE id=?").run(description,lostPieces,lostWeight,existing.id);
+  else if(changed)db.prepare('UPDATE finishing_incidents SET description=?,lost_weight_kg=? WHERE id=?').run(description,lostWeight,existing.id);
+}
+function reconcileAutoLostIncidents(db) {
+  const rows=db.prepare("SELECT batch_id,created_by FROM finishing_incidents WHERE auto_generated=1 AND incident_type='lost' AND batch_id IS NOT NULL").all();
+  const stamp=new Date().toISOString();
+  for(const row of rows)syncAutoLostIncident(db,row.batch_id,row.created_by||0,stamp);
 }
 function syncAutoRemainderPmr(db,batchId,userId,stamp) {
   const batch=db.prepare(`SELECT b.*,o.raw_symbol,o.client_name,o.trade_symbol,o.recipe_snapshot,o.target_color,o.target_stiffening,o.target_width_cm,o.target_grammage,o.finishing_plant_id,o.manual_entry,o.order_type,o.id order_id,o.created_at order_created_at
@@ -1640,4 +1646,4 @@ function handle(ctx) {
   return false;
 }
 
-module.exports={handle,orderStatusLabel};
+module.exports={handle,orderStatusLabel,reconcileAutoLostIncidents};

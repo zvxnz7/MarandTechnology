@@ -52,6 +52,7 @@ migrateDraftThreadCounts();
 migrateDraftYarnStructures();
 migrateSpecThreading();
 migrateApprovedSpecsToDrafts();
+Finishing.reconcileAutoLostIncidents(db);
 function recoverInterruptedSourceImport() {
   const markerPath = path.join(DATA, 'maintenance.json');
   const marker = readJsonIfExists(markerPath);
