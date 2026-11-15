@@ -543,7 +543,7 @@ function ordersPage(ctx) {
     LEFT JOIN finishing_batches b ON b.order_id=o.id LEFT JOIN finishing_receipts r ON r.batch_id=b.id
     GROUP BY o.id ORDER BY o.created_at DESC,o.id DESC`).all();
   const batchesByOrder=new Map();
-  for(const batch of ctx.db.prepare(`SELECT b.id,b.order_id,b.finishing_lot,b.sent_at,b.created_at,b.closed_at,b.sent_pieces,b.raw_weight_kg,b.workflow_status,b.cancelled_at,b.correction_parent_batch_id,b.correction_of_batch_id,
+  for(const batch of ctx.db.prepare(`SELECT b.id,b.order_id,b.finishing_lot,b.sent_at,b.created_at,b.closed_at,b.sent_pieces,b.raw_weight_kg,b.workflow_status,b.cancelled_at,b.correction_parent_batch_id,b.correction_of_batch_id,b.correction_instruction,b.correction_notes,b.correction_trade_symbol,b.correction_target_color,b.correction_target_width_cm,b.correction_target_grammage,
       (SELECT count(*) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_count,
       coalesce((SELECT sum(r.raw_pieces_received) FROM finishing_receipts r WHERE r.batch_id=b.id),0) raw_received,
       coalesce((SELECT sum(i.lost_pieces) FROM finishing_incidents i WHERE i.batch_id=b.id AND i.auto_generated=1 AND i.incident_type='lost'),0) lost_pieces
