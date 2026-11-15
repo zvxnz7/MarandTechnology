@@ -103,6 +103,7 @@
 .delete-x{display:inline-flex;align-items:center;justify-content:center;width:auto;height:auto;padding:0 6px;border:0;border-radius:0;background:transparent;color:#a82025;font-size:25px;line-height:1;font-weight:700;text-decoration:none}
 .delete-x:hover{background:transparent;color:#741a1d;text-decoration:none}
 .status-finishing{color:#684b20;background:#f4ead6;border-color:#dfc99d}
+.badge.finishing-remainder-status{color:#fff;background:#c51f2b;border-color:#a81520;font-weight:700}
 .status-sample{color:#5e4a80;background:#f0ebf7;border-color:#d4c8e6}
 .stage-card{display:block;width:100%}
 .stage-card>.stage-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;list-style:none}
