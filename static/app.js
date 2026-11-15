@@ -198,7 +198,16 @@ document.querySelectorAll('[data-finishing-manual-recipe-picker]').forEach(picke
   else if(event.key==='Enter'&&results.contains(document.activeElement)){event.preventDefault();document.activeElement.click();}
   else if(event.key==='Escape'&&results.childElementCount){event.preventDefault();close();}
  });
- results.addEventListener('click',event=>{const option=event.target.closest('[data-finishing-recipe-option]');if(!option)return;recipe.value=option.dataset.recipeId||'';selectedLabel=option.dataset.recipeLabel||option.querySelector('strong')?.textContent||'';search.value=selectedLabel;if(selected){selected.textContent=`Wybrano: ${selectedLabel}`;selected.className='finishing-manual-recipe-selected';}close();});
+ results.addEventListener('click',event=>{
+  const option=event.target.closest('[data-finishing-recipe-option]');if(!option)return;
+  const form=picker.closest('form'),label=option.dataset.recipeLabel||option.querySelector('strong')?.textContent||'';
+  recipe.value=option.dataset.recipeId||'';selectedLabel=label;search.value=label;
+  const values={recipe_name:option.dataset.recipeName||option.querySelector('strong')?.textContent||'',recipe_text:option.dataset.recipeInstruction||'',raw_symbol:option.dataset.rawSymbol||'',trade_symbol:option.dataset.tradeSymbol||'',target_color:option.dataset.color||'',target_stiffening:option.dataset.stiffening||'',target_width_cm:option.dataset.width||'',target_grammage:option.dataset.grammage||'',finishing_plant_id:option.dataset.plant||''};
+  for(const [name,value] of Object.entries(values)){const field=form?.elements.namedItem(name);if(field&&'value'in field){field.value=value;field.dispatchEvent(new Event('input',{bubbles:true}));field.dispatchEvent(new Event('change',{bubbles:true}));}}
+  const recipeNotes=form?.querySelector('[data-finishing-notes-editor] [data-finishing-notes-value][name="recipe_notes"]');
+  if(recipeNotes){let noteText=option.dataset.recipeNotes||'';try{const data=JSON.parse(noteText);if(Array.isArray(data.runs))noteText=data.runs.map(run=>run.text||'').join('');}catch{}const editor=recipeNotes.closest('[data-finishing-notes-editor]')?.querySelector('[data-finishing-notes-content]');if(editor){editor.textContent=noteText;editor.dispatchEvent(new Event('input',{bubbles:true}));}else recipeNotes.value=option.dataset.recipeNotes||'';}
+  if(selected){selected.textContent=`Wybrano: ${label} · uzupełniono dane receptury`;selected.className='finishing-manual-recipe-selected';}close();
+ });
  document.addEventListener('click',event=>{if(!picker.contains(event.target))close();});
 });
 document.querySelectorAll('[data-finishing-recipe-copy-button]').forEach(button=>{
