@@ -68,7 +68,7 @@ function settlementRows(db){
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
     LEFT JOIN shipments s ON s.id=sa.shipment_id
     WHERE o.status<>'cancelled' AND b.cancelled_at IS NULL
-      AND (EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id)
+      AND ((b.closed_at IS NOT NULL AND EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id))
         OR (o.source_remainder_batch_id IS NOT NULL AND EXISTS(SELECT 1 FROM finishing_settlements fs WHERE fs.batch_id=b.id)))
     ORDER BY o.created_at DESC,o.id DESC,b.id`).all();
   return rows.map(row=>{
