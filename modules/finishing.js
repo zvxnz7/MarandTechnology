@@ -615,7 +615,10 @@ function ordersPage(ctx) {
 function deleteOrderConfirmPage(ctx,order) {
   const cancelUrl='/finishing/orders';
   const pm=pmReference(order);
-  const explanation='Usunięte zostaną zlecenie barwiarskie, jego poprawki, przyjęcia, zgłoszenia zagubień i rozliczenia. Pozycja PM i jej belki wrócą do dostępnych wysyłek.';
+  const isRemainderPmr=Boolean(order.source_remainder_batch_id);
+  const explanation=isRemainderPmr
+    ?'Usunięte zostanie tylko automatyczne PMR wraz z jego przyjęciami i rozliczeniem. Brakująca ilość pozostanie zapisana na pierwotnym zleceniu w „Zagubione/zniszczone” i będzie można ponownie utworzyć dla niej PMR.'
+    :'Usunięte zostaną zlecenie barwiarskie, jego poprawki, przyjęcia, zgłoszenia zagubień i rozliczenia. Pozycja PM i jej belki wrócą do dostępnych wysyłek.';
   const body=`${navTabs('orders',ctx.db)}<a class="breadcrumb" href="${cancelUrl}">← Zlecenia wykańczania</a><div class="pagehead"><div><span class="eyebrow">WYKAŃCZANIE</span><h1>Usuń zlecenie wykańczania</h1></div></div><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${cancelUrl}"><div class="dialog-head"><strong>Potwierdź usunięcie zlecenia</strong><a class="dialog-close" href="${cancelUrl}" aria-label="Anuluj">×</a></div><div class="dialog-body"><p>Wybrane zlecenie:</p><h2 class="delete-confirm-object">${V.esc(pm)} · ${V.esc(order.raw_symbol)} · ${V.esc(order.client_name||'—')}</h2><div class="shipment-cancel-details"><div class="shipment-cancel-detail-row"><strong>Skutek</strong><span>${explanation}</span></div><div class="shipment-cancel-detail-row"><strong>Historia</strong><span>Wpis audytowy pozostanie zachowany.</span></div></div><form method="post" action="/finishing/orders/${order.id}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}${hidden('confirm_delete_order','1')}<a class="button" href="${cancelUrl}">Wróć</a><button class="danger">Usuń ${V.esc(pm)}</button></form></div></dialog>`;
   return header({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:'Usuń zlecenie',body});
 }
@@ -1313,12 +1316,17 @@ function handle(ctx) {
       transaction(()=>{
         const current=orderRecord(db,id);
         if(!current)fail(404,'Nie znaleziono zlecenia.');
+        const sourceRemainderBatchId=current.source_remainder_batch_id?Number(current.source_remainder_batch_id):null;
         db.prepare('UPDATE finishing_incidents SET batch_id=NULL WHERE order_id=?').run(id);
         db.prepare('UPDATE finishing_batches SET correction_parent_batch_id=NULL,correction_of_batch_id=NULL WHERE order_id=?').run(id);
         db.prepare('DELETE FROM finishing_orders WHERE id=?').run(id);
-        audit(req.user,'Usunięto zlecenie wykańczania wraz z przyjęciami i rozliczeniami',null,JSON.stringify({orderId:id,rawSymbol:current.raw_symbol,client:current.client_name,status:current.status,sourceShipmentArticleId:current.shipment_article_id}),null);
+        if(sourceRemainderBatchId){
+          db.prepare("UPDATE finishing_incidents SET settled_at=NULL,settled_by=NULL WHERE batch_id=? AND auto_generated=1 AND incident_type='lost'").run(sourceRemainderBatchId);
+          syncAutoLostIncident(db,sourceRemainderBatchId,req.user.id,now());
+        }
+        audit(req.user,'Usunięto zlecenie wykańczania wraz z przyjęciami i rozliczeniami',null,JSON.stringify({orderId:id,rawSymbol:current.raw_symbol,client:current.client_name,status:current.status,sourceShipmentArticleId:current.shipment_article_id,sourceRemainderBatchId}),null);
       });
-      return redirect(req,res,'/finishing/orders','Usunięto zlecenie wykańczania.');
+      return redirect(req,res,'/finishing/orders',order.source_remainder_batch_id?'Usunięto automatyczne PMR. Brak pozostał zapisany na pierwotnym zleceniu.':'Usunięto zlecenie wykańczania.');
     }
   }
   const orderEditMatch=p.match(/^\/finishing\/orders\/(\d+)\/edit$/);
