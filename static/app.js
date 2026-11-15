@@ -20,6 +20,24 @@ document.querySelectorAll('[data-finishing-batch-delete]').forEach(form=>form.ad
  if(description)description.textContent=`Czy usunąć partię „${form.dataset.batchLabel||'bez numeru'}”?`;
  finishingBatchDeleteDialog.showModal();
 }));
+const finishingReceiptUndoDialog=document.createElement('dialog');
+finishingReceiptUndoDialog.className='form-dialog delete-confirm-dialog finishing-receipt-undo-dialog';
+finishingReceiptUndoDialog.innerHTML='<div class="dialog-head"><strong>Cofnij przyjęcie</strong><button type="button" class="dialog-close" data-undo-receipt-cancel aria-label="Zamknij">×</button></div><div class="dialog-body"><p data-undo-receipt-description></p><p class="muted">Cofnięte zostanie tylko ostatnie przyjęcie tego zlecenia barwiarskiego. Inne zlecenia PM pozostaną bez zmian.</p><div class="actions"><button type="button" data-undo-receipt-cancel>Wróć</button><button type="button" class="danger" data-undo-receipt-confirm>Cofnij przyjęcie</button></div></div>';
+document.body.append(finishingReceiptUndoDialog);
+let pendingFinishingReceiptUndo=null;
+finishingReceiptUndoDialog.querySelectorAll('[data-undo-receipt-cancel]').forEach(button=>button.addEventListener('click',()=>finishingReceiptUndoDialog.close()));
+finishingReceiptUndoDialog.querySelector('[data-undo-receipt-confirm]')?.addEventListener('click',()=>{
+ if(!pendingFinishingReceiptUndo)return;
+ const form=pendingFinishingReceiptUndo;pendingFinishingReceiptUndo=null;
+ HTMLFormElement.prototype.submit.call(form);
+});
+finishingReceiptUndoDialog.addEventListener('close',()=>{pendingFinishingReceiptUndo=null;});
+document.querySelectorAll('[data-finishing-receipt-undo]').forEach(form=>form.addEventListener('submit',event=>{
+ event.preventDefault();pendingFinishingReceiptUndo=form;
+ const description=finishingReceiptUndoDialog.querySelector('[data-undo-receipt-description]');
+ if(description)description.textContent=`Czy cofnąć ostatnie przyjęcie zlecenia barwiarskiego „${form.dataset.batchLabel||''}”?`;
+ finishingReceiptUndoDialog.showModal();
+}));
 document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
  const matchingRemoveForm=()=>[...form.closest('tr')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);

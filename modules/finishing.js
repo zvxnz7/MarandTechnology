@@ -660,12 +660,13 @@ function orderPage(ctx,id) {
     const batchQuantities=Number(batch.sent_pieces)>0?`${batch.sent_pieces} szt. surowe · ${money(batch.raw_weight_kg)} kg`:batch.receipt_count?`${batch.raw_received_pieces} szt. przyjęte · ${money(batch.finished_weight_kg||0)} kg przyjęte`:'Ilość sztuk i masa zostaną uzupełnione przy przyjęciu';
     const complaintBadge=batch.complaint_status==='reklamowana'?'<span class="badge archived">Reklamowana</span>':batch.complaint_status==='poprawiona'?'<span class="badge approved">Poprawiona</span>':'';
     const complaintAction=canEdit&&batch.closed_at&&batch.complaint_status==='normal'?`<form method="post" action="/finishing/batches/${batch.id}/complaint">${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Oznacz jako reklamowaną</button></form>`:'';
+    const undoLastReceiptAction=canEdit&&!batch.cancelled_at&&recent.length?`<form method="post" action="/finishing/batches/${batch.id}/receipts/undo" data-finishing-receipt-undo data-batch-label="${V.esc(finishingOrderNo(batch)||`#${batch.id}`)}">${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Cofnij przyjęcie</button></form>`:'';
     const batchStatusLabel=batch.workflow_status==='do_poprawy'?'Do poprawy':batch.workflow_status==='poprawka'?`POPRAWKA${batch.closed_at?' · Przyjęte':batch.receipt_count?' · Częściowo przyjęte':''}`:batch.closed_at?'Przyjęte':batch.receipt_count?'Częściowo przyjęte':String(batch.finishing_lot||'').trim()?'W farbiarni':'W drodze';
     const correctionAction=canEdit&&!batch.cancelled_at&&batch.workflow_status!=='poprawka'?correctionForm(ctx,order,batch):'';
     const cancelAttempt=canEdit&&batch.workflow_status==='poprawka'&&batch.correction_parent_batch_id&&!batch.cancelled_at&&!batch.closed_at?`<form method="post" action="/finishing/batches/${batch.id}/cancel-attempt">${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Anuluj próbę poprawki</button></form>`:'';
     const correctionInstruction=[batch.correction_instruction,batch.correction_notes].filter(value=>String(value||'').trim()).join('\n\n');
     const correctionDetails=batch.correction_parent_batch_id?`<aside class="finishing-correction-details"><strong>Instrukcja poprawki</strong><p>${V.esc(correctionInstruction||'—')}</p></aside>`:'';
-    return `<section class="panel padded finishing-batch-card${batch.cancelled_at?' is-cancelled':''}" id="batch-${batch.id}"><h3>Zlecenie barwiarskie ${V.esc(finishingOrderNo(batch)||`#${batch.id}`)} ${batch.cancelled_at?'<span class="badge archived">Próba anulowana</span>':batch.closed_at?'<span class="badge approved">Przyjęte</span>':''} ${complaintBadge} ${receiveButton}</h3><p>Status: ${batch.cancelled_at?'Anulowana próba':batchStatusLabel} · Data wysyłki: ${V.datepl(batch.sent_at)} · ${batchQuantities} · LOT przędzy: ${V.esc(batch.yarn_lot||'—')}</p>${correctionDetails}<div class="actions">${complaintAction}${correctionAction}${cancelAttempt}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Data przyjęcia</th><th>Rozliczono ze zleconych</th><th>Belki wykończone</th><th>Kontrola parametrów</th><th>Komentarz do partii</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6">Jeszcze nie przyjęto zwrotu.</td></tr>'}</tbody></table></div></section>`;
+    return `<section class="panel padded finishing-batch-card${batch.cancelled_at?' is-cancelled':''}" id="batch-${batch.id}"><h3>Zlecenie barwiarskie ${V.esc(finishingOrderNo(batch)||`#${batch.id}`)} ${batch.cancelled_at?'<span class="badge archived">Próba anulowana</span>':batch.closed_at?'<span class="badge approved">Przyjęte</span>':''} ${complaintBadge} ${receiveButton}</h3><p>Status: ${batch.cancelled_at?'Anulowana próba':batchStatusLabel} · Data wysyłki: ${V.datepl(batch.sent_at)} · ${batchQuantities} · LOT przędzy: ${V.esc(batch.yarn_lot||'—')}</p>${correctionDetails}<div class="actions">${undoLastReceiptAction}${complaintAction}${correctionAction}${cancelAttempt}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Data przyjęcia</th><th>Rozliczono ze zleconych</th><th>Belki wykończone</th><th>Kontrola parametrów</th><th>Komentarz do partii</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6">Jeszcze nie przyjęto zwrotu.</td></tr>'}</tbody></table></div></section>`;
   }).join('');
   const batchRows=[...batches].sort((a,b)=>a.id-b.id).map((batch,index)=>{
     const canRemoveThisBatch=canEdit;
@@ -1475,6 +1476,30 @@ function handle(ctx) {
     const returnTo=modalReceipt&&form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${batch.order_id}#batch-${batchId}`;
     const pmrNotice=receiptId.autoPmr?.created?` Utworzono ${receiptId.autoPmr.reference} z brakującą ilością: ${money(receiptId.autoPmr.kg)} kg · ${receiptId.autoPmr.pieces} szt.`:'';
     return redirect(req,res,returnTo,(receiptId.closeWithMissing?'Zamknięto przyjęcie z brakami. Braki zapisano w „Zagubione/zniszczone”.':receiptId.complete?'Przyjęcie zamknięte.':'Zapisano przyjęcie częściowe. Partia pozostaje otwarta na pozostałe sztuki.')+pmrNotice,receiptId.closeWithMissing?'warning':'success');
+  }
+  const undoReceiptMatch=p.match(/^\/finishing\/batches\/(\d+)\/receipts\/undo$/);
+  if(undoReceiptMatch&&req.method==='POST'){
+    role(req.user,...editableRoles);
+    const batchId=Number(undoReceiptMatch[1]),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId);
+    if(!batch||batch.cancelled_at)fail(404,'Nie znaleziono aktywnego zlecenia barwiarskiego.');
+    const receipt=db.prepare('SELECT * FROM finishing_receipts WHERE batch_id=? ORDER BY id DESC LIMIT 1').get(batchId);
+    if(!receipt)fail(409,'To zlecenie barwiarskie nie ma przyjęcia do cofnięcia.');
+    transaction(()=>{
+      const liveReceipt=db.prepare('SELECT * FROM finishing_receipts WHERE id=? AND batch_id=?').get(receipt.id,batchId);
+      if(!liveReceipt)fail(409,'Ostatnie przyjęcie zostało już zmienione. Odśwież stronę.');
+      db.prepare('UPDATE finishing_receipts SET comment_consumed_at=NULL,comment_consumed_by=NULL WHERE comment_consumed_by=?').run(liveReceipt.id);
+      db.prepare('DELETE FROM finishing_receipts WHERE id=? AND batch_id=?').run(liveReceipt.id,batchId);
+      const remainingPieces=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces FROM finishing_receipts WHERE batch_id=?').get(batchId)?.pieces||0),currentBatch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId),currentOrder=orderRecord(db,batch.order_id),capacity=receiptCapacity(db,currentOrder,currentBatch),hasReceipts=Boolean(db.prepare('SELECT 1 FROM finishing_receipts WHERE batch_id=? LIMIT 1').get(batchId)),stillPartial=hasReceipts&&Number(capacity.effectiveBatchPieces||0)>remainingPieces;
+      if(hasReceipts)db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial?1:0,batchId);
+      const stamp=now(),complete=recomputeBatchClosure(db,batchId,req.user.id,stamp);
+      syncAutoLostIncident(db,batchId,req.user.id,stamp);
+      syncAutoRemainderPmr(db,batchId,req.user.id,stamp);
+      if(batch.correction_of_batch_id&&!complete)db.prepare("UPDATE finishing_batches SET complaint_status='reklamowana',updated_at=?,updated_by=? WHERE id=? AND complaint_status='poprawiona'").run(stamp,req.user.id,batch.correction_of_batch_id);
+      markSettlementChanged(db,[batchId],req.user.id,stamp);
+      updateOrderStatus(ctx,batch.order_id);
+      audit(req.user,'Cofnięto ostatnie przyjęcie zlecenia barwiarskiego',null,JSON.stringify({batchId,receiptId:liveReceipt.id,rawPiecesReceived:liveReceipt.raw_pieces_received,usedWeightKg:liveReceipt.used_weight_kg,remainingReceipts:hasReceipts,closed:complete}),null);
+    });
+    return redirect(req,res,`/finishing/orders/${batch.order_id}#batch-${batchId}`,'Cofnięto ostatnie przyjęcie tego zlecenia barwiarskiego.');
   }
   const lostAction=p.match(/^\/finishing\/lost\/(\d+)\/(found|settle|info)$/);
   if(lostAction&&req.method==='POST'){

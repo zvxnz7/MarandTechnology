@@ -805,3 +805,6 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-batch-delete-dialog{width:min(520px,calc(100vw - 32px))}
 .finishing-batch-delete-dialog .dialog-body>p{margin-top:0}
 .finishing-batch-delete-dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.finishing-receipt-undo-dialog{width:min(520px,calc(100vw - 32px))}
+.finishing-receipt-undo-dialog .dialog-body>p{margin-top:0}
+.finishing-receipt-undo-dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
