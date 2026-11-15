@@ -701,17 +701,17 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   return rows.join('');
  };
  const labelBrand=data=>data.brandMode==='logo'?'<img class="label-logo" src="/static/marand-label-logo.jpg" alt="MARAND Technical textiles">':data.brandText?`<div class="label-custom-brand">${escapeHtml(data.brandText)}</div>`:'';
- const renderLabel=(data,bale,index,total)=>`<article class="label">${labelBrand(data)}<div class="label-content">${labelRows(data,bale)}</div><small>${index+1}/${total}</small></article>`;
+ const renderLabel=(data,bale)=>`<article class="label">${labelBrand(data)}<div class="label-content">${labelRows(data,bale)}</div></article>`;
  const updateLabelPreview=()=>{
   if(!labelConfig)return;
   const data=labelData(),textField=labelConfig.querySelector('[data-label-brand-text-field]'),clientField=labelConfig.querySelector('[data-label-client-field]');
   if(textField)textField.hidden=data.brandMode!=='text';if(clientField)clientField.hidden=!data.fields.has('client');
-  if(labelPreview)labelPreview.innerHTML=renderLabel(data,bales[0]||{meters:null,weight:null},0,Math.max(1,bales.length));
+  if(labelPreview)labelPreview.innerHTML=renderLabel(data,bales[0]||{meters:null,weight:null});
  };
  labelConfig?.addEventListener('input',updateLabelPreview);labelConfig?.addEventListener('change',updateLabelPreview);updateLabelPreview();
  labelConfig?.querySelector('[data-label-print]')?.addEventListener('click',()=>{
   if(!bales.length)return;
-  const data=labelData(),labels=bales.map((bale,index)=>renderLabel(data,bale,index,bales.length)).join(''),printWindow=window.open('','_blank','width=700,height=900');
+  const data=labelData(),labels=bales.map(bale=>renderLabel(data,bale)).join(''),printWindow=window.open('','_blank','width=700,height=900');
   if(!printWindow){alert('Przeglądarka zablokowała okno etykiet. Zezwól na wyskakujące okna i spróbuj ponownie.');return;}
   printWindow.onload=()=>{printWindow.focus();setTimeout(()=>printWindow.print(),100);};
   printWindow.document.open();printWindow.document.write(`<!doctype html><html lang="${data.language}"><head><meta charset="utf-8"><title>Etykiety ${escapeHtml(data.orderNumber)}</title><style>@page{size:50mm 74mm;margin:0}*{box-sizing:border-box}body{margin:0;font:8pt/1.18 Arial,sans-serif;color:#111}.label{width:50mm;height:74mm;padding:2.5mm 3mm;overflow:hidden;page-break-after:always;break-after:page;position:relative;display:flex;flex-direction:column}.label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:left center;margin:0 0 2mm}.label-custom-brand{min-height:12mm;display:flex;align-items:center;font-size:12pt;font-weight:700;margin:0 0 2mm}.label-content{display:flex;flex-direction:column;gap:1.1mm;min-height:0}.label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}.label-row span{font-size:6.2pt;color:#525a62;flex:0 0 auto}.label-row strong{font-size:7.3pt;text-align:right;overflow-wrap:anywhere}.label-quantity{margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:baseline;border-top:.5mm solid #222}.label-quantity span{font-size:7pt;font-weight:700}.label-quantity strong{font-size:15pt;line-height:1.1}.label-extra-text{font-size:7pt;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}.label small{position:absolute;bottom:1mm;right:2mm;font-size:5.5pt}@media print{.label{border:0}}</style></head><body>${labels}</body></html>`);printWindow.document.close();labelConfig?.close();
