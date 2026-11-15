@@ -619,6 +619,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 @media(max-width:480px){.finishing-receive-accepted-summary{grid-template-columns:1fr}}
 .finishing-batch-summary-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:12px;border-radius:8px;background:#eef1f3}
 .finishing-batch-summary-row label{margin:0}
+.finishing-manual-date-recipe{display:grid;grid-row:span 2;align-content:start;gap:12px;min-width:0}
+.finishing-manual-recipe-picker{min-width:0}
+.finishing-manual-recipe-picker>label{display:block;margin:0 0 5px;font-size:13px;font-weight:650}
+.finishing-manual-recipe-selected{display:block;margin-top:5px;color:#315a3d;font-size:12px}
 @media(max-width:760px){.finishing-batch-summary-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
 .finishing-receive-bale-list{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .finishing-receive-empty-bales{margin:0;color:var(--muted);font-size:12px}

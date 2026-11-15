@@ -179,6 +179,28 @@ document.querySelectorAll('[data-finishing-order-form]').forEach(form=>{
  document.addEventListener('click',event=>{if(!form.contains(event.target))closeRecipeResults();});
  sync();
 });
+document.querySelectorAll('[data-finishing-manual-recipe-picker]').forEach(picker=>{
+ const search=picker.querySelector('[data-finishing-manual-recipe-search]'),recipe=picker.querySelector('[data-finishing-manual-recipe]'),results=picker.querySelector('[data-finishing-manual-recipe-results]'),selected=picker.querySelector('[data-finishing-manual-recipe-selected]');
+ if(!search||!recipe||!results)return;
+ let timer=null,controller=null,selectedLabel=search.value;
+ const close=()=>{results.replaceChildren();search.setAttribute('aria-expanded','false');};
+ const lookup=async()=>{
+  const query=search.value.trim();controller?.abort();controller=null;
+  if(!query){results.replaceChildren();search.setAttribute('aria-expanded','false');return;}
+  controller=new AbortController();const params=new URLSearchParams({q:query});
+  try{const response=await fetch(`${picker.dataset.searchUrl}&${params}`,{headers:{'X-Requested-With':'fetch'},signal:controller.signal});if(!response.ok)throw new Error();results.innerHTML=await response.text();search.setAttribute('aria-expanded',String(Boolean(results.querySelector('[data-finishing-recipe-option]'))));}
+  catch(error){if(error.name!=='AbortError'){results.textContent='Nie udało się wyszukać receptur.';search.setAttribute('aria-expanded','false');}}
+ };
+ search.addEventListener('input',()=>{if(search.value!==selectedLabel){recipe.value='';selectedLabel='';if(selected){selected.textContent=search.value?'Wybierz recepturę z listy wyników.':'Nie wybrano receptury';selected.className=search.value?'finishing-manual-recipe-selected':'muted';}}close();clearTimeout(timer);timer=setTimeout(lookup,180);});
+ search.addEventListener('keydown',event=>{
+  const options=[...results.querySelectorAll('[data-finishing-recipe-option]')];
+  if(event.key==='ArrowDown'&&options.length){event.preventDefault();options[0].focus();}
+  else if(event.key==='Enter'&&results.contains(document.activeElement)){event.preventDefault();document.activeElement.click();}
+  else if(event.key==='Escape'&&results.childElementCount){event.preventDefault();close();}
+ });
+ results.addEventListener('click',event=>{const option=event.target.closest('[data-finishing-recipe-option]');if(!option)return;recipe.value=option.dataset.recipeId||'';selectedLabel=option.dataset.recipeLabel||option.querySelector('strong')?.textContent||'';search.value=selectedLabel;if(selected){selected.textContent=`Wybrano: ${selectedLabel}`;selected.className='finishing-manual-recipe-selected';}close();});
+ document.addEventListener('click',event=>{if(!picker.contains(event.target))close();});
+});
 document.querySelectorAll('[data-finishing-recipe-copy-button]').forEach(button=>{
  const form=button.form,search=form.querySelector('[data-finishing-recipe-copy-search]'),status=form.querySelector('[data-finishing-recipe-copy-status]');
  let sources=[];try{sources=JSON.parse(form.querySelector('[data-finishing-recipe-copy-data]')?.textContent||'[]');}catch{}
