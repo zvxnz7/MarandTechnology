@@ -568,7 +568,7 @@ function ordersPage(ctx) {
       return '';
     };
     const lotCell=batches.length?`<div class="finishing-order-lot-list">${batches.map((batch,index)=>{
-      const canRemoveThisSpec=canEditLots;
+      const canRemoveThisSpec=canEditLots&&!batch.correction_parent_batch_id&&!batch.correction_of_batch_id&&batch.workflow_status!=='poprawka';
       const removeSpec=canRemoveThisSpec?`<form method="post" action="/finishing/orders/${order.id}/batches" class="finishing-order-remove-spec-form" data-finishing-batch-delete data-batch-label="${V.esc(batch.finishing_lot||'bez numeru')}">${hidden('csrf',ctx.req.session.csrf)}${hidden('return_to','orders')}${hidden('remove_batch_id',batch.id)}<button type="submit" class="finishing-remove-spec-button" aria-label="Usuń partię ${V.esc(batch.finishing_lot||'bez numeru')}" title="Usuń partię"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button></form>`:'';
       const undoCorrectionChild=batch.workflow_status==='do_poprawy'?ctx.db.prepare(`SELECT id FROM finishing_batches b WHERE b.correction_parent_batch_id=? AND b.cancelled_at IS NULL AND b.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id) ORDER BY b.id DESC LIMIT 1`).get(batch.id):null;
       const undoCorrection=undoCorrectionChild&&canEditLots?`<form method="post" action="/finishing/batches/${batch.id}/undo-send-to-correction" class="finishing-order-remove-spec-form">${hidden('csrf',ctx.req.session.csrf)}${hidden('return_to','orders')}<button type="submit" class="finishing-remove-spec-button finishing-undo-correction-button" aria-label="Cofnij wysłanie do poprawki" title="Cofnij wysłanie do poprawki"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-2"/></svg></button></form>`:'';
@@ -577,7 +577,7 @@ function ordersPage(ctx) {
       if(canEditLots&&batch.workflow_status!=='do_poprawy'){
         if(batch.workflow_status==='poprawka'){
           const correctionPrint=`<a class="finishing-row-action" href="/finishing/orders/${order.id}/print?batch_id=${batch.id}" target="_blank" rel="noopener" aria-label="Drukuj poprawkę ${V.esc(pm)}" title="Drukuj"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5h-2"/><path d="M7 14h10v7H7zM18 11h.01"/></svg></a>`;
-          addBatchAction(batch.id,`${correctionPrint}${receiveButtonForBatch(batch,true)}${removeSpec}`);
+          addBatchAction(batch.id,`${correctionPrint}${receiveButtonForBatch(batch,true)}`);
         }else receiveButtonForBatch(batch);
         return `<div class="finishing-order-lot-entry${batch.workflow_status==='poprawka'?' is-correction-attempt':''}"><form method="post" action="/finishing/orders/${order.id}/lot" class="finishing-order-lot-inline" data-finishing-lot-autosave>${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',batch.id)}${hidden('return_to','orders')}<input name="finishing_lot" maxlength="120" value="${V.esc(batch.finishing_lot||'')}" placeholder="Wpisz nr zlecenia" aria-label="Nr zlecenia"></form>${addSpec}</div>`;
       }
