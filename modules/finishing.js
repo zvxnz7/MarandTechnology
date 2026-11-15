@@ -173,7 +173,10 @@ function isAdditionalPmBatch(db,order,batch) {
 }
 function finishingBatchStatusLabel(db,order,batch) {
   if(batch.cancelled_at)return 'Anulowana';
-  if(batch.workflow_status==='do_poprawy')return 'Do poprawy';
+  if(batch.workflow_status==='do_poprawy'){
+    const activeCorrection=db.prepare('SELECT 1 FROM finishing_batches WHERE cancelled_at IS NULL AND (correction_parent_batch_id=? OR correction_of_batch_id=?) LIMIT 1').get(batch.id,batch.id);
+    return activeCorrection?'Wysłano do poprawki':'Do poprawy';
+  }
   if(batch.workflow_status==='poprawka')return `POPRAWKA${batch.closed_at?' · Przyjęte':batch.receipt_count?' · Częściowo przyjęte':''}`;
   if(isAdditionalPmBatch(db,order,batch)&&batch.receipt_count)return 'Przyjęta';
   if(isMainPmBatch(db,order,batch)&&batch.receipt_count&&(!batch.closed_at||Number(batch.lost_pieces||0)>0))return 'Częściowo przyjęta';
@@ -183,6 +186,7 @@ function finishingBatchStatusLabel(db,order,batch) {
 }
 function finishingBatchStatusClass(db,order,batch) {
   const label=finishingBatchStatusLabel(db,order,batch);
+  if(label==='Wysłano do poprawki')return 'finishing-correction-sent';
   return ['Anulowana','Do poprawy'].includes(label)?'archived':label==='Przyjęta'?'approved':label==='W drodze'?'submitted':'status-finishing';
 }
 function pieceListView(pieces,summary='Sztuki w zleceniu') {
@@ -550,7 +554,8 @@ function ordersPage(ctx) {
     const baseBatch=activeBatches.find(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id),unassignedPieces=unassignedOrderPieces(ctx.db,order,activeBatches);
     const canAddSpec=editableRoles.includes(ctx.req.user.role)&&order.order_type!=='raw_sale'&&!['raw_sale','cancelled'].includes(order.status)&&(!['received'].includes(order.status)||unassignedPieces>0)&&(order.receipt_count===0||unassignedPieces>0)&&batches.length>0&&baseBatch&&Number(baseBatch.sent_pieces)>0;
     const canReceiveBatch=editableRoles.includes(ctx.req.user.role)&&!['raw_sale','cancelled'].includes(order.status);
-    const receiveActions=[];
+    const receiveActionsByBatch=new Map();
+    const addBatchAction=(batchId,action)=>{if(!action)return;if(!receiveActionsByBatch.has(batchId))receiveActionsByBatch.set(batchId,[]);receiveActionsByBatch.get(batchId).push(action);};
     const receiveButtonForBatch=(batch,inline=false)=>{
       if(!canReceiveBatch||batch.cancelled_at||batch.closed_at||batch.workflow_status==='do_poprawy'||(isAdditionalPmBatch(ctx.db,order,batch)&&batch.receipt_count>0))return '';
       const dialogId=`finishing-receive-${batch.id}`;
@@ -558,7 +563,7 @@ function ordersPage(ctx) {
       receiveDialogs.push(receiptDialog(ctx,receiptOrder,batch,pm));
       const button=`<button type="button" class="finishing-row-action is-receive" data-batch-receive="${batch.id}" data-open-dialog="${dialogId}" aria-label="Przyjmij sztuki ${V.esc(pm)} · ${V.esc(batch.finishing_lot||'bez numeru')}" title="${String(batch.finishing_lot||'').trim()?'Przyjmij':'Najpierw wpisz nr zlecenia barwiarskiego'}"${String(batch.finishing_lot||'').trim()?'':' disabled'}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>`;
       if(inline)return button;
-      receiveActions.push(button);
+      addBatchAction(batch.id,button);
       return '';
     };
     const lotCell=batches.length?`<div class="finishing-order-lot-list">${batches.map((batch,index)=>{
@@ -567,18 +572,17 @@ function ordersPage(ctx) {
       const addSpec=canAddSpec&&index===batches.length-1&&batch.workflow_status==='normal'?`<form method="post" action="/finishing/orders/${order.id}/batches" class="finishing-order-add-spec-form">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="return_to" value="orders"><button type="submit" class="finishing-add-spec-button" aria-label="Dodaj kolejną partię" title="Dodaj kolejną partię"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></form>`:'';
       if(batch.cancelled_at)return `<div class="finishing-order-lot-entry"><span class="badge archived">Anulowana</span>${String(batch.finishing_lot||'').trim()?`<strong class="finishing-order-lot">${V.esc(finishingOrderNo(batch))}</strong>`:'<span class="muted">Próba anulowana</span>'}${removeSpec}</div>`;
       if(canEditLots&&batch.workflow_status!=='do_poprawy'){
-        const correctionStatus=batch.workflow_status==='poprawka'?`<span class="badge finishing-correction-sent">Wysłano do poprawy</span>`:'';
         if(batch.workflow_status==='poprawka'){
           const correctionPrint=`<a class="finishing-row-action" href="/finishing/orders/${order.id}/print?batch_id=${batch.id}" target="_blank" rel="noopener" aria-label="Drukuj poprawkę ${V.esc(pm)}" title="Drukuj"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5h-2"/><path d="M7 14h10v7H7zM18 11h.01"/></svg></a>`;
-          receiveActions.push(`<div class="finishing-order-batch-actions-row">${correctionPrint}${receiveButtonForBatch(batch,true)}${removeSpec}</div>`);
+          addBatchAction(batch.id,`${correctionPrint}${receiveButtonForBatch(batch,true)}${removeSpec}`);
         }else receiveButtonForBatch(batch);
-        return `<div class="finishing-order-lot-entry${batch.workflow_status==='poprawka'?' is-correction-attempt':''}"><form method="post" action="/finishing/orders/${order.id}/lot" class="finishing-order-lot-inline" data-finishing-lot-autosave>${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',batch.id)}${hidden('return_to','orders')}<input name="finishing_lot" maxlength="120" value="${V.esc(batch.finishing_lot||'')}" placeholder="Wpisz nr zlecenia" aria-label="Nr zlecenia"></form>${correctionStatus||removeSpec}${addSpec}</div>`;
+        return `<div class="finishing-order-lot-entry${batch.workflow_status==='poprawka'?' is-correction-attempt':''}"><form method="post" action="/finishing/orders/${order.id}/lot" class="finishing-order-lot-inline" data-finishing-lot-autosave>${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',batch.id)}${hidden('return_to','orders')}<input name="finishing_lot" maxlength="120" value="${V.esc(batch.finishing_lot||'')}" placeholder="Wpisz nr zlecenia" aria-label="Nr zlecenia"></form>${addSpec}</div>`;
       }
       receiveButtonForBatch(batch);
       const lotDisplay=String(batch.finishing_lot||'').trim()?`<strong class="finishing-order-lot">${V.esc(finishingOrderNo(batch))}</strong>`:'<span class="muted">W drodze</span>';
       return `<div class="finishing-order-lot-entry${batch.workflow_status==='do_poprawy'?' is-correction-requested':''}">${lotDisplay}${removeSpec}${addSpec}</div>`;
     }).join('')}</div>`:'—';
-    const receiveActionStack=receiveActions.length?`<div class="finishing-order-receive-actions">${receiveActions.join('')}</div>`:'';
+    const receiveActionStack=receiveActionsByBatch.size?`<div class="finishing-order-receive-actions">${batches.map(batch=>`<div class="finishing-order-batch-actions-row">${(receiveActionsByBatch.get(batch.id)||[]).join('')}</div>`).join('')}</div>`:'';
     const incidentTooltip=String(order.open_incident_descriptions||'').trim();
     const incidentBadge=order.open_incidents?` <span class="badge archived finishing-problem-tooltip" title="${V.esc(incidentTooltip)}" aria-label="Problemy: ${order.open_incidents}. ${V.esc(incidentTooltip)}" tabindex="0">Problemy: ${order.open_incidents}</span>`:'';
     const batchStatusLabel=batch=>finishingBatchStatusLabel(ctx.db,order,batch);
@@ -729,6 +733,8 @@ function orderEditPage(ctx,order) {
   let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
   const plants=db.prepare('SELECT id,name,active FROM finishing_plants ORDER BY active DESC,name COLLATE NOCASE').all();
   const plantOptions=plants.map(plant=>`<option value="${plant.id}"${Number(order.finishing_plant_id)===plant.id?' selected':''}>${V.esc(plant.name)}${plant.active?'':' (nieaktywna)'}</option>`).join('');
+  const manualRecipes=order.manual_entry?recipes(db,0,false).filter(recipe=>recipe.active||Number(recipe.id)===Number(order.recipe_id)):[];
+  const manualRecipeOptions=manualRecipes.map(recipe=>`<option value="${recipe.id}"${Number(order.recipe_id)===Number(recipe.id)?' selected':''}>${V.esc(recipe.name)} · ${V.esc(recipe.raw_symbol||'bez symbolu')}${recipe.finishing_plant_name?` · ${V.esc(recipe.finishing_plant_name)}`:''}${recipe.active?'':' (nieaktywna)'}</option>`).join('');
   const source=order.shipment_article_id?sourcePieces(db,order.shipment_article_id):[];
   const saved=db.prepare('SELECT id,bale_local_id,bale_number,production_date,machine,weight_kg,meters,lot FROM finishing_order_bales WHERE order_id=? ORDER BY id').all(id);
   const pieces=new Map();
@@ -744,7 +750,7 @@ function orderEditPage(ctx,order) {
   const body=`${navTabs('orders',ctx.db)}<a class="breadcrumb" href="/finishing/orders/${id}">← Zlecenie ${V.esc(pm)}</a><div class="pagehead"><div><span class="eyebrow">EDYCJA ZLECENIA · ${statusBadge(order.status)}</span><h1>Edytuj zlecenie wykańczania</h1><p class="muted">Możesz poprawiać dane, partie i belki także po wpisaniu LOT-u lub przyjęciu. Zmiany belek dotyczą kopii zlecenia; zamknięta WZ pozostaje bez zmian.</p></div></div>
   <form method="post" action="/finishing/orders/${id}/edit" class="panel padded finishing-order-edit-form">${hidden('csrf',ctx.req.session.csrf)}
     <section class="finishing-order-section"><h2>Dane zlecenia</h2>${batchSummaryRows}<input type="hidden" name="batch_count" value="${batches.length}"><div class="form-grid"><label>Symbol dzianiny<input name="raw_symbol" value="${V.esc(order.raw_symbol)}" maxlength="200"${order.manual_entry?'':' required'}></label><label>Symbol handlowy<input name="trade_symbol" value="${V.esc(order.trade_symbol||'')}" maxlength="200"></label><label>Klient<input name="client_name" value="${V.esc(order.client_name||'')}" maxlength="200"></label><label>Wykańczalnia<select name="finishing_plant_id"><option value="">Dowolna</option>${plantOptions}</select></label><label>Kolor zadany<input name="target_color" value="${V.esc(order.target_color||'')}" maxlength="160"></label><label>Usztywnienie<input name="target_stiffening" value="${V.esc(order.target_stiffening||'')}" maxlength="2000"></label><label>Gramatura g/m²<input name="target_grammage" type="number" min="0.1" step="0.1" value="${V.esc(order.target_grammage??'')}"></label><label>Szerokość cm<input name="target_width_cm" type="number" min="0.1" step="0.1" value="${V.esc(order.target_width_cm??'')}"></label></div>${order.manual_entry?`<label>Źródła / opis materiału<textarea name="manual_input_description" rows="3" maxlength="3000">${V.esc(order.manual_input_description||'')}</textarea></label>`:''}${notesEditorField({label:'Uwagi do zlecenia',ariaLabel:'Uwagi do zlecenia',value:order.notes||''})}${batchDetailRows}</section>
-    <section class="finishing-order-section"><h2>Receptura zapisana przy zleceniu</h2><div class="form-grid"><label>Nazwa receptury<input name="recipe_name" value="${V.esc(snapshot.name||'')}" maxlength="200"></label><label>Receptura / instrukcja<textarea name="recipe_text" rows="8" maxlength="20000">${V.esc(snapshot.recipeText||'')}</textarea></label></div>${notesEditorField({name:'recipe_notes',label:'Uwagi receptury',ariaLabel:'Uwagi receptury',value:snapshot.notes||''})}</section>
+    <section class="finishing-order-section"><h2>Receptura zapisana przy zleceniu</h2>${order.manual_entry?`<label>Receptura barwiarska z biblioteki (opcjonalnie)<select name="recipe_id"><option value="">Bez powiązanej receptury</option>${manualRecipeOptions}</select><small class="muted">Możesz powiązać ręczne PMR z recepturą. Wybór nie jest wymagany; zapisane niżej dane receptury pozostają edytowalne.</small></label>`:''}<div class="form-grid"><label>Nazwa receptury<input name="recipe_name" value="${V.esc(snapshot.name||'')}" maxlength="200"></label><label>Receptura / instrukcja<textarea name="recipe_text" rows="8" maxlength="20000">${V.esc(snapshot.recipeText||'')}</textarea></label></div>${notesEditorField({name:'recipe_notes',label:'Uwagi receptury',ariaLabel:'Uwagi receptury',value:snapshot.notes||''})}</section>
     ${order.manual_entry?'':`<section class="finishing-order-section"><h2>Specyfikacja i belki zlecenia</h2><p class="muted">Zaznacz belki uwzględnione w zleceniu i popraw ich dane. Zmiana nie modyfikuje zamkniętej specyfikacji WZ.</p>${pieceRows||'<p class="muted">Brak belek powiązanych z tą pozycją WZ.</p>'}<input type="hidden" name="bale_count" value="${pieces.size}"></section>`}
     <div class="actions"><a class="button" href="/finishing/orders/${id}">Wróć</a><button class="primary">Zapisz wszystkie zmiany</button></div>
   </form>`;
@@ -1267,6 +1273,9 @@ function handle(ctx) {
       if(grammage!==null&&grammage<=0)fail(400,'Gramatura musi być większa od zera.');
       const noteData=recipeNotesData(text(form,'notes',100000));
       const recipeName=text(form,'recipe_name',200),recipeText=text(form,'recipe_text',20000),recipeNotes=recipeNotesData(text(form,'recipe_notes',100000));
+      const selectedRecipeId=order.manual_entry?(Number(form.recipe_id)||null):order.recipe_id;
+      const selectedRecipe=selectedRecipeId?recipeRecord(db,selectedRecipeId):null;
+      if(order.manual_entry&&selectedRecipeId&&(!selectedRecipe||!selectedRecipe.active))fail(400,'Wybierz aktywną recepturę z biblioteki albo pozostaw wybór pusty.');
       let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
       snapshot.name=recipeName;snapshot.rawSymbol=rawSymbol;snapshot.tradeSymbol=tradeSymbol;snapshot.finishingPlant=plantId?(db.prepare('SELECT name FROM finishing_plants WHERE id=?').get(plantId)?.name||''):'';
       snapshot.recipeText=recipeText;snapshot.targetColor=targetColor;snapshot.targetStiffening=targetStiffening;snapshot.targetWidthCm=width;snapshot.targetGrammage=grammage;snapshot.notes=recipeNotes;
@@ -1311,8 +1320,8 @@ function handle(ctx) {
       transaction(()=>{
         const current=orderRecord(db,id);
         if(!current||current.status==='raw_sale'||current.status==='cancelled'&&!current.manual_entry)fail(409,'Zlecenie nie jest już edytowalne.');
-        db.prepare(`UPDATE finishing_orders SET finishing_plant_id=?,raw_symbol=?,client_name=?,trade_symbol=?,target_color=?,target_stiffening=?,target_width_cm=?,target_grammage=?,notes=?,recipe_snapshot=?,manual_input_description=?,updated_at=?,updated_by=? WHERE id=?`)
-          .run(plantId,rawSymbol,client,tradeSymbol,targetColor,targetStiffening,width,grammage,JSON.stringify(noteData),JSON.stringify(snapshot),manualDescription,now(),req.user.id,id);
+        db.prepare(`UPDATE finishing_orders SET finishing_plant_id=?,raw_symbol=?,client_name=?,trade_symbol=?,recipe_id=?,target_color=?,target_stiffening=?,target_width_cm=?,target_grammage=?,notes=?,recipe_snapshot=?,manual_input_description=?,updated_at=?,updated_by=? WHERE id=?`)
+          .run(plantId,rawSymbol,client,tradeSymbol,selectedRecipeId,targetColor,targetStiffening,width,grammage,JSON.stringify(noteData),JSON.stringify(snapshot),manualDescription,now(),req.user.id,id);
         const deleteBale=db.prepare('DELETE FROM finishing_order_bales WHERE order_id=? AND bale_local_id=?');
         const saveBale=db.prepare(`INSERT INTO finishing_order_bales(order_id,bale_local_id,bale_number,machine,production_date,weight_kg,meters,lot) VALUES(?,?,?,?,?,?,?,?)
           ON CONFLICT(order_id,bale_local_id) DO UPDATE SET bale_number=excluded.bale_number,machine=excluded.machine,production_date=excluded.production_date,weight_kg=excluded.weight_kg,meters=excluded.meters,lot=excluded.lot`);
@@ -1328,7 +1337,7 @@ function handle(ctx) {
         const calculationInputsChanged=rawSymbol!==order.raw_symbol||tradeSymbol!==order.trade_symbol||editedBatches.some((batch,index)=>Math.abs(batch.rawWeight-Number(currentBatches[index].raw_weight_kg||0))>0.001||batch.sentPieces!==Number(currentBatches[index].sent_pieces)||batch.correctionTradeSymbol!==currentBatches[index].correction_trade_symbol||batch.correctionTargetColor!==currentBatches[index].correction_target_color||batch.correctionTargetGrammage!==currentBatches[index].correction_target_grammage||batch.correctionTargetWidth!==currentBatches[index].correction_target_width_cm);
         if(calculationInputsChanged)markSettlementChanged(db,editedBatches.map(batch=>batch.id),req.user.id,now());
         updateOrderStatus(ctx,id);
-        audit(req.user,'Edytowano zlecenie wykańczania',null,JSON.stringify({orderId:id,rawSymbol,client,tradeSymbol,baleCount:selectedBales.length,batchCount:editedBatches.length,settlementsMarkedChanged:calculationInputsChanged}),null);
+        audit(req.user,'Edytowano zlecenie wykańczania',null,JSON.stringify({orderId:id,rawSymbol,client,tradeSymbol,recipeId:selectedRecipeId,baleCount:selectedBales.length,batchCount:editedBatches.length,settlementsMarkedChanged:calculationInputsChanged}),null);
       });
       return redirect(req,res,`/finishing/orders/${id}`,'Zapisano zmiany zlecenia, belek i partii.');
     }
