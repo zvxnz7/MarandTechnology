@@ -13,12 +13,13 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const updateReceiveButton=(savedValue,displayValue=savedValue)=>{
   const batchId=String(form.elements.batch_id?.value||''),button=[...document.querySelectorAll('[data-batch-receive]')].find(item=>item.dataset.batchReceive===batchId);
   if(!button||input.value.trim()!==savedValue)return;
+  if(!savedValue){button.disabled=true;button.title='Najpierw wpisz nr zlecenia barwiarskiego';button.setAttribute('aria-label','Najpierw wpisz nr zlecenia barwiarskiego');return;}
   const dialog=document.getElementById(`finishing-receive-${batchId}`);if(!dialog)return;
   const orderNumber=dialog.querySelector('[data-receipt-order-number]');if(orderNumber)orderNumber.textContent=displayValue;
   button.disabled=false;button.dataset.openDialog=`finishing-receive-${batchId}`;button.title='Przyjmij sztuki';button.setAttribute('aria-label',`Przyjmij sztuki · nr zlecenia ${displayValue}`);
  };
  const save=async()=>{
-  const value=input.value.trim();if(!value||value===lastSaved)return;if(saving){queued=true;return;}saving=true;
+  const value=input.value.trim();if(value===lastSaved)return;if(saving){queued=true;return;}saving=true;
   try{
    const payload=new URLSearchParams(new FormData(form)),send=()=>fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:payload});
    let response=await send(),result=await response.json();
@@ -30,7 +31,7 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
   finally{saving=false;updateRemoveForm();if(queued){queued=false;timer=setTimeout(save,150);}}
  };
- const schedule=()=>{clearTimeout(timer);updateRemoveForm();if(!input.value.trim()){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,350);};
+ const schedule=()=>{clearTimeout(timer);updateRemoveForm();if(input.value.trim()===lastSaved){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,350);};
  input.addEventListener('input',schedule);input.addEventListener('change',()=>{clearTimeout(timer);save();});
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);save();});
 });
