@@ -338,12 +338,18 @@ function prepareRecipe(form,fail) {
   const notes=JSON.stringify(recipeNotesData(text(form,'notes',100000))),summary=recipeSummary(details,{targetColor:color,targetWidthCm:width,targetGrammage:grammage});
   return {name,rawSymbol,details,plantId,width,grammage,color,stiffening,notes,recipeText:summary};
 }
+function unassignedOrderPieces(db,order,batches=null) {
+  if(!order||order.manual_entry||!order.shipment_article_id)return 0;
+  const currentBatches=batches||db.prepare('SELECT sent_pieces,correction_parent_batch_id,correction_of_batch_id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(order.id);
+  const allocated=currentBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).reduce((sum,batch)=>sum+Number(batch.sent_pieces||0),0);
+  return Math.max(0,sourcePieces(db,order.shipment_article_id).length-allocated);
+}
 function orderStatus(db,orderId) {
-  const order=db.prepare('SELECT status FROM finishing_orders WHERE id=?').get(orderId);
+  const order=orderRecord(db,orderId);
   if(!order)return;
   if(order.status==='raw_sale'||order.status==='cancelled')return;
-  const batches=db.prepare('SELECT id,closed_at,finishing_lot,cancelled_at FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(orderId);
-  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
+  const batches=db.prepare('SELECT id,closed_at,finishing_lot,cancelled_at,sent_pieces,correction_parent_batch_id,correction_of_batch_id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(orderId),unassigned=unassignedOrderPieces(db,order,batches);
+  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)&&unassigned===0?'received':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
   db.prepare('UPDATE finishing_orders SET status=?,updated_at=? WHERE id=?').run(status,new Date().toISOString().replace(/\.\d{3}Z$/,'Z'),orderId);
 }
 function orderStatusLabel(status) {
@@ -511,8 +517,8 @@ function ordersPage(ctx) {
     const activeBatches=batches.filter(batch=>!batch.cancelled_at);
     const correctionState=activeBatches.length&&activeBatches.every(batch=>batch.workflow_status==='do_poprawy')?'do_poprawy':activeBatches.some(batch=>batch.workflow_status==='poprawka')?'poprawka':null;
     const pmPieces=order.manual_entry?activeBatches.reduce((sum,batch)=>sum+Number(batch.sent_pieces||0),0):Number(order.source_pm_pieces||0),pmWeight=order.manual_entry?activeBatches.reduce((sum,batch)=>sum+Number(batch.raw_weight_kg||0),0):Number(order.source_pm_weight_kg||0),pmTooltip=`PM: ${pmPieces} szt. · ${money(pmWeight)} kg`;
-    const baseBatch=[...batches].sort((a,b)=>a.id-b.id)[0];
-    const canAddSpec=editableRoles.includes(ctx.req.user.role)&&order.order_type!=='raw_sale'&&!['received','raw_sale','cancelled'].includes(order.status)&&order.receipt_count===0&&batches.length>0&&baseBatch&&Number(baseBatch.sent_pieces)>0;
+    const baseBatch=activeBatches.find(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id),unassignedPieces=unassignedOrderPieces(ctx.db,order,activeBatches);
+    const canAddSpec=editableRoles.includes(ctx.req.user.role)&&order.order_type!=='raw_sale'&&!['raw_sale','cancelled'].includes(order.status)&&(!['received'].includes(order.status)||unassignedPieces>0)&&(order.receipt_count===0||unassignedPieces>0)&&batches.length>0&&baseBatch&&Number(baseBatch.sent_pieces)>0;
     const canReceiveBatch=editableRoles.includes(ctx.req.user.role)&&!['raw_sale','cancelled'].includes(order.status);
     const receiveActions=[];
     const receiveButtonForBatch=(batch,inline=false)=>{
@@ -545,8 +551,8 @@ function ordersPage(ctx) {
     const receiveActionStack=receiveActions.length?`<div class="finishing-order-receive-actions">${receiveActions.join('')}</div>`:'';
     const incidentTooltip=String(order.open_incident_descriptions||'').trim();
     const incidentBadge=order.open_incidents?` <span class="badge archived finishing-problem-tooltip" title="${V.esc(incidentTooltip)}" aria-label="Problemy: ${order.open_incidents}. ${V.esc(incidentTooltip)}" tabindex="0">Problemy: ${order.open_incidents}</span>`:'';
-    const batchStatusLabel=batch=>batch.cancelled_at?'Anulowana':batch.workflow_status==='do_poprawy'?'Do poprawy':batch.closed_at?'Przyjęta':batch.workflow_status==='poprawka'?'POPRAWKA':String(batch.finishing_lot||'').trim()?'W farbiarni':'W drodze';
-    const batchStatusClass=batch=>batch.cancelled_at||batch.workflow_status==='do_poprawy'?'archived':batch.closed_at?'approved':batch.workflow_status==='poprawka'?'status-finishing':String(batch.finishing_lot||'').trim()?'status-finishing':'submitted';
+    const batchStatusLabel=batch=>batch.cancelled_at?'Anulowana':batch.workflow_status==='do_poprawy'?'Do poprawy':batch.closed_at?'Przyjęta':batch.workflow_status==='poprawka'?`POPRAWKA${batch.receipt_count?' · Częściowo przyjęta':''}`:batch.receipt_count?'Częściowo przyjęta':String(batch.finishing_lot||'').trim()?'W farbiarni':'W drodze';
+    const batchStatusClass=batch=>batch.cancelled_at||batch.workflow_status==='do_poprawy'?'archived':batch.closed_at?'approved':batch.workflow_status==='poprawka'||batch.receipt_count||String(batch.finishing_lot||'').trim()?'status-finishing':'submitted';
     const statusCell=batches.length?`<div class="finishing-order-batch-status-list">${batches.map((batch,index)=>`<div class="finishing-order-batch-status-row" data-batch-status="${batch.id}"><span class="badge ${batchStatusClass(batch)}">${batchStatusLabel(batch)}</span>${index===0?incidentBadge:''}</div>`).join('')}</div>`:`${statusBadge(correctionState||order.status)}${incidentBadge}`;
     return `<tr class="${correctionState==='do_poprawy'?'finishing-order-needs-correction':''}"><td>${dateOnlyPl(order.sent_at||order.created_at)}</td><td>${V.esc(order.finishing_plant_name||'—')}</td><td><strong>${V.esc(order.raw_symbol)}</strong></td><td>${V.esc(order.client_name||'—')}</td><td>${V.esc(order.trade_symbol||'—')}</td><td><a class="finishing-order-pm${order.manual_entry?' is-manual':''}" href="/finishing/orders/${order.id}" title="${V.esc(pmTooltip)}" aria-label="${V.esc(pm)} · ${V.esc(pmTooltip)}">${V.esc(pm)}</a></td><td>${lotCell}</td><td>${statusCell}</td><td class="finishing-row-actions finishing-order-actions-cell"><div class="finishing-order-actions-inline">${correctionState==='do_poprawy'&&editableRoles.includes(ctx.req.user.role)?`<a class="finishing-row-action" href="/finishing/orders/${order.id}/edit" aria-label="Edytuj PM ${V.esc(pm)}" title="Edytuj PM">✎</a>`:''}${receiveActionStack}<a class="finishing-row-action" href="/finishing/orders/${order.id}/print" target="_blank" rel="noopener" aria-label="Drukuj pierwotne zlecenie ${V.esc(pm)}" title="Drukuj pierwotne zlecenie"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7zM18 11h.01"/></svg></a>${canDelete?`<a class="finishing-row-action is-delete" href="/finishing/orders/${order.id}/delete" aria-label="Usuń zlecenie ${V.esc(pm)}" title="Usuń zlecenie">×</a>`:''}</div></td></tr>`;
   }).join('');
@@ -593,16 +599,16 @@ function receiptDialog(ctx,order,batch,pm,returnTo='orders') {
   const priorCommentHtml=priorComment?`<aside class="finishing-receive-prior-comment"><strong>Poprzedni komentarz do tej receptury</strong><small>${V.datepl(priorComment.received_at)}${priorComment.finishing_lot?` · LOT ${V.esc(finishingOrderNo(priorComment))}`:''}</small><div>${V.esc(priorComment.notes)}</div></aside>`:'';
   const statusChoices=(name,label,required=false,description='')=>`<fieldset class="finishing-receive-check"><legend>${V.esc(label)}</legend>${description?`<small class="finishing-receive-check-description">${V.esc(description)}</small>`:''}<label><input type="radio" name="${V.esc(name)}" value="ok"${required?' required':''}><span class="finishing-receive-choice-dot is-ok" aria-hidden="true"></span><span>OK</span></label><label><input type="radio" name="${V.esc(name)}" value="not_ok"><span class="finishing-receive-choice-dot is-nok" aria-hidden="true"></span><span>NOK</span></label></fieldset>`;
   const requiredKeys=new Set(processRequirements.map(item=>item.key));
-  const recipeProcessChoices=processRequirements.map(item=>statusChoices(`process_check_${item.key}`,item.label,false,item.description)).join('');
-  const baseChoices=[order.target_color?statusChoices('color_status','Kolor'):'',...(!requiredKeys.has('stiffeningEnabled')&&order.target_stiffening?[statusChoices('stiffening_status','Usztywnienie')]:[])].join('');
-  const grammageControl=Number(targetGrammage)>0?`<div class="finishing-receive-param-row" data-finishing-param-row data-param-target="${V.esc(targetGrammage)}" data-param-minus="${V.esc(grammageMinus??'')}" data-param-plus="${V.esc(grammagePlus??'')}" data-recipe-parameter="grammage"><label>Gramatura z belki<input name="actual_grammage" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="g/m²"></label><div><small>Gramatura zlecona</small><strong>${V.esc(targetGrammage)} g/m²</strong></div><div><small>Tolerancja z receptury</small><strong>${grammagePlus!==null||grammageMinus!==null?`−${grammageMinus??'0'} / +${grammagePlus??'0'} g/m²`:'0 g/m²'}</strong></div><div class="finishing-receive-param-status" data-param-status aria-live="polite"></div></div>`:'';
-  const widthControl=Number(targetWidth)>0?`<div class="finishing-receive-param-row" data-finishing-param-row data-param-target="${V.esc(targetWidth)}" data-param-minus="${V.esc(widthMinus??'')}" data-param-plus="${V.esc(widthPlus??'')}" data-recipe-parameter="width"><label>Szerokość z belki<input name="actual_width_cm" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="cm"></label><div><small>Szerokość zlecona</small><strong>${V.esc(targetWidth)} cm</strong></div><div><small>Tolerancja z receptury</small><strong>${widthPlus!==null||widthMinus!==null?`−${widthMinus??'0'} / +${widthPlus??'0'} cm`:'0 cm'}</strong></div><div class="finishing-receive-param-status" data-param-status aria-live="polite"></div></div>`:'';
+  const recipeProcessChoices=processRequirements.map(item=>statusChoices(`process_check_${item.key}`,item.label,true,item.description)).join('');
+  const baseChoices=[order.target_color?statusChoices('color_status','Kolor',true):'',...(!requiredKeys.has('stiffeningEnabled')&&order.target_stiffening?[statusChoices('stiffening_status','Usztywnienie',true)]:[])].join('');
+  const grammageControl=Number(targetGrammage)>0?`<div class="finishing-receive-param-row" data-finishing-param-row data-param-target="${V.esc(targetGrammage)}" data-param-minus="${V.esc(grammageMinus??'')}" data-param-plus="${V.esc(grammagePlus??'')}" data-recipe-parameter="grammage"><label>Gramatura z belki<input name="actual_grammage" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="g/m²" required></label><div><small>Gramatura zlecona</small><strong>${V.esc(targetGrammage)} g/m²</strong></div><div><small>Tolerancja z receptury</small><strong>${grammagePlus!==null||grammageMinus!==null?`−${grammageMinus??'0'} / +${grammagePlus??'0'} g/m²`:'0 g/m²'}</strong></div><div class="finishing-receive-param-status" data-param-status aria-live="polite"></div></div>`:'';
+  const widthControl=Number(targetWidth)>0?`<div class="finishing-receive-param-row" data-finishing-param-row data-param-target="${V.esc(targetWidth)}" data-param-minus="${V.esc(widthMinus??'')}" data-param-plus="${V.esc(widthPlus??'')}" data-recipe-parameter="width"><label>Szerokość z belki<input name="actual_width_cm" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="cm" required></label><div><small>Szerokość zlecona</small><strong>${V.esc(targetWidth)} cm</strong></div><div><small>Tolerancja z receptury</small><strong>${widthPlus!==null||widthMinus!==null?`−${widthMinus??'0'} / +${widthPlus??'0'} cm`:'0 cm'}</strong></div><div class="finishing-receive-param-status" data-param-status aria-live="polite"></div></div>`:'';
   return `<dialog id="${dialogId}" class="form-dialog finishing-receive-dialog" data-draggable-dialog aria-labelledby="${dialogId}-title"><div class="dialog-head finishing-receive-dialog-head" data-dialog-drag-handle><div><strong id="${dialogId}-title">Przyjęcie belek · ${V.esc(pm)} · ${V.datepl(V.todayInput())}</strong><small>${V.esc(order.finishing_plant_name||'')}</small></div><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body">
     <section class="finishing-receive-summary" aria-label="Przyjmowane zlecenie"><div><small>Symbol surowy</small><strong>${V.esc(order.raw_symbol||'—')}</strong></div><div><small>Symbol handlowy</small><strong>${V.esc(order.trade_symbol||'—')}</strong></div><div><small>Kolor planowany</small><strong>${V.esc(order.target_color||'—')}</strong></div><div><small>PM</small><strong>${V.esc(pm)}</strong></div><div><small>Nr zlecenia</small><strong data-receipt-order-number>${V.esc(finishingOrderNo(batch)||'—')}</strong></div></section>${symbolWarning}
-    <form id="${dialogId}-form" method="post" action="/finishing/batches/${batch.id}/receipts" class="finishing-receipt-form finishing-receive-form" data-finishing-receive-form data-raw-symbol="${V.esc(order.raw_symbol||'')}" data-trade-symbol="${V.esc(order.trade_symbol||'')}" data-target-color="${V.esc(order.target_color||'')}" data-order-number="${V.esc(finishingOrderNo(batch))}" data-plan-grammage="${V.esc(targetGrammage)}" data-plan-width="${V.esc(targetWidth)}" data-raw-weight="${V.esc(capacity.effectiveBatchKg)}" data-sent-pieces="${V.esc(capacity.effectiveBatchPieces)}" data-previous-received-pieces="${V.esc(previousBatchTotals.pieces)}" data-previous-received-weight="${V.esc(previousBatchTotals.weight)}">${hidden('csrf',ctx.req.session.csrf)}${hidden('modal_receipt','1')}${hidden('return_to',returnTo)}${hidden('received_at',V.todayInput())}${priorComment?hidden('prior_comment_receipt_id',priorComment.receipt_id):''}<input type="hidden" name="meters_list" value="" data-receipt-meters-list><input type="hidden" name="weights_list" value="" data-receipt-weights-list>
+    <form id="${dialogId}-form" method="post" action="/finishing/batches/${batch.id}/receipts" class="finishing-receipt-form finishing-receive-form" data-finishing-receive-form data-raw-symbol="${V.esc(order.raw_symbol||'')}" data-trade-symbol="${V.esc(order.trade_symbol||'')}" data-target-color="${V.esc(order.target_color||'')}" data-order-number="${V.esc(finishingOrderNo(batch))}" data-plan-grammage="${V.esc(targetGrammage)}" data-plan-width="${V.esc(targetWidth)}" data-raw-weight="${V.esc(capacity.effectiveBatchKg)}" data-sent-pieces="${V.esc(capacity.effectiveBatchPieces)}" data-previous-received-pieces="${V.esc(previousBatchTotals.pieces)}" data-previous-received-weight="${V.esc(previousBatchTotals.weight)}">${hidden('csrf',ctx.req.session.csrf)}${hidden('modal_receipt','1')}${hidden('return_to',returnTo)}${hidden('received_at',V.todayInput())}${hidden('close_incomplete','')}${priorComment?hidden('prior_comment_receipt_id',priorComment.receipt_id):''}<input type="hidden" name="meters_list" value="" data-receipt-meters-list><input type="hidden" name="weights_list" value="" data-receipt-weights-list>
       <section class="finishing-receive-overview" aria-label="Zlecone i odebrane wartości"><div class="finishing-receive-metrics-grid">
         ${correctionBatch?`<div class="finishing-receive-metric finishing-correction-note" style="grid-column:1/-1"><strong>Poprawkowe zlecenie barwiarskie</strong><span>Rozliczaj surowiec z pierwotnego zlecenia. Waga gotowych belek jest wpisywana osobno.</span></div>`:`<div class="finishing-receive-metric"><small>Do rozliczenia z PM · kg</small><strong>${money(suggestedUsedKg)} kg</strong></div><div class="finishing-receive-metric"><small>Do rozliczenia z PM · szt.</small><strong>${suggestedRawPieces}</strong></div><div class="finishing-receive-metric" title="Ilość pozostała z PM po rozliczeniu tej partii"><small>Pozostałe kg</small><strong>${money(remainingKg)} kg</strong></div>`}
-      </div><div class="finishing-receive-accepted-summary"><label><small>Rozliczamy ze zleconych · kg</small><input type="text" inputmode="decimal" name="used_weight_kg" maxlength="10" value="${V.esc(suggestedUsedKgInput)}" placeholder="${V.esc(suggestedUsedKgInput||'0')}" data-receipt-accounted-kg></label><label><small>Rozliczamy ze zleconych · szt.</small><input type="number" name="raw_pieces_received" min="0" step="1" value="${V.esc(suggestedRawPiecesInput)}" placeholder="${V.esc(suggestedRawPiecesInput||'0')}" data-receipt-raw-pieces required></label></div><p class="finishing-receive-completion" data-receipt-completion aria-live="polite"></p></section>
+      </div><div class="finishing-receive-accepted-summary"><label><small>Rozliczamy ze zleconych · kg</small><input type="text" inputmode="decimal" name="used_weight_kg" maxlength="10" value="${V.esc(suggestedUsedKgInput)}" placeholder="${V.esc(suggestedUsedKgInput||'0')}" data-receipt-accounted-kg></label><label><small>Rozliczamy ze zleconych · szt.</small><input type="number" name="raw_pieces_received" min="0" step="1" value="${V.esc(suggestedRawPiecesInput)}" placeholder="${V.esc(suggestedRawPiecesInput||'0')}" data-receipt-raw-pieces required></label></div><p class="finishing-receive-completion" data-receipt-completion aria-live="polite"></p><div class="finishing-receive-incomplete-choice" data-receipt-incomplete-choice hidden><strong>Nie wszystkie wysłane sztuki zostały rozliczone.</strong><p data-receipt-incomplete-message></p><div class="actions"><button type="button" data-receipt-incomplete-option="0">Zostaw partię otwartą — reszta w wykańczalni</button><button type="button" class="danger" data-receipt-incomplete-option="1">Zamknij z brakami</button></div></div></section>
       <section class="finishing-receive-quality"><h3>Kontrola parametrów</h3>
         ${grammageControl}${widthControl}
         <div class="finishing-receive-check-grid">${baseChoices}${recipeProcessChoices}</div></section>
@@ -628,8 +634,8 @@ function orderPage(ctx,id) {
   const source=order.source_shipment_no||'—';
   const piecesBody=orderPiecesView(db,order);
   const canEdit=editableRoles.includes(ctx.req.user.role)&&(order.manual_entry||!['cancelled','raw_sale'].includes(order.status));
-  const baseBatch=[...batches].sort((a,b)=>a.id-b.id)[0];
-  const canAddBatch=canEdit&&!allBatchesNeedCorrection&&order.order_type!=='raw_sale'&&order.status!=='received'&&receipts.length===0&&batches.length>0&&Number(baseBatch?.sent_pieces)>0;
+  const baseBatch=[...batches].sort((a,b)=>a.id-b.id).find(batch=>!batch.cancelled_at&&!batch.correction_parent_batch_id&&!batch.correction_of_batch_id),unassignedPieces=unassignedOrderPieces(db,order,batches);
+  const canAddBatch=canEdit&&!allBatchesNeedCorrection&&order.order_type!=='raw_sale'&&(!['cancelled','raw_sale'].includes(order.status))&&(!receipts.length||unassignedPieces>0)&&(!['received'].includes(order.status)||unassignedPieces>0)&&batches.length>0&&Number(baseBatch?.sent_pieces)>0;
   const lotBatch=batches.find(batch=>batch.workflow_status!=='do_poprawy'&&!String(batch.finishing_lot||'').trim())||batches.find(batch=>batch.workflow_status!=='do_poprawy')||batches[0];
   const lotControl=canEdit&&lotBatch?`<button type="button" class="finishing-lot-edit-button" data-open-dialog="finishing-lot-dialog">${lotBatch.finishing_lot?'Edytuj nr zlecenia':'Dodaj nr zlecenia'}</button>`:`<span class="muted">Nr zlecenia: ${V.esc(finishingOrderNo(lotBatch)||'do uzupełnienia')}</span>`;
   const lotDialog=canEdit&&lotBatch?`<dialog id="finishing-lot-dialog" class="form-dialog finishing-lot-dialog"><div class="dialog-head"><strong>Nr zlecenia z wykończalni</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Numer można poprawić także po przyjęciu. Wpisz aktualny nr zlecenia z wykończalni.</p><form method="post" action="/finishing/orders/${id}/lot" class="finishing-lot-form" data-finishing-lot-confirm>${hidden('csrf',ctx.req.session.csrf)}${hidden('batch_id',lotBatch.id)}<label>Nr zlecenia<input name="finishing_lot" maxlength="120" value="${V.esc(lotBatch.finishing_lot||'')}" autofocus></label><div class="actions"><button type="button" data-close-dialog>Wróć</button><button class="primary">Zapisz nr zlecenia</button></div></form></div></dialog>`:'';
@@ -653,8 +659,7 @@ function orderPage(ctx,id) {
     const cancelAttempt=canEdit&&batch.workflow_status==='poprawka'&&batch.correction_parent_batch_id&&!batch.cancelled_at&&!batch.closed_at?`<form method="post" action="/finishing/batches/${batch.id}/cancel-attempt">${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Anuluj próbę poprawki</button></form>`:'';
     const correctionInstruction=[batch.correction_instruction,batch.correction_notes].filter(value=>String(value||'').trim()).join('\n\n');
     const correctionDetails=batch.correction_parent_batch_id?`<aside class="finishing-correction-details"><strong>Instrukcja poprawki</strong><p>${V.esc(correctionInstruction||'—')}</p></aside>`:'';
-    const closeIncomplete=canEdit&&!batch.cancelled_at&&!batch.closed_at&&Number(batch.receipt_count)>0&&String(batch.finishing_lot||'').trim()?`<form method="post" action="/finishing/batches/${batch.id}/close-incomplete" data-finishing-close-incomplete>${hidden('csrf',ctx.req.session.csrf)}<button class="button danger">Przyjmij niekompletne zlecenie</button></form>`:'';
-    return `<section class="panel padded finishing-batch-card${batch.cancelled_at?' is-cancelled':''}" id="batch-${batch.id}"><h3>Zlecenie barwiarskie ${V.esc(finishingOrderNo(batch)||`#${batch.id}`)} ${batch.cancelled_at?'<span class="badge archived">Próba anulowana</span>':batch.closed_at?'<span class="badge approved">Przyjęte</span>':''} ${complaintBadge} ${receiveButton}</h3><p>Status: ${batch.cancelled_at?'Anulowana próba':batchStatusLabel} · Data wysyłki: ${V.datepl(batch.sent_at)} · ${batchQuantities} · LOT przędzy: ${V.esc(batch.yarn_lot||'—')}</p>${correctionDetails}<div class="actions">${complaintAction}${correctionAction}${cancelAttempt}${closeIncomplete}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Data przyjęcia</th><th>Rozliczono ze zleconych</th><th>Belki wykończone</th><th>Kontrola parametrów</th><th>Komentarz do partii</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6">Jeszcze nie przyjęto zwrotu.</td></tr>'}</tbody></table></div></section>`;
+    return `<section class="panel padded finishing-batch-card${batch.cancelled_at?' is-cancelled':''}" id="batch-${batch.id}"><h3>Zlecenie barwiarskie ${V.esc(finishingOrderNo(batch)||`#${batch.id}`)} ${batch.cancelled_at?'<span class="badge archived">Próba anulowana</span>':batch.closed_at?'<span class="badge approved">Przyjęte</span>':''} ${complaintBadge} ${receiveButton}</h3><p>Status: ${batch.cancelled_at?'Anulowana próba':batchStatusLabel} · Data wysyłki: ${V.datepl(batch.sent_at)} · ${batchQuantities} · LOT przędzy: ${V.esc(batch.yarn_lot||'—')}</p>${correctionDetails}<div class="actions">${complaintAction}${correctionAction}${cancelAttempt}</div><div class="panel scroll"><table class="listing compact"><thead><tr><th>Data przyjęcia</th><th>Rozliczono ze zleconych</th><th>Belki wykończone</th><th>Kontrola parametrów</th><th>Komentarz do partii</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6">Jeszcze nie przyjęto zwrotu.</td></tr>'}</tbody></table></div></section>`;
   }).join('');
   const batchRows=[...batches].sort((a,b)=>a.id-b.id).map((batch,index)=>{
     const canRemoveThisBatch=canEdit;
@@ -909,8 +914,8 @@ function parseList(value,label) {
   return parts.map((part,index)=>validatePositiveNumber(part,`${label}, pozycja ${index+1}`));
 }
 function updateOrderStatus(ctx,orderId) {
-  const batches=ctx.db.prepare('SELECT closed_at,finishing_lot FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(orderId);
-  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)?'received':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
+  const order=orderRecord(ctx.db,orderId),batches=ctx.db.prepare('SELECT closed_at,finishing_lot,sent_pieces,correction_parent_batch_id,correction_of_batch_id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(orderId),unassigned=unassignedOrderPieces(ctx.db,order,batches);
+  const status=!batches.length?'draft':batches.every(batch=>batch.closed_at)&&unassigned===0?'received':batches.some(batch=>String(batch.finishing_lot||'').trim())?'sent':'draft';
   ctx.db.prepare('UPDATE finishing_orders SET status=?,updated_at=?,updated_by=? WHERE id=?').run(status,ctx.now(),ctx.req.user.id,orderId);
   return status;
 }
@@ -1262,7 +1267,7 @@ function handle(ctx) {
     if(action==='print'&&req.method==='GET')return receiptPage(ctx,id,integer(ctx.url.searchParams.get('batch_id'))||0);
     if(action==='lot'&&req.method==='POST'){
       role(req.user,...editableRoles);if(['raw_sale','cancelled'].includes(order.status))fail(409,'Tego zlecenia nie można już edytować.');
-      const batchId=Number(form.batch_id),lot=text(form,'finishing_lot',120),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=? AND order_id=?').get(batchId,id);
+      const batchId=Number(form.batch_id),lot=text(form,'finishing_lot',120),batch=db.prepare('SELECT b.*,(SELECT count(*) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_count FROM finishing_batches b WHERE b.id=? AND b.order_id=?').get(batchId,id);
       if(!batch)fail(400,'Nie znaleziono wyjścia PM dla tego zlecenia.');
       const duplicates=lot?duplicateFinishingLots(db,batchId,lot,batch.sent_at||batch.created_at||order.created_at):[];
       if(duplicates.length&&form.confirm_duplicate!=='1'){
@@ -1272,7 +1277,7 @@ function handle(ctx) {
         return send(req,res,409,message);
       }
       const updatedStatus=transaction(()=>{db.prepare('UPDATE finishing_batches SET finishing_lot=?,updated_at=?,updated_by=? WHERE id=?').run(lot,now(),req.user.id,batchId);const status=updateOrderStatus(ctx,id);audit(req.user,'Uzupełniono LOT partii w farbiarni',null,JSON.stringify({orderId:id,batchId,finishingLot:lot,status}),null);return status;});
-      if(String(req.headers.accept||'').includes('application/json')){const displayStatus=batch.workflow_status==='poprawka'?'poprawka':updatedStatus,batchStatusLabel=batch.cancelled_at?'Anulowana':batch.workflow_status==='do_poprawy'?'Do poprawy':batch.closed_at?'Przyjęta':batch.workflow_status==='poprawka'?'POPRAWKA':String(lot).trim()?'W farbiarni':'W drodze',batchStatusClass=batch.cancelled_at||batch.workflow_status==='do_poprawy'?'archived':batch.closed_at?'approved':batch.workflow_status==='poprawka'?'status-finishing':String(lot).trim()?'status-finishing':'submitted';return send(req,res,200,JSON.stringify({ok:true,finishing_lot:lot,display_order_number:finishingOrderNo({...batch,finishing_lot:lot}),status:updatedStatus,status_label:orderStatusLabel(displayStatus),status_class:orderStatusBadgeClass(displayStatus),batch_status_label:batchStatusLabel,batch_status_class:batchStatusClass,batch_id:batchId}),'application/json; charset=utf-8');}
+      if(String(req.headers.accept||'').includes('application/json')){const displayStatus=batch.workflow_status==='poprawka'?'poprawka':updatedStatus,batchStatusLabel=batch.cancelled_at?'Anulowana':batch.workflow_status==='do_poprawy'?'Do poprawy':batch.closed_at?'Przyjęta':batch.workflow_status==='poprawka'?`POPRAWKA${batch.receipt_count?' · Częściowo przyjęta':''}`:batch.receipt_count?'Częściowo przyjęta':String(lot).trim()?'W farbiarni':'W drodze',batchStatusClass=batch.cancelled_at||batch.workflow_status==='do_poprawy'?'archived':batch.closed_at?'approved':batch.workflow_status==='poprawka'||batch.receipt_count||String(lot).trim()?'status-finishing':'submitted';return send(req,res,200,JSON.stringify({ok:true,finishing_lot:lot,display_order_number:finishingOrderNo({...batch,finishing_lot:lot}),status:updatedStatus,status_label:orderStatusLabel(displayStatus),status_class:orderStatusBadgeClass(displayStatus),batch_status_label:batchStatusLabel,batch_status_class:batchStatusClass,batch_id:batchId}),'application/json; charset=utf-8');}
       const returnTo=form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${id}`;
       return redirect(req,res,returnTo,'Zapisano numer specyfikacji z farbiarni.');
     }
@@ -1302,11 +1307,14 @@ function handle(ctx) {
         });
         const returnTo=deleted.orderRemoved||form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${id}`;
         return redirect(req,res,returnTo,`Usunięto zlecenie barwiarskie i ${deleted.removed.length-1} powiązanych prób poprawki. Przyjęcia, zgłoszenia i rozliczenia zostały wyczyszczone.`);
-      }      if(['received','raw_sale','cancelled'].includes(order.status)||order.order_type==='raw_sale')fail(409,'Tego zlecenia nie można już dzielić na partie.');
-      if(db.prepare('SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=? LIMIT 1').get(id))fail(409,'Nie można dzielić zlecenia po zapisaniu przyjęcia z farbiarni.');
+      }
+      if(['raw_sale','cancelled'].includes(order.status)||order.order_type==='raw_sale')fail(409,'Tego zlecenia nie można już dzielić na partie.');
+      const currentBatches=orderBatches(db,id),unassignedPieces=unassignedOrderPieces(db,order,currentBatches),hasReceipts=Boolean(db.prepare('SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=? LIMIT 1').get(id));
+      if(hasReceipts&&unassignedPieces===0)fail(409,'Nie ma już nieprzypisanych sztuk PM do nowej partii.');
+      if(order.status==='received'&&unassignedPieces===0)fail(409,'Przyjęte zlecenie nie ma nieprzypisanych sztuk PM do nowej partii.');
       const batchId=transaction(()=>{
-        const base=db.prepare('SELECT * FROM finishing_batches WHERE order_id=? ORDER BY id LIMIT 1').get(id);
-      if(!base||base.closed_at||base.workflow_status!=='normal')fail(409,'Nie znaleziono otwartej partii głównej do podziału.');
+        const base=db.prepare('SELECT * FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL AND correction_parent_batch_id IS NULL AND correction_of_batch_id IS NULL ORDER BY id LIMIT 1').get(id);
+      if(!base||base.workflow_status!=='normal')fail(409,'Nie znaleziono partii głównej do podziału.');
         const date=base.sent_at||V.todayInput(),yarnLot=base.yarn_lot||'';
         const result=db.prepare('INSERT INTO finishing_batches(order_id,finishing_lot,sent_at,sent_pieces,raw_weight_kg,yarn_lot,notes,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,'',date,0,0,yarnLot,'',now(),req.user.id,now(),req.user.id);
         const createdId=Number(result.lastInsertRowid);updateOrderStatus(ctx,id);audit(req.user,'Dodano pustą dodatkową partię wykańczalni',null,JSON.stringify({orderId:id,batchId:createdId,sourceBatchId:base.id}),null);return createdId;
@@ -1390,24 +1398,6 @@ function handle(ctx) {
     });
     return redirect(req,res,`/finishing/orders/${batch.order_id}#batch-${createdId}`,'Dodano nowe poprawkowe zlecenie barwiarskie. Wpisz jego numer i po pełnym przyjęciu rozlicz je osobno.');
   }
-  const closeIncompleteMatch=p.match(/^\/finishing\/batches\/(\d+)\/close-incomplete$/);
-  if(closeIncompleteMatch&&req.method==='POST'){
-    role(req.user,...editableRoles);const batchId=Number(closeIncompleteMatch[1]),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId);
-    if(!batch||batch.cancelled_at)fail(404,'Nie znaleziono aktywnej partii.');
-    if(batch.closed_at)fail(409,'Ta partia została już przyjęta.');
-    if(!String(batch.finishing_lot||'').trim())fail(409,'Najpierw wpisz numer zlecenia barwiarskiego.');
-    const receiptCount=Number(db.prepare('SELECT count(*) count FROM finishing_receipts WHERE batch_id=?').get(batchId)?.count||0);
-    if(!receiptCount)fail(409,'Najpierw zapisz przyjęte sztuki.');
-    let autoPmr=null;
-    transaction(()=>{
-      db.prepare('UPDATE finishing_receipts SET incomplete=0 WHERE batch_id=?').run(batchId);
-      const stamp=now();recomputeBatchClosure(db,batchId,req.user.id,stamp);syncAutoLostIncident(db,batchId,req.user.id,stamp);autoPmr=syncAutoRemainderPmr(db,batchId,req.user.id,stamp);
-      markSettlementChanged(db,[batchId],req.user.id,stamp);updateOrderStatus(ctx,batch.order_id);
-      audit(req.user,'Przyjęto niekompletne zlecenie barwiarskie',null,JSON.stringify({batchId,receiptCount,autoPmr}),null);
-    });
-    const pmrNotice=autoPmr?.created?` Utworzono ${autoPmr.reference} z brakującą ilością: ${money(autoPmr.kg)} kg · ${autoPmr.pieces} szt.`:'';
-    return redirect(req,res,`/finishing/orders/${batch.order_id}#batch-${batchId}`,`Przyjęto niekompletne zlecenie. Braki zapisano w „Zagubione/zniszczone”.${pmrNotice}`,'warning');
-  }
   const receiptMatch=p.match(/^\/finishing\/batches\/(\d+)\/receipts$/);
   if(receiptMatch&&req.method==='POST'){
     role(req.user,...editableRoles);const batchId=Number(receiptMatch[1]),batch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId);
@@ -1429,11 +1419,17 @@ function handle(ctx) {
     const requiredProcesses=recipeProcessRequirements(recipeDetails),processChecks={};
     if(modalReceipt)for(const requirement of requiredProcesses){
       const status=form[`process_check_${requirement.key}`];
-      if(['ok','not_ok'].includes(status))processChecks[requirement.key]=status;
+      if(!['ok','not_ok'].includes(status))fail(400,`Zaznacz ocenę parametru „${requirement.label}” jako OK albo NOK.`);
+      processChecks[requirement.key]=status;
     }
-    const grammageStatus=parameterStatus(grammage,order?.target_grammage,recipeDetails.grammageMinus,recipeDetails.grammagePlus);
-    const widthStatus=parameterStatus(width,order?.target_width_cm,recipeDetails.widthMinus,recipeDetails.widthPlus);
+    const requiredColor=batch.correction_target_color||order?.target_color,requiredWidth=batch.correction_target_width_cm??order?.target_width_cm,requiredGrammage=batch.correction_target_grammage??order?.target_grammage;
+    const grammageStatus=parameterStatus(grammage,requiredGrammage,recipeDetails.grammageMinus,recipeDetails.grammagePlus);
+    const widthStatus=parameterStatus(width,requiredWidth,recipeDetails.widthMinus,recipeDetails.widthPlus);
     const colorStatus=['ok','not_ok'].includes(form.color_status)?form.color_status:'',stiffeningStatus=['ok','not_ok'].includes(form.stiffening_status)?form.stiffening_status:'';
+    if(modalReceipt&&requiredColor&&!colorStatus)fail(400,'Zaznacz ocenę koloru jako OK albo NOK.');
+    if(modalReceipt&&order?.target_stiffening&&!requiredProcesses.some(item=>item.key==='stiffeningEnabled')&&!stiffeningStatus)fail(400,'Zaznacz ocenę usztywnienia jako OK albo NOK.');
+    if(modalReceipt&&Number(requiredWidth)>0&&width===null)fail(400,'Wpisz zmierzoną szerokość z belki.');
+    if(modalReceipt&&Number(requiredGrammage)>0&&grammage===null)fail(400,'Wpisz zmierzoną gramaturę z belki.');
     const priorCommentReceiptId=Number(form.prior_comment_receipt_id)||0;
     const usedWeight=number(form.used_weight_kg)??0;
     if(usedWeight<0)fail(400,'Wykorzystane kg nie mogą być ujemne.');
@@ -1459,18 +1455,19 @@ function handle(ctx) {
           SELECT 1 FROM finishing_batches pb JOIN finishing_orders po ON po.id=pb.order_id
           WHERE pb.id=finishing_receipts.batch_id AND po.recipe_id=?)`).run(now(),id,priorCommentReceiptId,order.recipe_id);
       for(let i=0;i<finishedPieces;i++)insert.run(id,i+1,measureMeters?meters[i]:null,measureWeight?weights[i]:null);
-      const receivedTotal=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) count FROM finishing_receipts WHERE batch_id=?').get(batchId)?.count||0),sentTotal=Math.max(0,Number(liveBatch.sent_pieces||0)),stillPartial=sentTotal>0&&receivedTotal<sentTotal;
-      db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial?1:0,batchId);
+      const receivedTotal=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) count FROM finishing_receipts WHERE batch_id=?').get(batchId)?.count||0),sentTotal=Math.max(0,Number(liveBatch.sent_pieces||0)),stillPartial=sentTotal>0&&receivedTotal<sentTotal,closeWithMissing=stillPartial&&form.close_incomplete==='1';
+      if(stillPartial&&modalReceipt&&!['0','1'].includes(form.close_incomplete))fail(400,'Wybierz, czy zostawić partię otwartą, czy zamknąć ją z brakami.');
+      db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial&&!closeWithMissing?1:0,batchId);
       const stamp=now(),complete=recomputeBatchClosure(db,batchId,req.user.id,stamp);syncAutoLostIncident(db,batchId,req.user.id,stamp);const autoPmr=complete?syncAutoRemainderPmr(db,batchId,req.user.id,stamp):null;
       if(complete&&batch.correction_of_batch_id)db.prepare("UPDATE finishing_batches SET complaint_status='poprawiona',updated_at=?,updated_by=? WHERE id=? AND complaint_status='reklamowana'").run(stamp,req.user.id,batch.correction_of_batch_id);
       markSettlementChanged(db,[batchId],req.user.id,now());
       updateOrderStatus(ctx,batch.order_id);
       audit(req.user,'Zarejestrowano przyjęcie z wykończalni',null,JSON.stringify({batchId,receiptId:id,returnedRawPieces:rawPiecesToSave,finishedPieces,complete,autoPmr}),null);
-      return {id,complete,autoPmr};
+      return {id,complete,autoPmr,closeWithMissing};
     });
     const returnTo=modalReceipt&&form.return_to==='orders'?'/finishing/orders':`/finishing/orders/${batch.order_id}#batch-${batchId}`;
     const pmrNotice=receiptId.autoPmr?.created?` Utworzono ${receiptId.autoPmr.reference} z brakującą ilością: ${money(receiptId.autoPmr.kg)} kg · ${receiptId.autoPmr.pieces} szt.`:'';
-    return redirect(req,res,returnTo,(receiptId.complete?'Przyjęcie zamknięte.':'Zapisano przyjęcie częściowe. Partia pozostaje otwarta na pozostałe sztuki.')+pmrNotice);
+    return redirect(req,res,returnTo,(receiptId.closeWithMissing?'Zamknięto przyjęcie z brakami. Braki zapisano w „Zagubione/zniszczone”.':receiptId.complete?'Przyjęcie zamknięte.':'Zapisano przyjęcie częściowe. Partia pozostaje otwarta na pozostałe sztuki.')+pmrNotice,receiptId.closeWithMissing?'warning':'success');
   }
   const lostAction=p.match(/^\/finishing\/lost\/(\d+)\/(found|settle|info)$/);
   if(lostAction&&req.method==='POST'){

@@ -465,6 +465,16 @@ function redirect(req, res, location, message = '', category = 'success') {
   res.setHeader('Set-Cookie', setSessionCookie(req.session));
   res.end();
 }
+function safeErrorReturnPath(req) {
+  try {
+    const requestHost = String(req.headers.host || '').toLowerCase();
+    if (!requestHost) return '/';
+    const referer = new URL(String(req.headers.referer || ''), `http://${requestHost}`);
+    if (referer.host.toLowerCase() !== requestHost) return '/';
+    if (referer.pathname.startsWith('//') || referer.pathname.includes('\\')) return '/';
+    return `${referer.pathname}${referer.search}${referer.hash}` || '/';
+  } catch { return '/'; }
+}
 function consumeFlashes(session) { const flashes = session.flashes || []; session.flashes = []; return flashes; }
 function canEdit(user) { return user && ['technologist', 'approver', 'admin'].includes(user.role); }
 function getFlashes(req) { return consumeFlashes(req.session); }
@@ -1638,7 +1648,7 @@ async function handle(req, res) {
       res.destroy();
       return;
     }
-    if (err instanceof HttpError) return send(req, res, err.status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: err.message }));
+    if (err instanceof HttpError) return send(req, res, err.status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: err.message, returnTo: safeErrorReturnPath(req) }));
     if (err && (String(err.code || '').startsWith('SQLITE_') || err.code === 'ERR_SQLITE_ERROR')) {
       const reference = crypto.randomBytes(4).toString('hex').toUpperCase();
       const sqliteCode = Number.isInteger(err.errcode) ? err.errcode & 0xff : null;
@@ -1682,10 +1692,10 @@ async function handle(req, res) {
           v: recovery.values,
         }));
       }
-      return send(req, res, status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: message }));
+      return send(req, res, status, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: message, returnTo: safeErrorReturnPath(req) }));
     }
     console.error(err && err.stack || err);
-    return send(req, res, 500, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: 'Wystąpił błąd programu. Skontaktuj się z administratorem.' }));
+    return send(req, res, 500, V.errorPage({ user: req.user, csrf: req.session.csrf, flashes: getFlashes(req), error: 'Wystąpił błąd programu. Skontaktuj się z administratorem.', returnTo: safeErrorReturnPath(req) }));
   }
 }
 

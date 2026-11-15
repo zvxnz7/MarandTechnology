@@ -181,8 +181,8 @@ function layout({ title = 'Marand · Technologia', user, csrf, body, flashes = [
 <aside class="sidebar"><a class="brand" href="/"><img src="/static/logo.jpg?v=${LOGO_CACHE_VERSION}" alt="Marand Technical textiles"></a><div class="brand-caption">TECHNOLOGIA I ROZWÓJ</div><nav>${navigation}<div class="nav-hint">Próby · Specyfikacje · Karty na maszyny</div>${adminNav}</nav><div class="sidebar-bottom">Wersja ${esc(process.env.MARAND_VERSION || '0.3.0')}<br><small>Dokumentacja technologiczna</small></div></aside>
 <div class="workspace"><header class="topbar"><span>Marand / Dokumentacja technologiczna</span>${userBox}</header><main>${notices}${body}</main></div></body></html>`;
 }
-function errorPage({ error, status = 400, ...base }) {
-  return layout({ ...base, title: 'Operacja nie została wykonana', body: `<h1>Operacja nie została wykonana</h1><div class="notice warning">${esc(error)}</div><p>Jeżeli formularz zawiera Twoje zmiany, użyj przycisku „Wstecz” w przeglądarce i skopiuj je przed odświeżeniem.</p><a class="button" href="/">Wróć do kartoteki</a>` });
+function errorPage({ error, returnTo = '/', ...base }) {
+  return layout({ ...base, title: 'Operacja nie została wykonana', body: `<h1>Operacja nie została wykonana</h1><div class="notice warning">${esc(error)}</div><p>Jeżeli formularz zawiera Twoje zmiany, użyj przycisku „Wstecz” w przeglądarce i skopiuj je przed odświeżeniem.</p><a class="button" href="${esc(returnTo)}">Wróć do poprzedniej strony</a>` });
 }
 function loginPage(args) {
   return layout({ ...args, title: 'Logowanie · Marand', body: `<div class="login"><span class="eyebrow">WSPÓLNA DOKUMENTACJA MARAND</span><h1>Wszystko o artykule.<br>W jednym miejscu.</h1><p class="muted">Zaloguj się, aby otworzyć próby, warunki dziania i karty na maszyny.</p>${csrfForm(args.csrf, '/login', `${field('Login', 'login', '', { required: 'required', autocomplete: 'username', autofocus: 'autofocus' })}${field('Hasło', 'password', '', { type: 'password', required: 'required', autocomplete: 'current-password' })}${button('Zaloguj się', 'primary')}`)}</div>` });

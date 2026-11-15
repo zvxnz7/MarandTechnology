@@ -793,3 +793,11 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-receive-completion.is-complete{background:#e9f5ed;color:#246b3b}
 .finishing-receive-completion.is-pending{background:#fff5df;color:#745419}
 .finishing-receive-completion.is-over{background:#fcebea;color:#982d26}
+.finishing-receive-incomplete-choice{margin-top:10px;padding:12px;border:1px solid #e3b56c;border-radius:7px;background:#fff8eb}
+.finishing-receive-incomplete-choice[hidden]{display:none}
+.finishing-receive-incomplete-choice>strong{display:block;color:#76501b}
+.finishing-receive-incomplete-choice>p{margin:5px 0 10px;font-size:13px}
+.finishing-receive-incomplete-choice>.actions{display:flex;flex-wrap:wrap;gap:8px}
+.finishing-batch-delete-dialog{width:min(520px,calc(100vw - 32px))}
+.finishing-batch-delete-dialog .dialog-body>p{margin-top:0}
+.finishing-batch-delete-dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}

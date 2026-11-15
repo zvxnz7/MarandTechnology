@@ -2,9 +2,23 @@
 let dirty=false,submitting=false;
 const correctionParentUrl=document.body?.dataset.correctionParentUrl;
 if(correctionParentUrl&&window.opener&&!window.opener.closed){try{window.opener.location.replace(correctionParentUrl);}catch{}}
+const finishingBatchDeleteDialog=document.createElement('dialog');
+finishingBatchDeleteDialog.className='form-dialog delete-confirm-dialog finishing-batch-delete-dialog';
+finishingBatchDeleteDialog.innerHTML='<div class="dialog-head"><strong>Usuń zlecenie barwiarskie</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p data-finishing-delete-description></p><p class="muted">Przyjęcia, dane belek i rozliczenia tej partii zostaną usunięte. Zgłoszone problemy pozostaną w historii.</p><div class="actions"><button type="button" data-finishing-delete-cancel>Wróć</button><button type="button" class="danger" data-finishing-delete-confirm>Usuń partię</button></div></div>';
+document.body.append(finishingBatchDeleteDialog);
+let pendingFinishingBatchDelete=null;
+finishingBatchDeleteDialog.querySelector('[data-finishing-delete-cancel]')?.addEventListener('click',()=>finishingBatchDeleteDialog.close());
+finishingBatchDeleteDialog.querySelector('[data-finishing-delete-confirm]')?.addEventListener('click',()=>{
+ if(!pendingFinishingBatchDelete)return;
+ const form=pendingFinishingBatchDelete;pendingFinishingBatchDelete=null;
+ HTMLFormElement.prototype.submit.call(form);
+});
+finishingBatchDeleteDialog.addEventListener('close',()=>{pendingFinishingBatchDelete=null;});
 document.querySelectorAll('[data-finishing-batch-delete]').forEach(form=>form.addEventListener('submit',event=>{
- const batchLabel=form.dataset.batchLabel||'tej partii';
- if(!window.confirm(`Usunąć ${batchLabel}? Zapisane przyjęcia i dane belek z tej partii zostaną usunięte. Wpis audytowy pozostanie, a zgłoszone problemy zostaną zachowane i odłączone od partii.`))event.preventDefault();
+ event.preventDefault();pendingFinishingBatchDelete=form;
+ const description=finishingBatchDeleteDialog.querySelector('[data-finishing-delete-description]');
+ if(description)description.textContent=`Czy usunąć partię „${form.dataset.batchLabel||'bez numeru'}”?`;
+ finishingBatchDeleteDialog.showModal();
 }));
 document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
@@ -520,7 +534,7 @@ document.querySelectorAll('[data-cancel-correction]').forEach(button=>button.add
  if(form)form.hidden=true;if(open)open.hidden=false;if(save)save.hidden=false;
 }));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
- const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryUnit=form.querySelector('[data-receipt-entry-unit]'),entryCount=form.querySelector('[data-receipt-entry-count]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),completion=form.querySelector('[data-receipt-completion]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,usedWeightInput=form.elements.used_weight_kg;
+ const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryUnit=form.querySelector('[data-receipt-entry-unit]'),entryCount=form.querySelector('[data-receipt-entry-count]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),completion=form.querySelector('[data-receipt-completion]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,usedWeightInput=form.elements.used_weight_kg,closeIncompleteInput=form.elements.close_incomplete,incompleteChoice=form.querySelector('[data-receipt-incomplete-choice]'),incompleteMessage=form.querySelector('[data-receipt-incomplete-message]');
  form.querySelectorAll('input[type="number"]').forEach(input=>{
   input.addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown')event.preventDefault();});
   input.addEventListener('wheel',()=>{if(document.activeElement===input)input.blur();},{passive:true});
@@ -568,15 +582,19 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
    completion.className='finishing-receive-completion';
    const returnedCount=Number.isFinite(returned)?Math.max(0,Math.floor(returned)):0,totalReturnedCount=previousReceivedPieces+returnedCount,totalReceivedKg=usedKg===null?null:Math.round((previousReceivedWeight+usedKg)*100)/100,missingPieces=Math.max(0,Math.floor(sentPieces)-totalReturnedCount),missingWeight=totalReceivedKg===null?null:Math.max(0,Math.round((rawWeight-totalReceivedKg)*100)/100);
    if(!rawPieces.value.trim()){completion.classList.add('is-pending');completion.textContent='Wpisz liczbę sztuk przyjętych z farbiarni.';}
-   else if(sentPieces>0&&totalReturnedCount<sentPieces){completion.classList.add('is-pending');completion.textContent=`Przyjęcie będzie częściowe, a partia pozostanie otwarta. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; łącznie przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg. Brak ${missingPieces} szt.${missingWeight===null?'':` · ${fmt(missingWeight)} kg`} zostanie wpisany do „Zagubione/zniszczone” po użyciu przycisku „Przyjmij niekompletne zlecenie”.`;}
+   else if(sentPieces>0&&totalReturnedCount<sentPieces){completion.classList.add('is-pending');completion.textContent=`Przyjęcie będzie częściowe. Wysłano: ${sentPieces} szt. · ${fmt(rawWeight)} kg; łącznie przyjęto: ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)} kg. Brak ${missingPieces} szt.${missingWeight===null?'':` · ${fmt(missingWeight)} kg`}. Wybierz, czy partia ma pozostać otwarta, czy zamknąć ją z brakami.`;}
    else if(sentPieces>0&&totalReturnedCount>sentPieces){completion.classList.add('is-over');completion.textContent=`Liczba przyjętych sztuk (${totalReturnedCount}) jest większa niż wysłanych (${sentPieces}). Sprawdź ilości przed zamknięciem partii.`;}
   else if(sentPieces>0&&totalReceivedKg!==null&&Math.abs(rawWeight-totalReceivedKg)<=0.01){completion.classList.add('is-complete');completion.textContent=`Rozliczenie ze zleconych się zgadza: ${sentPieces} / ${totalReturnedCount} szt. oraz ${fmt(rawWeight)} / ${fmt(totalReceivedKg)} kg. Waga belek wykończonych jest liczona osobno. Zapis zamknie partię.`;}
   else if(sentPieces>0){const delta=totalReceivedKg===null?null:Math.round((rawWeight-totalReceivedKg)*100)/100;completion.classList.add('is-pending');completion.textContent=`Sztuki rozliczane ze zleconych: ${totalReturnedCount} / ${sentPieces}. Rozliczana masa: ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' / '+fmt(rawWeight)+' kg'}${delta===null?'':`; różnica ${fmt(Math.abs(delta))} kg`}. Waga fizycznie przyjętych belek jest osobna. Zapis zamknie partię, jeśli zgadza się liczba rozliczanych sztuk.`;}
    else{completion.classList.add('is-pending');completion.textContent=`Wysłanych sztuk nie podano. Łącznie przyjęto ${totalReturnedCount} szt. · ${totalReceivedKg===null?'—':fmt(totalReceivedKg)+' kg'}. Nie można automatycznie wyliczyć zagubionych sztuk.`;}
   }
   const incomplete=bales.some(bale=>(useMeters&&parsePositive(bale.meters)===null)||(useWeight&&parsePositive(bale.weight)===null));
+  const missingChecks=[...form.querySelectorAll('.finishing-receive-check')].filter(fieldset=>fieldset.querySelector('input[type="radio"][required]')&&!fieldset.querySelector('input[type="radio"]:checked'));
+  const missingMeasurements=[...form.querySelectorAll('[data-recipe-parameter] input[required]')].filter(input=>!input.value.trim());
+  const missingParameterLabels=[...missingChecks.map(fieldset=>fieldset.querySelector('legend')?.textContent.trim()),...missingMeasurements.map(input=>input.closest('label')?.firstChild?.textContent.trim())].filter(Boolean);
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
-  if(saveButton)saveButton.disabled=false;
+  if(saveButton)saveButton.disabled=missingParameterLabels.length>0;
+  if(missingParameterLabels.length&&completion)completion.textContent=`Przed przyjęciem oceń wszystkie parametry: ${missingParameterLabels.join(', ')}.`;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
@@ -587,6 +605,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  usedWeightInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawPieces.focus();}});
  rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawGrammage?.focus();}});
  rawPieces.addEventListener('input',refresh);
+ form.querySelectorAll('.finishing-receive-check input').forEach(input=>input.addEventListener('change',refresh));
  rawGrammage?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawWidth?.focus();}});
  rawWidth?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  entryCount.addEventListener('focus',()=>entryCount.select());
@@ -634,7 +653,14 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(!rawPieces.value.trim()||!Number.isInteger(receivedRawPieces)||receivedRawPieces<1){event.preventDefault();completion?.classList.add('is-pending');if(completion)completion.textContent='Wpisz co najmniej jedną sztukę rozliczaną ze zleconych.';rawPieces.focus();return;}
   if(sentRawPieces>0&&previousRawPieces+receivedRawPieces>sentRawPieces){event.preventDefault();completion?.classList.add('is-over');if(completion)completion.textContent=`Rozliczenie przekracza ilość wysłaną: ${previousRawPieces+receivedRawPieces} z ${sentRawPieces} szt. Popraw liczbę sztuk.`;rawPieces.focus();return;}
   if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent=!bales.length?'Dodaj zwróconą sztukę.':'Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
+  const missingChecks=[...form.querySelectorAll('.finishing-receive-check')].filter(fieldset=>fieldset.querySelector('input[type="radio"][required]')&&!fieldset.querySelector('input[type="radio"]:checked'));
+  const missingMeasurements=[...form.querySelectorAll('[data-recipe-parameter] input[required]')].filter(input=>!input.value.trim());
+  if(missingChecks.length||missingMeasurements.length){event.preventDefault();completion?.classList.add('is-pending');if(completion)completion.textContent='Przed przyjęciem zaznacz ocenę każdego parametru oraz wpisz wymaganą gramaturę i szerokość.';(missingChecks[0]||missingMeasurements[0])?.scrollIntoView({behavior:'smooth',block:'center'});return;}
+  const projectedReceived=previousRawPieces+receivedRawPieces,leavesUnaccounted=sentRawPieces>0&&projectedReceived<sentRawPieces;
+  if(leavesUnaccounted&&closeIncompleteInput?.value===''){event.preventDefault();const missingCount=Math.max(0,sentRawPieces-projectedReceived);if(incompleteMessage)incompleteMessage.textContent=`Po tym przyjęciu pozostanie ${missingCount} szt. nieprzyjętych. Jeśli reszta nadal jest w wykańczalni, zostaw partię otwartą. Jeśli już nie wróci, zamknij ją z brakami.`;if(incompleteChoice){incompleteChoice.hidden=false;incompleteChoice.scrollIntoView({behavior:'smooth',block:'center'});}return;}
+  if(!leavesUnaccounted&&closeIncompleteInput)closeIncompleteInput.value='';
  });
+ incompleteChoice?.querySelectorAll('[data-receipt-incomplete-option]').forEach(button=>button.addEventListener('click',()=>{closeIncompleteInput.value=button.dataset.receiptIncompleteOption;form.requestSubmit();}));
  form.closest('dialog')?.addEventListener('close',()=>{
   form.reset();bales.splice(0,bales.length);pendingMeters=null;pendingCount=1;entryCount.disabled=false;entryStatus.textContent='';
   renderBales();refreshParamRows();refresh();
