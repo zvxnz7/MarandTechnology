@@ -556,11 +556,11 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   weightsList.value=weightValues.map(value=>value===null?'':String(value)).join('+');
   const meterTotal=meterValues.reduce((sum,value)=>sum+(value||0),0);
   form.querySelector('[data-receipt-total-meters]').textContent=meterValues.some(value=>value!==null)?fmt(meterTotal)+' mb':'—';
-  const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value),measuredBales=bales.length,previousReceivedPieces=Number(form.dataset.previousReceivedPieces)||0,previousReceivedWeight=Number(form.dataset.previousReceivedWeight)||0,usedKgText=String(usedWeightInput?.value||'').trim().replace(',','.'),usedKg=usedKgText!==''&&Number.isFinite(Number(usedKgText))?Number(usedKgText):null;
-  const expected=planGrammage>0&&planWidth>0&&rawWeight>0&&sentPieces>0&&measuredBales>0?rawWeight*Math.min(measuredBales/sentPieces,1)*100000/(planGrammage*planWidth):0;
+  const planGrammage=Number(form.dataset.planGrammage),planWidth=Number(form.dataset.planWidth),rawWeight=Number(form.dataset.rawWeight),sentPieces=Number(form.dataset.sentPieces),returned=Number(rawPieces.value),previousReceivedPieces=Number(form.dataset.previousReceivedPieces)||0,previousReceivedWeight=Number(form.dataset.previousReceivedWeight)||0,usedKgText=String(usedWeightInput?.value||'').trim().replace(',','.'),usedKg=usedKgText!==''&&Number.isFinite(Number(usedKgText))?Number(usedKgText):null;
+  const expected=planGrammage>0&&planWidth>0&&usedKg!==null&&usedKg>0?usedKg*100000/(planGrammage*planWidth):0;
   const theory=form.querySelector('[data-receipt-theoretical]'),loss=form.querySelector('[data-receipt-loss]'),note=form.querySelector('[data-receipt-calculation-note]');
   theory.textContent=expected?new Intl.NumberFormat('pl-PL',{maximumFractionDigits:0}).format(Math.round(expected))+' mb':'—';
-  if(!expected){loss.textContent='—';note.textContent='Do wyliczenia potrzebne są planowana gramatura, planowana szerokość i liczba odebranych sztuk surowych.';}
+  if(!expected){loss.textContent='—';note.textContent='Wpisz rozliczane kg oraz planowaną gramaturę i szerokość, aby wyliczyć teorię.';}
   else if(!useMeters||!meterValues.length){loss.textContent='—';note.textContent='Wybierz tryb mb, aby porównać uzyskaną długość z wartością teoretyczną.';}
   else{const percentage=(expected-meterTotal)/expected*100;loss.textContent=percentage>0.005?'Strata '+fmt(percentage)+'%':percentage< -0.005?'Zysk '+fmt(Math.abs(percentage))+'%':'0% · bez straty';note.textContent='Porównanie uzyskanych metrów z długością teoretyczną dla odebranych sztuk.';}
   if(completion){
