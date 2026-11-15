@@ -8,7 +8,7 @@ document.querySelectorAll('[data-finishing-batch-delete]').forEach(form=>form.ad
 }));
 document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  const input=form.elements.finishing_lot;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
- const matchingRemoveForm=()=>[...form.closest('.finishing-order-lot-list')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);
+ const matchingRemoveForm=()=>[...form.closest('tr')?.querySelectorAll('[data-finishing-batch-delete]')||[]].find(removeForm=>removeForm.elements.remove_batch_id?.value===form.elements.batch_id?.value);
  const updateRemoveForm=()=>{const removeForm=matchingRemoveForm();if(!removeForm)return;removeForm.hidden=false;const button=removeForm.querySelector('button');if(button)button.disabled=saving||input.value.trim()!==lastSaved;};
  const updateReceiveButton=(savedValue,displayValue=savedValue)=>{
   const batchId=String(form.elements.batch_id?.value||''),button=[...document.querySelectorAll('[data-batch-receive]')].find(item=>item.dataset.batchReceive===batchId);
@@ -519,7 +519,7 @@ document.querySelectorAll('[data-cancel-correction]').forEach(button=>button.add
  if(form)form.hidden=true;if(open)open.hidden=false;if(save)save.hidden=false;
 }));
 document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
- const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryUnit=form.querySelector('[data-receipt-entry-unit]'),entryCount=form.querySelector('[data-receipt-entry-count]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),completion=form.querySelector('[data-receipt-completion]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,receivedWeightInput=form.elements.finished_weight_kg,usedWeightInput=form.elements.used_weight_kg;
+ const entryInput=form.querySelector('[data-receipt-entry-input]'),entryPrompt=form.querySelector('[data-receipt-entry-prompt]'),entryUnit=form.querySelector('[data-receipt-entry-unit]'),entryCount=form.querySelector('[data-receipt-entry-count]'),entryStatus=form.querySelector('[data-receipt-entry-status]'),completion=form.querySelector('[data-receipt-completion]'),modeInputs=[...form.querySelectorAll('[data-receipt-mode]')],baleList=form.querySelector('[data-receipt-bale-list]'),printLabelsButton=form.querySelector('[data-receipt-print-labels]'),measureMeters=form.querySelector('[data-receipt-measure-meters]'),measureWeight=form.querySelector('[data-receipt-measure-weight]'),metersList=form.querySelector('[data-receipt-meters-list]'),weightsList=form.querySelector('[data-receipt-weights-list]'),rawPieces=form.elements.raw_pieces_received,usedWeightInput=form.elements.used_weight_kg;
  form.querySelectorAll('input[type="number"]').forEach(input=>{
   input.addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown')event.preventDefault();});
   input.addEventListener('wheel',()=>{if(document.activeElement===input)input.blur();},{passive:true});
@@ -581,7 +581,6 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  const rawGrammage=form.elements.actual_grammage,rawWidth=form.elements.actual_width_cm;
- receivedWeightInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();usedWeightInput?.focus();}});
  usedWeightInput?.addEventListener('input',refresh);
  usedWeightInput?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawPieces.focus();}});
  rawPieces.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();rawGrammage?.focus();}});
@@ -609,7 +608,6 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   pendingMeters=null;pendingCount=1;entryCount.value='1';entryCount.disabled=false;
   entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
- receivedWeightInput.addEventListener('input',refresh);
  const labelConfig=form.closest('.dialog-body')?.querySelector('.finishing-label-config-dialog');
  labelConfig?.querySelector('[data-label-include-client]')?.addEventListener('change',event=>{const field=labelConfig.querySelector('[data-label-client-field]');if(field)field.hidden=!event.currentTarget.checked;});
  labelConfig?.querySelector('[data-label-print]')?.addEventListener('click',()=>{

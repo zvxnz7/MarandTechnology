@@ -414,6 +414,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-actions-cell{vertical-align:top!important;padding-top:8px!important}
 .finishing-order-actions-inline{display:flex;align-items:flex-start;justify-content:flex-end;gap:5px}
 .finishing-order-receive-actions{display:grid;align-content:start;gap:6px}
+.finishing-order-batch-actions-row{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-height:34px}
+.finishing-order-batch-actions-row .finishing-order-remove-spec-form{display:inline-flex;margin:0}
 .finishing-order-receive-actions .finishing-row-action{margin:0}
 .finishing-orders-list td,.finishing-orders-list td .badge{font-size:13px}
 .finishing-order-pm{font-size:inherit;font-weight:750;color:inherit}
@@ -606,10 +608,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-bale-row label{display:flex;align-items:center;gap:3px;min-width:0;margin:0;font-size:10px}
 .finishing-receive-bale-row label span{color:var(--muted)}
 .finishing-receive-bale-row input{width:58px;height:27px;margin:0;padding:3px 5px;font-size:11px}
-.finishing-receive-accepted-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px;padding:9px 10px;border:1px solid #d7eadb;border-radius:7px;background:#edf7ef}
+.finishing-receive-accepted-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px;padding:9px 10px;border:1px solid #d7eadb;border-radius:7px;background:#edf7ef}
 .finishing-receive-accepted-summary label{display:grid;gap:4px;margin:0;font-size:11px;font-weight:600;color:#236438}
 .finishing-receive-accepted-summary input{height:32px;margin:0;background:#fff;border-color:#cfe3d3;color:#1f3825}
-@media(max-width:760px){.finishing-receive-accepted-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.finishing-receive-accepted-summary{grid-template-columns:1fr}}
 .finishing-batch-summary-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:12px;border-radius:8px;background:#eef1f3}
 .finishing-batch-summary-row label{margin:0}
