@@ -26,7 +26,7 @@ function priceFor(db,importId,rawSymbol){
   return row?{...row,current_price:row.current_price===null?null:round2(row.current_price),theoretical_price:row.theoretical_price===null?null:round2(row.theoretical_price)}:null;
 }
 function batchRecord(db,batchId){
-  return db.prepare(`SELECT b.*,o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,coalesce(nullif(b.correction_target_color,''),o.target_color) target_color,coalesce(b.correction_target_width_cm,o.target_width_cm) target_width_cm,coalesce(b.correction_target_grammage,o.target_grammage) target_grammage,o.client_name,o.status order_status,o.order_type,o.shipment_article_id,o.manual_entry,o.manual_reference,
+  return db.prepare(`SELECT b.*,o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,coalesce(nullif(b.correction_target_color,''),o.target_color) target_color,coalesce(b.correction_target_width_cm,o.target_width_cm) target_width_cm,coalesce(b.correction_target_grammage,o.target_grammage) target_grammage,o.client_name,o.status order_status,o.order_type,o.shipment_article_id,o.manual_entry,o.manual_reference,o.source_remainder_batch_id,
       o.source_shipment_no,fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
       (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
@@ -54,22 +54,32 @@ function getSettlement(db,batchId){return db.prepare('SELECT * FROM finishing_se
 function calculationContext(db,batchId){
   const batch=batchRecord(db,batchId);if(!batch)return null;
   const root=rootBatch(db,batch),rootReceipt=receiptTotals(db,root.id),output=receiptTotals(db,batch.id),current=latestImport(db),settlement=getSettlement(db,batch.id);
+  if(batch.source_remainder_batch_id){const missingWeight=Number(batch.raw_weight_kg||0);output.finished_pieces=Number(batch.sent_pieces||0);output.finished_weight_kg=missingWeight;output.output_quantity=missingWeight;output.output_unit='kg';}
   const priceImportId=settlement?.calculation_import_id??current?.id??null,price=priceFor(db,priceImportId,root.raw_symbol),priceImport=priceImportId?db.prepare('SELECT * FROM finishing_calculation_imports WHERE id=?').get(priceImportId):null;
   const correction=Boolean(batch.correction_parent_batch_id||batch.correction_of_batch_id);
   return {batch,root,rootReceipt,output,current,price,priceImport,settlement,usedWeight:Number(settlement?.used_weight_kg??(correction?output.used_weight_kg:rootReceipt.used_weight_kg)??0)||(!correction?Number(root.raw_weight_kg||0):0)};
 }
 function settlementRows(db){
   const rows=db.prepare(`SELECT b.id batch_id,b.order_id,b.correction_of_batch_id,b.correction_parent_batch_id,b.cancelled_at,b.complaint_status,b.workflow_status,b.finishing_lot,b.sent_at,b.raw_weight_kg,b.sent_pieces,b.closed_at,
-      o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,o.client_name,o.order_type,o.manual_entry,o.manual_reference,o.status order_status,o.source_shipment_no,
+      o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,o.client_name,o.order_type,o.manual_entry,o.manual_reference,o.source_remainder_batch_id,o.status order_status,o.source_shipment_no,
       fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
       (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
     LEFT JOIN shipments s ON s.id=sa.shipment_id
     WHERE o.status<>'cancelled' AND b.cancelled_at IS NULL
-      AND EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id)
+      AND (EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id)
+        OR (o.source_remainder_batch_id IS NOT NULL AND EXISTS(SELECT 1 FROM finishing_settlements fs WHERE fs.batch_id=b.id)))
     ORDER BY o.created_at DESC,o.id DESC,b.id`).all();
-  return rows.map(row=>({row,context:calculationContext(db,row.batch_id)}));
+  return rows.map(row=>{
+    const context=calculationContext(db,row.batch_id);
+    if(row.source_remainder_batch_id&&context){
+      const missingWeight=Number(row.raw_weight_kg||0);
+      context.output={...context.output,finished_pieces:Number(row.sent_pieces||0),finished_weight_kg:missingWeight,output_quantity:missingWeight,output_unit:'kg'};
+      context.usedWeight=Number(context.settlement?.used_weight_kg??missingWeight);
+    }
+    return {row,context};
+  });
 }
 function comparableHistory(db,tradeSymbol,unit,excludeBatchId,limit=5){
   if(!String(tradeSymbol||'').trim())return [];
