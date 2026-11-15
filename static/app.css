@@ -181,6 +181,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 /* Warehouse navigation, catalog and shipment preparation. */
 .nav-group{margin:0 0 6px;border:1px solid transparent;border-radius:6px}
 .nav-group>summary{list-style:none;padding:10px 12px;color:#343a40;font-size:13px;font-weight:750;letter-spacing:.45px}
+.nav-group-main-link{color:inherit;text-decoration:none}
+.nav-group-main-link:hover{color:#9e2528}
 .nav-group>summary::-webkit-details-marker{display:none}
 .nav-group>summary::after{content:'⌄';float:right;color:var(--muted);font-size:15px;line-height:1}
 .nav-group:not([open])>summary::after{content:'›'}
