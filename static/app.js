@@ -46,9 +46,9 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
   const batchId=String(form.elements.batch_id?.value||''),button=[...document.querySelectorAll('[data-batch-receive]')].find(item=>item.dataset.batchReceive===batchId);
   if(!button||input.value.trim()!==savedValue)return;
   if(!savedValue){button.disabled=true;button.title='Najpierw wpisz nr zlecenia barwiarskiego';button.setAttribute('aria-label','Najpierw wpisz nr zlecenia barwiarskiego');return;}
-  const dialog=document.getElementById(`finishing-receive-${batchId}`);if(!dialog)return;
+  const receiveDialogId=`finishing-receive-${batchId}`,dialog=document.getElementById(receiveDialogId);if(!dialog)return;
   const orderNumber=dialog.querySelector('[data-receipt-order-number]');if(orderNumber)orderNumber.textContent=displayValue;
-  button.disabled=false;button.dataset.openDialog=`finishing-receive-${batchId}`;button.title='Przyjmij sztuki';button.setAttribute('aria-label',`Przyjmij sztuki · nr zlecenia ${displayValue}`);
+  button.disabled=false;button.dataset.openDialog=button.dataset.correctionBatch==='1'?`finishing-correction-info-${batchId}`:receiveDialogId;button.title='Przyjmij sztuki';button.setAttribute('aria-label',`Przyjmij sztuki · nr zlecenia ${displayValue}`);
  };
  const save=async()=>{
   const value=input.value.trim();if(value===lastSaved)return;if(saving){queued=true;return;}saving=true;

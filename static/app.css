@@ -804,6 +804,17 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-receive-validation-dialog .dialog-body>p{margin-top:0}
 .finishing-receive-validation-dialog ul{margin:8px 0 18px;padding-left:22px}
 .finishing-receive-validation-dialog li{margin:5px 0}
+.finishing-correction-info-dialog{width:min(600px,calc(100vw - 32px))}
+.finishing-correction-info-dialog .dialog-body>p{margin-top:0}
+.finishing-correction-info-fields{display:grid;gap:8px;margin:14px 0}
+.finishing-correction-info-change{display:grid;grid-template-columns:minmax(115px,.45fr) 1fr;align-items:center;gap:8px;padding:10px 12px;border-radius:7px;background:#f3f5f7}
+.finishing-correction-info-values{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.finishing-correction-info-change small{font-weight:700;color:var(--muted)}
+.finishing-correction-info-change span,.finishing-correction-info-change b{color:var(--muted)}
+.finishing-correction-info-change strong{color:#222;font-size:16px}
+.finishing-correction-info-instruction{margin:14px 0;padding:12px;border:1px solid #e3b56c;border-radius:7px;background:#fff8eb}
+.finishing-correction-info-instruction strong{display:block;margin-bottom:6px;color:#76501b}
+.finishing-correction-info-instruction p{margin:0;font-size:15px;font-weight:650;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-receive-incomplete-choice{margin-top:10px;padding:12px;border:1px solid #e3b56c;border-radius:7px;background:#fff8eb}
 .finishing-receive-incomplete-choice[hidden]{display:none}
 .finishing-receive-incomplete-choice>strong{display:block;color:#76501b}
