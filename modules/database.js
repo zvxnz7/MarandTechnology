@@ -479,7 +479,7 @@ function migrateV23(db){
 function migrateV24(db){
   const version=db.prepare('PRAGMA user_version').get().user_version;
   db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
-  if(version>=24)return;
+  if(version>=24){migrateV25(db);return;}
   db.exec('BEGIN IMMEDIATE');
   try{
     const columns=new Set(db.prepare("PRAGMA table_info('finishing_orders')").all().map(column=>column.name));
@@ -494,16 +494,30 @@ function migrateV24(db){
     }
     db.exec("CREATE UNIQUE INDEX IF NOT EXISTS finishing_manual_reference ON finishing_orders(manual_reference) WHERE manual_entry=1 AND manual_reference<>''; PRAGMA user_version=24; COMMIT");
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+  migrateV25(db);
+}
+function migrateV25(db){
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  const schema=fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8');
+  if(version>=25){db.exec(schema);return;}
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const columns=new Set(db.prepare("PRAGMA table_info('finishing_orders')").all().map(column=>column.name));
+    if(!columns.has('source_remainder_batch_id'))db.exec('ALTER TABLE finishing_orders ADD COLUMN source_remainder_batch_id INTEGER REFERENCES finishing_batches(id) ON DELETE SET NULL');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS finishing_orders_source_remainder_batch ON finishing_orders(source_remainder_batch_id) WHERE source_remainder_batch_id IS NOT NULL; PRAGMA user_version=25; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+  db.exec(schema);
 }
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
+  if (!legacy.length) { db.exec(schema); db.exec('CREATE UNIQUE INDEX IF NOT EXISTS finishing_orders_source_remainder_batch ON finishing_orders(source_remainder_batch_id) WHERE source_remainder_batch_id IS NOT NULL'); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>24)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===24) { db.exec(schema); return; }
+  if(version>25)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===25) { db.exec(schema); return; }
+  if(version===24) { migrateV25(db); return; }
   if(version===23) { migrateV24(db); return; }
   if(version===22) { migrateV23(db); return; }
   if(version===21) { migrateV22(db); return; }

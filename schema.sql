@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS finishing_orders(
   manual_entry INTEGER NOT NULL DEFAULT 0 CHECK(manual_entry IN (0,1)),
   manual_reference TEXT NOT NULL DEFAULT '',
   manual_input_description TEXT NOT NULL DEFAULT '',
+  source_remainder_batch_id INTEGER REFERENCES finishing_batches(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','sent','partial','received','raw_sale','cancelled')),
   created_at TEXT NOT NULL,
   created_by INTEGER REFERENCES users(id),
