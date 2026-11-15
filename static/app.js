@@ -672,7 +672,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
    return;
   }
   const projectedReceived=previousRawPieces+receivedRawPieces,leavesUnaccounted=sentRawPieces>0&&projectedReceived<sentRawPieces;
-  if(leavesUnaccounted&&closeIncompleteInput?.value===''){event.preventDefault();const missingCount=Math.max(0,sentRawPieces-projectedReceived);if(incompleteMessage)incompleteMessage.textContent=`Po tym przyjęciu pozostanie ${missingCount} szt. nieprzyjętych. Jeśli reszta nadal jest w wykańczalni, zostaw partię otwartą. Jeśli już nie wróci, zamknij ją z brakami.`;if(incompleteChoice){incompleteChoice.hidden=false;incompleteChoice.scrollIntoView({behavior:'smooth',block:'center'});}return;}
+  if(leavesUnaccounted&&form.dataset.allowIncompleteChoice==='1'&&closeIncompleteInput?.value===''){event.preventDefault();const missingCount=Math.max(0,sentRawPieces-projectedReceived);if(incompleteMessage)incompleteMessage.textContent=`Po tym przyjęciu pozostanie ${missingCount} szt. nieprzyjętych. Jeśli reszta nadal jest w wykańczalni, zostaw partię otwartą. Jeśli już nie wróci, zamknij ją z brakami.`;if(incompleteChoice){incompleteChoice.hidden=false;incompleteChoice.scrollIntoView({behavior:'smooth',block:'center'});}return;}
   if(!leavesUnaccounted&&closeIncompleteInput)closeIncompleteInput.value='';
  });
  incompleteChoice?.querySelectorAll('[data-receipt-incomplete-option]').forEach(button=>button.addEventListener('click',()=>{closeIncompleteInput.value=button.dataset.receiptIncompleteOption;form.requestSubmit();}));
