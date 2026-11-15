@@ -425,6 +425,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-lot{font-size:inherit;font-weight:750}
 .finishing-order-lot-list{display:grid;align-items:center;gap:6px;min-width:220px}
 .finishing-order-lot-entry{display:flex;align-items:center;flex:0 1 auto;min-width:0;min-height:34px;gap:5px}
+.finishing-order-batch-status-list{display:grid;align-content:start;gap:6px;min-width:max-content}
+.finishing-order-batch-status-row{display:flex;align-items:center;gap:5px;min-height:34px}
 .finishing-order-lot-entry.is-correction-attempt{gap:6px;flex-wrap:nowrap}
 .finishing-correction-sent{flex:0 0 auto;white-space:nowrap;background:#fff3e8;color:#9a4517;border:1px solid #f2d0b8}
 .finishing-order-lot-entry.is-correction-attempt .finishing-order-lot-inline{flex:0 0 140px}
