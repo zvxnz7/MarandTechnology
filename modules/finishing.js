@@ -1313,8 +1313,10 @@ function handle(ctx) {
           orderNotes=appendRecipeNote(orderNotes,`UWAGA: INNY LOT PRZĘDZY NIŻ W ${previousOrderInReference.toLocaleUpperCase('pl-PL')}. WYKONAĆ KOREKTĘ KOLORU.`);
         }
       }
+      const tradeSymbol=orderType==='trial'?'PRÓBA':text(form,'trade_symbol',200),recipeSnapshot={...snapshotRecipe(recipe),finishingPlant:plant?.name||''};
+      if(orderType==='trial'){recipeSnapshot.tradeSymbol='PRÓBA';recipeSnapshot.details={...(recipeSnapshot.details||{}),tradeSymbol:'PRÓBA'};}
       const result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_id,recipe_snapshot,target_color,target_stiffening,target_width_cm,target_grammage,notes,status,created_at,created_by,updated_at,updated_by)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(currentSource.shipment_article_id,orderType,plantId||null,shipmentNo({sequence:currentSource.shipment_sequence,shipment_year:currentSource.shipment_year}),currentSource.shipment_date,currentSource.symbol,client,text(form,'trade_symbol',200),recipe?recipeId:null,JSON.stringify({...snapshotRecipe(recipe),finishingPlant:plant?.name||''}),text(form,'target_color',160)||(recipe&&recipe.target_color)||'',text(form,'target_stiffening',160)||(recipe&&recipe.target_stiffening)||'',targetWidth,targetGrammage,JSON.stringify(orderNotes),rawSale?'raw_sale':'draft',now(),req.user.id,now(),req.user.id);
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(currentSource.shipment_article_id,orderType,plantId||null,shipmentNo({sequence:currentSource.shipment_sequence,shipment_year:currentSource.shipment_year}),currentSource.shipment_date,currentSource.symbol,client,tradeSymbol,recipe?recipeId:null,JSON.stringify(recipeSnapshot),text(form,'target_color',160)||(recipe&&recipe.target_color)||'',text(form,'target_stiffening',160)||(recipe&&recipe.target_stiffening)||'',targetWidth,targetGrammage,JSON.stringify(orderNotes),rawSale?'raw_sale':'draft',now(),req.user.id,now(),req.user.id);
       const newId=Number(result.lastInsertRowid);
       const pieceCount=saveOrderPieces(db,newId,currentSource.shipment_article_id);
       if(!pieceCount)fail(409,'Wybrana pozycja WZ nie ma już aktywnych sztuk do załadowania do zlecenia.');
@@ -1365,7 +1367,7 @@ function handle(ctx) {
     if(order.status==='raw_sale'||order.status==='cancelled'&&!order.manual_entry)fail(409,'Anulowanego zlecenia ani sprzedaży surowej nie można edytować.');
     if(req.method==='GET')return send(req,res,200,orderEditPage(ctx,order));
     if(req.method==='POST'){
-      const rawSymbol=text(form,'raw_symbol',200),tradeSymbol=text(form,'trade_symbol',200),client=text(form,'client_name',200),plantId=Number(form.finishing_plant_id)||null;
+      const rawSymbol=text(form,'raw_symbol',200),tradeSymbol=order.order_type==='trial'?'PRÓBA':text(form,'trade_symbol',200),client=text(form,'client_name',200),plantId=Number(form.finishing_plant_id)||null;
       if(!rawSymbol&&!order.manual_entry)fail(400,'Wpisz symbol dzianiny.');
       if(plantId&&!db.prepare('SELECT id FROM finishing_plants WHERE id=?').get(plantId))fail(400,'Nie znaleziono wybranej wykończalni.');
       const targetColor=text(form,'target_color',160),targetStiffening=text(form,'target_stiffening',2000),width=number(form.target_width_cm),grammage=number(form.target_grammage);
@@ -1378,6 +1380,7 @@ function handle(ctx) {
       if(order.manual_entry&&selectedRecipeId&&(!selectedRecipe||!selectedRecipe.active))fail(400,'Wybierz aktywną recepturę z biblioteki albo pozostaw wybór pusty.');
       let snapshot={};try{snapshot=JSON.parse(order.recipe_snapshot||'{}')}catch{}
       snapshot.name=recipeName;snapshot.rawSymbol=rawSymbol;snapshot.tradeSymbol=tradeSymbol;snapshot.finishingPlant=plantId?(db.prepare('SELECT name FROM finishing_plants WHERE id=?').get(plantId)?.name||''):'';
+      if(order.order_type==='trial')snapshot.details={...(snapshot.details||{}),tradeSymbol:'PRÓBA'};
       snapshot.recipeText=recipeText;snapshot.targetColor=targetColor;snapshot.targetStiffening=targetStiffening;snapshot.targetWidthCm=width;snapshot.targetGrammage=grammage;snapshot.notes=recipeNotes;
       if(order.manual_entry)snapshot.details=selectedRecipe?readRecipeDetails(selectedRecipe):{};
 
