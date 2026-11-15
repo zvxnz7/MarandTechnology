@@ -647,7 +647,7 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
   if(saveButton)saveButton.disabled=false;
   if(missingParameterLabels.length&&completion)completion.textContent=`Przed zapisem uzupełnij ocenę parametrów: ${missingParameterLabels.join(', ')}.`;
-  printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
+  printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;updateLabelPreview?.();
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
  const rawGrammage=form.elements.actual_grammage,rawWidth=form.elements.actual_width_cm;
@@ -682,20 +682,39 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   entryStatus.textContent=`Dodano ${repeat} ${repeat===1?'sztukę':'sztuk'} o tej samej wartości.`;renderBales();refresh();entryInput.focus();
  });
  const labelConfig=form.closest('.dialog-body')?.querySelector('.finishing-label-config-dialog');
- labelConfig?.querySelector('[data-label-include-client]')?.addEventListener('change',event=>{const field=labelConfig.querySelector('[data-label-client-field]');if(field)field.hidden=!event.currentTarget.checked;});
+ const labelPreview=labelConfig?.querySelector('[data-label-preview]');
+ const labelWords=language=>language==='en'?{symbol:'SYMBOL',raw:'RAW SYMBOL',color:'COLOR',lot:'BATCH NO.',width:'WIDTH',grammage:'GRAMMAGE',quantityMeters:'QUANTITY [m]',quantityWeight:'QUANTITY [kg]',client:'CLIENT',weight:'WEIGHT [kg]'}:{symbol:'SYMBOL',raw:'SYMBOL SUROWY',color:'KOLOR',lot:'NR PARTII',width:'SZEROKOŚĆ',grammage:'GRAMATURA',quantityMeters:'ILOŚĆ [mb]',quantityWeight:'ILOŚĆ [kg]',client:'KLIENT',weight:'WAGA [kg]'};
+ const labelData=()=>{
+  const tradeSymbol=String(form.dataset.tradeSymbol||'').trim()||'—',tradeParts=tradeSymbol.split('/'),colorMatch=tradeParts.length>1?String(tradeParts.slice(1).join('/')).match(/^\s*(\d{2}-\d{2})(.*)$/):null;
+  const symbol=colorMatch?`${tradeParts[0].trim()}${colorMatch[2]||''}`.trim():tradeSymbol;
+  return {language:labelConfig?.querySelector('[data-label-language]:checked')?.value==='en'?'en':'pl',symbol,color:colorMatch?.[1]||'—',rawSymbol:form.dataset.rawSymbol||'—',orderNumber:String(form.dataset.orderNumber||'—').replace(/\/(?:\d{2}|\d{4})$/,''),width:String(form.dataset.planWidth||'—'),grammage:String(form.dataset.planGrammage||'—'),client:labelConfig?.querySelector('[data-label-client]')?.value.trim()||'',extraText:labelConfig?.querySelector('[data-label-extra-text]')?.value.trim()||'',brandMode:labelConfig?.querySelector('[data-label-brand-mode]:checked')?.value||'logo',brandText:labelConfig?.querySelector('[data-label-brand-text]')?.value.trim()||'',quantityUnit:labelConfig?.querySelector('[data-label-quantity-unit]:checked')?.value||'meters',fields:new Set([...labelConfig?.querySelectorAll('[data-label-field]:checked')||[]].map(input=>input.dataset.labelField))};
+ };
+ const labelRows=(data,bale)=>{
+  const words=labelWords(data.language),rows=[];
+  const add=(key,label,value,unit='')=>{if(data.fields.has(key))rows.push(`<div class="label-row"><span>${label}</span><strong>${escapeHtml(value)}${unit}</strong></div>`);};
+  add('symbol',words.symbol,data.symbol);add('raw-symbol',words.raw,data.rawSymbol);add('color',words.color,data.color);add('lot',words.lot,data.orderNumber);add('width',words.width,data.width,' cm');add('grammage',words.grammage,data.grammage,' g/m²');
+  if(data.fields.has('client')&&data.client)rows.push(`<div class="label-row"><span>${words.client}</span><strong>${escapeHtml(data.client)}</strong></div>`);
+  const quantityValue=data.quantityUnit==='weight'?bale?.weight:bale?.meters,quantityWord=data.quantityUnit==='weight'?words.quantityWeight:words.quantityMeters;
+  rows.push(`<div class="label-quantity"><span>${quantityWord}</span><strong>${quantityValue===null||quantityValue===undefined?'—':escapeHtml(fmt(quantityValue))}</strong></div>`);
+  if(data.fields.has('weight'))rows.push(`<div class="label-row"><span>${words.weight}</span><strong>${bale?.weight===null||bale?.weight===undefined?'—':escapeHtml(fmt(bale.weight))} kg</strong></div>`);
+  if(data.extraText)rows.push(`<div class="label-extra-text">${escapeHtml(data.extraText)}</div>`);
+  return rows.join('');
+ };
+ const labelBrand=data=>data.brandMode==='logo'?'<img class="label-logo" src="/static/marand-label-logo.jpg" alt="MARAND Technical textiles">':data.brandText?`<div class="label-custom-brand">${escapeHtml(data.brandText)}</div>`:'';
+ const renderLabel=(data,bale,index,total)=>`<article class="label">${labelBrand(data)}<div class="label-content">${labelRows(data,bale)}</div><small>${index+1}/${total}</small></article>`;
+ const updateLabelPreview=()=>{
+  if(!labelConfig)return;
+  const data=labelData(),textField=labelConfig.querySelector('[data-label-brand-text-field]'),clientField=labelConfig.querySelector('[data-label-client-field]');
+  if(textField)textField.hidden=data.brandMode!=='text';if(clientField)clientField.hidden=!data.fields.has('client');
+  if(labelPreview)labelPreview.innerHTML=renderLabel(data,bales[0]||{meters:null,weight:null},0,Math.max(1,bales.length));
+ };
+ labelConfig?.addEventListener('input',updateLabelPreview);labelConfig?.addEventListener('change',updateLabelPreview);updateLabelPreview();
  labelConfig?.querySelector('[data-label-print]')?.addEventListener('click',()=>{
   if(!bales.length)return;
-  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const actualWidth=String(form.elements.actual_width_cm.value||'').trim()||form.dataset.planWidth||'—';
-  const actualGrammage=String(form.elements.actual_grammage.value||'').trim()||form.dataset.planGrammage||'—';
-  const tradeSymbol=form.dataset.tradeSymbol||form.dataset.rawSymbol||'—',symbolParts=tradeSymbol.split('/'),symbol=(symbolParts.shift()||'').trim()||tradeSymbol,colorFromSymbol=symbolParts.join('/').trim(),color=String(form.elements.actual_color?.value||'').trim()||colorFromSymbol||form.dataset.targetColor||'—',orderNumber=(form.dataset.orderNumber||'—').replace(/\/(?:\d{2}|\d{4})$/,'');
-  const language=labelConfig?.querySelector('[data-label-language]')?.value==='en'?'en':'pl',includeClient=labelConfig?.querySelector('[data-label-include-client]')?.checked===true,client=labelConfig?.querySelector('[data-label-client]')?.value.trim()||'',includeWeight=labelConfig?.querySelector('[data-label-include-weight]')?.checked===true,brand=labelConfig?.querySelector('[data-label-include-brand]')?.checked?labelConfig.querySelector('[data-label-brand]')?.value.trim()||'':'';
-  const words=language==='en'?{color:'COLOR',lot:'BATCH NO.',width:'WIDTH',grammage:'GRAMMAGE',quantity:'QUANTITY [m]',client:'CLIENT',weight:'WEIGHT [kg]'}:{color:'KOLOR',lot:'NR PARTII',width:'SZEROKOŚĆ',grammage:'GRAMATURA',quantity:'ILOŚĆ [mb]',client:'KLIENT',weight:'WAGA [kg]'};
-  const labels=bales.map((bale,index)=>`<article class="label">${brand?`<div class="brand">${esc(brand)}</div>`:''}<strong class="symbol">${esc(symbol)}</strong>${includeClient&&client?`<div><b>${words.client}:</b> ${esc(client)}</div>`:''}<div><b>${words.color}:</b> ${esc(color)}</div><div><b>${words.lot}:</b> ${esc(orderNumber)}</div><div><b>${words.width}:</b> ${esc(actualWidth)} cm</div><div><b>${words.grammage}:</b> ${esc(actualGrammage)} g/m²</div><div class="qty"><b>${words.quantity}:</b> ${bale.meters===null?'—':esc(fmt(bale.meters))}</div>${includeWeight?`<div class="qty"><b>${words.weight}:</b> ${bale.weight===null?'—':esc(fmt(bale.weight))}</div>`:''}<small>${index+1}/${bales.length}</small></article>`).join('');
-  const printWindow=window.open('','_blank','width=700,height=900');
+  const data=labelData(),labels=bales.map((bale,index)=>renderLabel(data,bale,index,bales.length)).join(''),printWindow=window.open('','_blank','width=700,height=900');
   if(!printWindow){alert('Przeglądarka zablokowała okno etykiet. Zezwól na wyskakujące okna i spróbuj ponownie.');return;}
-  printWindow.onload=()=>{printWindow.focus();printWindow.print();};
-  printWindow.document.open();printWindow.document.write(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><title>Etykiety ${esc(orderNumber)}</title><style>@page{size:50mm 74mm;margin:0}*{box-sizing:border-box}body{margin:0;font:10pt/1.22 Arial,sans-serif;color:#111}.label{width:50mm;height:74mm;padding:4mm 3.5mm;overflow:hidden;page-break-after:always;break-after:page;border:1px solid #bbb;position:relative}.symbol{display:block;font-size:15pt;text-align:center;margin:0 0 3mm}.brand{text-align:center;font-size:10pt;font-weight:700;margin:0 0 2mm}.label>div{margin:1.6mm 0}.qty{font-size:13pt;font-weight:700;margin-top:3mm!important}.label small{position:absolute;bottom:2mm;right:3mm;font-size:7pt}@media print{.label{border:0}}</style></head><body>${labels}</body></html>`);printWindow.document.close();labelConfig?.close();
+  printWindow.onload=()=>{printWindow.focus();setTimeout(()=>printWindow.print(),100);};
+  printWindow.document.open();printWindow.document.write(`<!doctype html><html lang="${data.language}"><head><meta charset="utf-8"><title>Etykiety ${escapeHtml(data.orderNumber)}</title><style>@page{size:50mm 74mm;margin:0}*{box-sizing:border-box}body{margin:0;font:8pt/1.18 Arial,sans-serif;color:#111}.label{width:50mm;height:74mm;padding:2.5mm 3mm;overflow:hidden;page-break-after:always;break-after:page;position:relative;display:flex;flex-direction:column}.label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:left center;margin:0 0 2mm}.label-custom-brand{min-height:12mm;display:flex;align-items:center;font-size:12pt;font-weight:700;margin:0 0 2mm}.label-content{display:flex;flex-direction:column;gap:1.1mm;min-height:0}.label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}.label-row span{font-size:6.2pt;color:#525a62;flex:0 0 auto}.label-row strong{font-size:7.3pt;text-align:right;overflow-wrap:anywhere}.label-quantity{margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:baseline;border-top:.5mm solid #222}.label-quantity span{font-size:7pt;font-weight:700}.label-quantity strong{font-size:15pt;line-height:1.1}.label-extra-text{font-size:7pt;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}.label small{position:absolute;bottom:1mm;right:2mm;font-size:5.5pt}@media print{.label{border:0}}</style></head><body>${labels}</body></html>`);printWindow.document.close();labelConfig?.close();
  });
  form.addEventListener('submit',event=>{
   refresh();
