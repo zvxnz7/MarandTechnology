@@ -593,8 +593,8 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   const missingMeasurements=[...form.querySelectorAll('[data-recipe-parameter] input[required]')].filter(input=>!input.value.trim());
   const missingParameterLabels=[...missingChecks.map(fieldset=>fieldset.querySelector('legend')?.textContent.trim()),...missingMeasurements.map(input=>input.closest('label')?.firstChild?.textContent.trim())].filter(Boolean);
   const saveButton=document.querySelector(`[form="${form.id}"][data-receipt-save-button]`);
-  if(saveButton)saveButton.disabled=missingParameterLabels.length>0;
-  if(missingParameterLabels.length&&completion)completion.textContent=`Przed przyjęciem oceń wszystkie parametry: ${missingParameterLabels.join(', ')}.`;
+  if(saveButton)saveButton.disabled=false;
+  if(missingParameterLabels.length&&completion)completion.textContent=`Przed zapisem uzupełnij ocenę parametrów: ${missingParameterLabels.join(', ')}.`;
   printLabelsButton.disabled=bales.length===0||pendingMeters!==null||incomplete;
  };
  entryCount.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();entryInput.focus();}});
@@ -655,7 +655,22 @@ document.querySelectorAll('[data-finishing-receive-form]').forEach(form=>{
   if(!bales.length||incompleteIndex!==-1){event.preventDefault();entryStatus.textContent=!bales.length?'Dodaj zwróconą sztukę.':'Uzupełnij brakującą wartość sztuki '+(incompleteIndex+1)+'.';entryInput.focus();return;}
   const missingChecks=[...form.querySelectorAll('.finishing-receive-check')].filter(fieldset=>fieldset.querySelector('input[type="radio"][required]')&&!fieldset.querySelector('input[type="radio"]:checked'));
   const missingMeasurements=[...form.querySelectorAll('[data-recipe-parameter] input[required]')].filter(input=>!input.value.trim());
-  if(missingChecks.length||missingMeasurements.length){event.preventDefault();completion?.classList.add('is-pending');if(completion)completion.textContent='Przed przyjęciem zaznacz ocenę każdego parametru oraz wpisz wymaganą gramaturę i szerokość.';(missingChecks[0]||missingMeasurements[0])?.scrollIntoView({behavior:'smooth',block:'center'});return;}
+  if(missingChecks.length||missingMeasurements.length){
+   event.preventDefault();
+   const missingLabels=[...missingChecks.map(fieldset=>fieldset.querySelector('legend')?.textContent.trim()),...missingMeasurements.map(input=>input.closest('label')?.firstChild?.textContent.trim())].filter(Boolean);
+   const firstMissing=missingChecks[0]||missingMeasurements[0];
+   const validationDialog=document.createElement('dialog');
+   validationDialog.className='form-dialog finishing-receive-validation-dialog';
+   validationDialog.setAttribute('aria-labelledby',`${form.id}-validation-title`);
+   validationDialog.innerHTML=`<div class="dialog-head"><strong id="${form.id}-validation-title">Uzupełnij parametry przed zapisem</strong><button type="button" class="dialog-close" data-validation-close aria-label="Zamknij">×</button></div><div class="dialog-body"><p>Przed przyjęciem oceń wymagane parametry:</p><ul data-validation-list></ul><div class="actions"><button type="button" class="primary" data-validation-close>Wróć do przyjęcia</button></div></div>`;
+   const list=validationDialog.querySelector('[data-validation-list]');
+   missingLabels.forEach(label=>{const item=document.createElement('li');item.textContent=label;list.append(item);});
+   validationDialog.querySelectorAll('[data-validation-close]').forEach(button=>button.addEventListener('click',()=>validationDialog.close()));
+   validationDialog.addEventListener('close',()=>{const firstInput=firstMissing?.matches('input')?firstMissing:firstMissing?.querySelector('input');validationDialog.remove();firstMissing?.scrollIntoView({behavior:'smooth',block:'center'});firstInput?.focus();});
+   document.body.append(validationDialog);
+   validationDialog.showModal();
+   return;
+  }
   const projectedReceived=previousRawPieces+receivedRawPieces,leavesUnaccounted=sentRawPieces>0&&projectedReceived<sentRawPieces;
   if(leavesUnaccounted&&closeIncompleteInput?.value===''){event.preventDefault();const missingCount=Math.max(0,sentRawPieces-projectedReceived);if(incompleteMessage)incompleteMessage.textContent=`Po tym przyjęciu pozostanie ${missingCount} szt. nieprzyjętych. Jeśli reszta nadal jest w wykańczalni, zostaw partię otwartą. Jeśli już nie wróci, zamknij ją z brakami.`;if(incompleteChoice){incompleteChoice.hidden=false;incompleteChoice.scrollIntoView({behavior:'smooth',block:'center'});}return;}
   if(!leavesUnaccounted&&closeIncompleteInput)closeIncompleteInput.value='';

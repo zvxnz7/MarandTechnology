@@ -793,6 +793,10 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-receive-completion.is-complete{background:#e9f5ed;color:#246b3b}
 .finishing-receive-completion.is-pending{background:#fff5df;color:#745419}
 .finishing-receive-completion.is-over{background:#fcebea;color:#982d26}
+.finishing-receive-validation-dialog{width:min(480px,calc(100vw - 32px))}
+.finishing-receive-validation-dialog .dialog-body>p{margin-top:0}
+.finishing-receive-validation-dialog ul{margin:8px 0 18px;padding-left:22px}
+.finishing-receive-validation-dialog li{margin:5px 0}
 .finishing-receive-incomplete-choice{margin-top:10px;padding:12px;border:1px solid #e3b56c;border-radius:7px;background:#fff8eb}
 .finishing-receive-incomplete-choice[hidden]{display:none}
 .finishing-receive-incomplete-choice>strong{display:block;color:#76501b}
