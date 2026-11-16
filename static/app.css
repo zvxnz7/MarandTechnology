@@ -538,9 +538,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-preview .label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:left center;margin:0 0 2mm}
 .finishing-label-preview .label-custom-brand{min-height:12mm;display:flex;align-items:center;font-size:12pt;font-weight:700;margin:0 0 2mm}
 .finishing-label-preview .label-content{display:flex;flex-direction:column;gap:1.1mm;min-height:0}
-.finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}
+.finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;padding-bottom:.2mm}
 .finishing-label-preview .label-row span{font-size:6.2pt;color:#525a62;flex:0 0 auto}
-.finishing-label-preview .label-row strong{font-size:7.3pt;text-align:right;overflow-wrap:anywhere}
+.finishing-label-preview .label-row strong{font-size:9.2pt;text-align:right;overflow-wrap:anywhere}
 .finishing-label-preview .label-quantity{margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:baseline;border-top:.5mm solid #222}
 .finishing-label-preview .label-quantity span{font-size:7pt;font-weight:700}
 .finishing-label-preview .label-quantity strong{font-size:15pt;line-height:1.1}
@@ -551,11 +551,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-options legend{padding:0 5px;font-size:12px;font-weight:700;color:#555e66}
 .finishing-label-option{display:flex;align-items:center;gap:8px;min-width:0;margin:0;padding:4px 2px;font-size:13px;font-weight:500;cursor:pointer}
 .finishing-label-option input[type=checkbox],.finishing-label-option input[type=radio]{appearance:none;display:grid;place-items:center;flex:none;width:18px;height:18px;margin:0;padding:0;border:1.5px solid #aab2b9;border-radius:50%;background:#fff;cursor:pointer}
+.finishing-label-option input[type=checkbox],.finishing-label-option input[type=radio]{position:relative;align-self:center;vertical-align:middle}
 .finishing-label-option input[type=checkbox]:checked,.finishing-label-option input[type=radio]:checked{border-color:#cf2e31}
-.finishing-label-option input[type=checkbox]:checked::after,.finishing-label-option input[type=radio]:checked::after{content:'';width:9px;height:9px;border-radius:50%;background:#cf2e31}
+.finishing-label-option input[type=checkbox]:checked::after,.finishing-label-option input[type=radio]:checked::after{content:'';position:absolute;left:50%;top:50%;width:9px;height:9px;border-radius:50%;background:#cf2e31;transform:translate(-50%,-50%)}
 .finishing-label-option input:focus-visible{outline:2px solid #e7afb0;outline-offset:2px}
 .finishing-label-custom{display:grid;gap:5px;margin:0;font-size:12px;font-weight:600}
 .finishing-label-custom input{min-width:0;width:100%;padding:7px 9px;font-weight:400}
+.finishing-label-option-with-input{grid-column:1/-1;display:grid;grid-template-columns:minmax(140px,.65fr) minmax(0,1fr);gap:8px;align-items:center;min-width:0}
+.finishing-label-option-with-input>input{min-width:0;width:100%;padding:7px 9px;font-weight:400}
+.finishing-label-option-with-input>input[hidden]{display:none}
 .finishing-label-radio-row{display:flex;gap:18px;flex-wrap:wrap}
 .finishing-label-config-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:9px;padding:12px 18px;border-top:1px solid var(--line);background:#fafbfc}
 @media(max-width:760px){.finishing-label-config-dialog{max-height:94vh}.finishing-label-config-dialog .dialog-body{max-height:calc(94vh - 64px)}.finishing-label-config-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}.finishing-label-preview-panel{border-right:0;border-bottom:1px solid var(--line);padding:14px}.finishing-label-preview-panel .finishing-label-preview-size{transform:scale(.85);transform-origin:top center;margin-bottom:-42px}.finishing-label-options{max-height:none;padding:14px}.finishing-label-config-actions{position:sticky;bottom:0}}
