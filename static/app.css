@@ -538,9 +538,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-preview .label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:left center;margin:0 0 2mm}
 .finishing-label-preview .label-custom-brand{min-height:12mm;display:flex;align-items:center;font-size:12pt;font-weight:700;margin:0 0 2mm}
 .finishing-label-preview .label-content{display:flex;flex-direction:column;gap:1.1mm;min-height:0}
-.finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;padding-bottom:.2mm}
+.finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}
 .finishing-label-preview .label-row span{font-size:6.2pt;color:#525a62;flex:0 0 auto}
-.finishing-label-preview .label-row strong{font-size:9.2pt;text-align:right;overflow-wrap:anywhere}
+.finishing-label-preview .label-row strong{font-size:10.5pt;line-height:1.05;text-align:right;overflow-wrap:anywhere}
+.finishing-label-preview .label-row-before-quantity{border-bottom:0;padding-bottom:0}
 .finishing-label-preview .label-quantity{margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:baseline;border-top:.5mm solid #222}
 .finishing-label-preview .label-quantity span{font-size:7pt;font-weight:700}
 .finishing-label-preview .label-quantity strong{font-size:15pt;line-height:1.1}
@@ -559,7 +560,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-custom input{min-width:0;width:100%;padding:7px 9px;font-weight:400}
 .finishing-label-option-with-input{grid-column:1/-1;display:grid;grid-template-columns:minmax(140px,.65fr) minmax(0,1fr);gap:8px;align-items:center;min-width:0}
 .finishing-label-option-with-input>input{min-width:0;width:100%;padding:7px 9px;font-weight:400}
-.finishing-label-option-with-input>input[hidden]{display:none}
+.finishing-label-option-with-input>input[data-label-client-field],.finishing-label-option-with-input>input[data-label-brand-text-field]{visibility:hidden}
 .finishing-label-radio-row{display:flex;gap:18px;flex-wrap:wrap}
 .finishing-label-config-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:9px;padding:12px 18px;border-top:1px solid var(--line);background:#fafbfc}
 @media(max-width:760px){.finishing-label-config-dialog{max-height:94vh}.finishing-label-config-dialog .dialog-body{max-height:calc(94vh - 64px)}.finishing-label-config-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}.finishing-label-preview-panel{border-right:0;border-bottom:1px solid var(--line);padding:14px}.finishing-label-preview-panel .finishing-label-preview-size{transform:scale(.85);transform-origin:top center;margin-bottom:-42px}.finishing-label-options{max-height:none;padding:14px}.finishing-label-config-actions{position:sticky;bottom:0}}
