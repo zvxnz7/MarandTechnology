@@ -4,7 +4,7 @@ const correctionParentUrl=document.body?.dataset.correctionParentUrl;
 if(correctionParentUrl&&window.opener&&!window.opener.closed){try{window.opener.location.replace(correctionParentUrl);}catch{}}
 const finishingBatchDeleteDialog=document.createElement('dialog');
 finishingBatchDeleteDialog.className='form-dialog delete-confirm-dialog finishing-batch-delete-dialog';
-finishingBatchDeleteDialog.innerHTML='<div class="dialog-head"><strong>Usuń zlecenie barwiarskie</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p data-finishing-delete-description></p><p class="muted">Przyjęcia, dane belek i rozliczenia tej partii zostaną usunięte. Zgłoszone problemy pozostaną w historii.</p><div class="actions"><button type="button" data-finishing-delete-cancel>Wróć</button><button type="button" class="danger" data-finishing-delete-confirm>Usuń partię</button></div></div>';
+finishingBatchDeleteDialog.innerHTML='<div class="dialog-head"><strong>Usuń dodatkowe zlecenie barwiarskie</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body"><p data-finishing-delete-description></p><p class="muted">Można usunąć tylko nieprzyjęte dodatkowe zlecenie. Jeśli zostało przyjęte, najpierw cofnij jego przyjęcie.</p><div class="actions"><button type="button" data-finishing-delete-cancel>Wróć</button><button type="button" class="danger" data-finishing-delete-confirm>Usuń zlecenie</button></div></div>';
 document.body.append(finishingBatchDeleteDialog);
 let pendingFinishingBatchDelete=null;
 finishingBatchDeleteDialog.querySelector('[data-finishing-delete-cancel]')?.addEventListener('click',()=>finishingBatchDeleteDialog.close());
