@@ -540,11 +540,11 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-preview .label-content{display:flex;flex-direction:column;gap:1.1mm;min-height:0}
 .finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}
 .finishing-label-preview .label-row span{font-size:6.2pt;color:#525a62;flex:0 0 auto}
-.finishing-label-preview .label-row strong{font-size:10.5pt;line-height:1.05;text-align:right;overflow-wrap:anywhere}
+.finishing-label-preview .label-row strong{font-size:calc(10.5pt * var(--label-data-scale,1));line-height:1.05;text-align:right;overflow-wrap:anywhere}
 .finishing-label-preview .label-row-before-quantity{border-bottom:0;padding-bottom:0}
 .finishing-label-preview .label-quantity{margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:baseline;border-top:.5mm solid #222}
 .finishing-label-preview .label-quantity span{font-size:7pt;font-weight:700}
-.finishing-label-preview .label-quantity strong{font-size:15pt;line-height:1.1}
+.finishing-label-preview .label-quantity strong{font-size:calc(15pt * var(--label-data-scale,1));line-height:1.1}
 .finishing-label-preview .label-extra-text{font-size:7pt;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-label-preview>small{position:absolute;bottom:1mm;right:2mm;font-size:5.5pt}
 .finishing-label-options{display:grid;align-content:start;gap:12px;max-height:calc(92vh - 140px);overflow:auto;padding:18px 22px}
