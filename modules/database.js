@@ -540,7 +540,7 @@ function migrateV27(db){
 function migrate(db, dbPath) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
-  if (!legacy.length) { db.exec(schema); db.exec('CREATE UNIQUE INDEX IF NOT EXISTS finishing_orders_source_remainder_batch ON finishing_orders(source_remainder_batch_id) WHERE source_remainder_batch_id IS NOT NULL'); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); migrateV19(db); migrateV20(db); migrateV21(db); migrateV22(db); migrateV23(db); migrateV24(db); migrateV25(db); migrateV26(db); migrateV27(db); return; }
+  if (!legacy.length) { db.exec(schema); db.exec('CREATE UNIQUE INDEX IF NOT EXISTS finishing_orders_source_remainder_batch ON finishing_orders(source_remainder_batch_id) WHERE source_remainder_batch_id IS NOT NULL'); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
   if(version>27)throw new Error('Baza pochodzi z nowszej wersji programu.');
   if(version===27) { db.exec(schema); return; }
