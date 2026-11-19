@@ -531,8 +531,6 @@ function migrateV27(db){
     const columns=new Set(db.prepare("PRAGMA table_info('finishing_settlements')").all().map(column=>column.name));
     if(!columns.has('receipt_date'))db.exec("ALTER TABLE finishing_settlements ADD COLUMN receipt_date TEXT NOT NULL DEFAULT ''");
     if(!columns.has('pz_number'))db.exec("ALTER TABLE finishing_settlements ADD COLUMN pz_number TEXT NOT NULL DEFAULT ''");
-    const stageColumns=new Set(db.prepare("PRAGMA table_info('project_stages')").all().map(column=>column.name));
-    if(stageColumns.size&&!stageColumns.has('comment'))db.exec("ALTER TABLE project_stages ADD COLUMN comment TEXT NOT NULL DEFAULT ''");
     db.exec('PRAGMA user_version=27; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
   db.exec(schema);
