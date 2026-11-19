@@ -238,6 +238,8 @@ CREATE TABLE IF NOT EXISTS finishing_settlements(
   id INTEGER PRIMARY KEY,
   batch_id INTEGER NOT NULL UNIQUE REFERENCES finishing_batches(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','settled','changed')),
+  receipt_date TEXT NOT NULL DEFAULT '',
+  pz_number TEXT NOT NULL DEFAULT '',
   invoice_note TEXT NOT NULL DEFAULT '',
   calculation_import_id INTEGER REFERENCES finishing_calculation_imports(id),
   raw_symbol TEXT NOT NULL DEFAULT '',

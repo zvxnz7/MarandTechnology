@@ -103,6 +103,7 @@
 .delete-x{display:inline-flex;align-items:center;justify-content:center;width:auto;height:auto;padding:0 6px;border:0;border-radius:0;background:transparent;color:#a82025;font-size:25px;line-height:1;font-weight:700;text-decoration:none}
 .delete-x:hover{background:transparent;color:#741a1d;text-decoration:none}
 .status-finishing{color:#684b20;background:#f4ead6;border-color:#dfc99d}
+.status-in-transit{color:#42566d;background:#e8eef5;border-color:#c5d2e1}
 .badge.finishing-remainder-status{color:#fff;background:#c51f2b;border-color:#a81520;font-weight:700}
 .status-sample{color:#5e4a80;background:#f0ebf7;border-color:#d4c8e6}
 .stage-card{display:block;width:100%}
@@ -806,20 +807,24 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-current-calculation{padding:10px 12px;border-radius:6px;background:#f1f4f6}
 .finishing-settlement-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(4,minmax(110px,.7fr));align-items:end;gap:10px}
 .finishing-settlement-filters>label{min-width:0}
-.finishing-settlements-list{min-width:980px;table-layout:fixed}
+.finishing-settlements-list{min-width:1320px;table-layout:fixed}
 .finishing-settlements-list th,.finishing-settlements-list td{padding:7px 6px}
 .finishing-settlements-list th:nth-child(1),.finishing-settlements-list td:nth-child(1){width:34px;text-align:center}
-.finishing-settlements-list th:nth-child(2),.finishing-settlements-list td:nth-child(2){width:95px}
-.finishing-settlements-list th:nth-child(3),.finishing-settlements-list td:nth-child(3){width:112px}
-.finishing-settlements-list th:nth-child(4),.finishing-settlements-list td:nth-child(4){width:100px}
-.finishing-settlements-list th:nth-child(5),.finishing-settlements-list td:nth-child(5){width:78px}
-.finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6),.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7),.finishing-settlements-list th:nth-child(8),.finishing-settlements-list td:nth-child(8){width:87px}
+.finishing-settlements-list th:nth-child(2),.finishing-settlements-list td:nth-child(2){width:112px}
+.finishing-settlements-list th:nth-child(3),.finishing-settlements-list td:nth-child(3){width:114px}
+.finishing-settlements-list th:nth-child(4),.finishing-settlements-list td:nth-child(4){width:145px}
+.finishing-settlements-list th:nth-child(5),.finishing-settlements-list td:nth-child(5),.finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6),.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7){width:115px}
+.finishing-settlements-list th:nth-child(8),.finishing-settlements-list td:nth-child(8){width:180px}
 .finishing-settlements-list th:nth-child(9),.finishing-settlements-list td:nth-child(9){width:90px}
-.finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10){width:180px}
+.finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10),.finishing-settlements-list th:nth-child(11),.finishing-settlements-list td:nth-child(11),.finishing-settlements-list th:nth-child(12),.finishing-settlements-list td:nth-child(12){width:105px}
 .finishing-settlement-pm-row th{padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
 .finishing-settlement-pm-status{display:inline-block;margin-left:9px;vertical-align:middle}
 .finishing-settlement-pm-symbols{display:inline-block;margin-left:9px;font-weight:400;vertical-align:middle}
 .finishing-settlement-order-row td{vertical-align:top}
+.finishing-settlement-order-row input[type="date"]{min-width:0;width:100%;padding:6px 5px}
+.finishing-receipt-date{display:grid;grid-template-columns:minmax(160px,240px);gap:6px;margin-bottom:12px;font-weight:600}
+.finishing-outstanding-lost td{color:#8f2d2d;background:#fff3f1}
+.finishing-outstanding-total th{border-top:2px solid #8793a0}
 .finishing-settlement-order-row.is-replaced{opacity:.68}
 .finishing-cost-input{box-sizing:border-box;width:100%;min-width:0;padding:5px 6px;font-size:12px}
 .finishing-invoice-input{font-size:11px}

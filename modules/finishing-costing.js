@@ -27,11 +27,12 @@ function priceFor(db,importId,rawSymbol){
 }
 function batchRecord(db,batchId){
   return db.prepare(`SELECT b.*,o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,coalesce(nullif(b.correction_target_color,''),o.target_color) target_color,coalesce(b.correction_target_width_cm,o.target_width_cm) target_width_cm,coalesce(b.correction_target_grammage,o.target_grammage) target_grammage,o.client_name,o.status order_status,o.order_type,o.shipment_article_id,o.manual_entry,o.manual_reference,o.source_remainder_batch_id,
-      o.source_shipment_no,fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
-      (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
+      o.source_shipment_no,o.manual_input_description,fp.name finishing_plant_name,a.description article_description,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
+      coalesce(nullif(fs.receipt_date,''),(SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id)) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
-    LEFT JOIN shipments s ON s.id=sa.shipment_id WHERE b.id=?`).get(batchId)||null;
+    LEFT JOIN articles a ON a.id=sa.article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
+    LEFT JOIN finishing_settlements fs ON fs.batch_id=b.id WHERE b.id=?`).get(batchId)||null;
 }
 function rootBatch(db,batch){
   let current=batch,seen=new Set();
@@ -61,12 +62,13 @@ function calculationContext(db,batchId){
 }
 function settlementRows(db){
   const rows=db.prepare(`SELECT b.id batch_id,b.order_id,b.correction_of_batch_id,b.correction_parent_batch_id,b.cancelled_at,b.complaint_status,b.workflow_status,b.finishing_lot,b.sent_at,b.raw_weight_kg,b.sent_pieces,b.closed_at,
-      o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,o.client_name,o.order_type,o.manual_entry,o.manual_reference,o.source_remainder_batch_id,o.status order_status,o.source_shipment_no,
-      fp.name finishing_plant_name,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
-      (SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_date
+      o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,o.client_name,o.order_type,o.manual_entry,o.manual_reference,o.manual_input_description,o.source_remainder_batch_id,o.status order_status,o.source_shipment_no,
+      fp.name finishing_plant_name,a.description article_description,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
+      coalesce(nullif(fs.receipt_date,''),(SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id)) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id
     LEFT JOIN finishing_plants fp ON fp.id=o.finishing_plant_id LEFT JOIN shipment_articles sa ON sa.id=o.shipment_article_id
-    LEFT JOIN shipments s ON s.id=sa.shipment_id
+    LEFT JOIN articles a ON a.id=sa.article_id LEFT JOIN shipments s ON s.id=sa.shipment_id
+    LEFT JOIN finishing_settlements fs ON fs.batch_id=b.id
     WHERE o.status<>'cancelled' AND b.cancelled_at IS NULL
       AND ((b.closed_at IS NOT NULL AND EXISTS(SELECT 1 FROM finishing_receipts r WHERE r.batch_id=b.id))
         OR (o.source_remainder_batch_id IS NOT NULL AND EXISTS(SELECT 1 FROM finishing_settlements fs WHERE fs.batch_id=b.id)))
