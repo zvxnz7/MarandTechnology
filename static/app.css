@@ -805,12 +805,12 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-calculation-dialog{width:min(520px,calc(100vw - 28px))}
 .finishing-calculation-dialog .dialog-body>form{display:grid;gap:12px}
 .finishing-current-calculation{padding:10px 12px;border-radius:6px;background:#f1f4f6}
-.finishing-settlement-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(4,minmax(110px,.7fr));align-items:end;gap:10px}
+.finishing-settlement-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(5,minmax(110px,.7fr));align-items:end;gap:10px}
 .finishing-settlement-filters>label{min-width:0}
 .finishing-settlements-list{min-width:1320px;table-layout:fixed}
 .finishing-settlements-list th,.finishing-settlements-list td{padding:7px 6px}
 .finishing-settlements-list th:nth-child(1),.finishing-settlements-list td:nth-child(1){width:34px;text-align:center}
-.finishing-settlements-list th:nth-child(2),.finishing-settlements-list td:nth-child(2){width:112px}
+.finishing-settlements-list th:nth-child(2),.finishing-settlements-list td:nth-child(2){width:145px}
 .finishing-settlements-list th:nth-child(3),.finishing-settlements-list td:nth-child(3){width:114px}
 .finishing-settlements-list th:nth-child(4),.finishing-settlements-list td:nth-child(4){width:145px}
 .finishing-settlements-list th:nth-child(5),.finishing-settlements-list td:nth-child(5),.finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6),.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7){width:115px}
@@ -818,8 +818,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-settlements-list th:nth-child(9),.finishing-settlements-list td:nth-child(9){width:90px}
 .finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10),.finishing-settlements-list th:nth-child(11),.finishing-settlements-list td:nth-child(11),.finishing-settlements-list th:nth-child(12),.finishing-settlements-list td:nth-child(12){width:105px}
 .finishing-settlement-pm-row th{padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
-.finishing-settlement-pm-status{display:inline-block;margin-left:9px;vertical-align:middle}
-.finishing-settlement-pm-symbols{display:inline-block;margin-left:9px;font-weight:400;vertical-align:middle}
+.finishing-settlement-pm-heading{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;text-align:left}
+.finishing-settlement-pm-status{display:inline-flex;align-items:center;vertical-align:middle}
+.finishing-settlement-pm-symbols{display:inline-block;font-weight:400;vertical-align:middle}
 .finishing-settlement-order-row td{vertical-align:top}
 .finishing-settlement-order-row input[type="date"]{min-width:0;width:100%;padding:6px 5px}
 .finishing-receipt-date{display:grid;grid-template-columns:minmax(160px,240px);gap:6px;margin-bottom:12px;font-weight:600}
@@ -835,6 +836,14 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-cost-history{margin-top:6px;font-size:11px}
 .finishing-cost-history>summary{cursor:pointer;color:#175eb0}
 .finishing-cost-history table{min-width:700px}
+.finishing-cost-history-open{margin-top:6px;padding:0;border:0;background:transparent;color:#175eb0;font-size:11px;text-align:left;text-decoration:underline;cursor:pointer}
+.finishing-cost-history-dialog{width:min(1050px,calc(100vw - 32px));max-width:none}
+.finishing-cost-history-dialog .dialog-body{max-height:min(70vh,720px);overflow:auto}
+.finishing-cost-history-dialog table{min-width:700px}
+.badge.finishing-remainder-status{white-space:nowrap}
+.finishing-order-pm.is-pms{display:inline-block;padding:3px 8px;border:1px solid #b8d4ee;border-radius:6px;background:#e7f1fb;color:#174f82;font-weight:750;text-decoration:none}
+.finishing-order-pm.is-pms:hover{background:#d7e9fa;color:#123f68}
+.finishing-settlement-order-row.is-pms td{background:#f5f9fd}
 .finishing-settlement-actions{position:sticky;bottom:0;z-index:3;padding:10px;background:#fff;border-top:1px solid #dfe3e7}
 .finishing-settlement-actions [data-finishing-settlement-selection]{margin-left:auto}
 .finishing-settlement-actions [data-finishing-settlement-selection].is-error{color:#b42318;font-weight:700}
