@@ -819,8 +819,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10),.finishing-settlements-list th:nth-child(11),.finishing-settlements-list td:nth-child(11),.finishing-settlements-list th:nth-child(12),.finishing-settlements-list td:nth-child(12){width:105px}
 .finishing-settlement-pm-row th{padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
 .finishing-settlement-pm-heading{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;text-align:left}
-.finishing-settlement-pm-status{display:inline-flex;align-items:center;vertical-align:middle}
 .finishing-settlement-pm-symbols{display:inline-block;font-weight:400;vertical-align:middle}
+.finishing-settlement-manual-order{display:inline-block;padding:4px 8px;border:1px solid #4e5862;border-radius:6px;background:#343a40;color:#f4f6f8;font-weight:750;text-decoration:none}
+.finishing-settlement-manual-order:hover{background:#252a2f;color:#fff}
 .finishing-settlement-order-row td{vertical-align:top}
 .finishing-settlement-order-row input[type="date"]{min-width:0;width:100%;padding:6px 5px}
 .finishing-receipt-date{display:grid;grid-template-columns:minmax(160px,240px);gap:6px;margin-bottom:12px;font-weight:600}
