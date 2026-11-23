@@ -285,8 +285,94 @@ function baleRows(rows, options = {}) {
         ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz zagubioną belkę ${V.esc(row.bale_number)}"></label>`
         : '';
     const lot = String(row.lot || '').trim();
-     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}${row.trial_symbol?'<small class="badge submitted">Próba</small>':''}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
+     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}${row.trial_symbol?'<small class="badge submitted">Próba</small>':''}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${options.edit?`<span class="warehouse-bale-row-actions no-print"><a class="warehouse-bale-edit-link" href="/warehouse/bales/${encodeURIComponent(row.local_id)}/edit" title="Edytuj wszystkie dane sztuki" aria-label="Edytuj sztukę ${V.esc(row.bale_number)}">✎</a><a class="warehouse-bale-edit-link warehouse-bale-delete-link" href="/warehouse/bales/${encodeURIComponent(row.local_id)}/delete" title="Usuń sztukę" aria-label="Usuń sztukę ${V.esc(row.bale_number)}">×</a></span>`:''}${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
   }).join('');
+}
+
+function baleWorkerLines(value){
+  let workers=[];try{workers=JSON.parse(value||'[]')}catch{}
+  return workers.map(worker=>`${String(worker.name||'').trim()} | ${Number(worker.meters||0)} m`).join('\n');
+}
+
+function manualBaleDialog(ctx,article){
+  const canEdit=editableRoles.includes(ctx.req.user.role);if(!canEdit)return '';
+  const dialogId='warehouse-manual-bale-dialog',trialGroup=Boolean(article.isTrialGroup),articleId=trialGroup?0:article.id;
+  return `<button type="button" class="button primary" data-open-dialog="${dialogId}">+ ${trialGroup?'Dodaj próbę':'Dodaj sztukę'}</button><dialog id="${dialogId}" class="form-dialog warehouse-manual-bale-dialog"><div class="dialog-head"><strong>Ręcznie dodaj sztukę · ${V.esc(trialGroup?'próba':article.symbol)}</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body">${baleFormMarkup(ctx,{articleId,action:'/warehouse/bales/create',submitLabel:trialGroup?'Dodaj próbę':'Dodaj sztukę',newBale:true,canChangeArticle:trialGroup,trialGroup})}</div></dialog>`;
+}
+
+function baleFormMarkup(ctx,{bale={},articleId=0,action,submitLabel='Zapisz dane sztuki',newBale=false,canChangeArticle=true,trialGroup=false}){
+  const db=ctx.db,selectedArticleId=Number(bale.article_id||articleId||0),articles=db.prepare("SELECT id,symbol FROM articles WHERE archived_at IS NULL AND purged_at IS NULL ORDER BY symbol_key,id").all();
+  if(selectedArticleId&&!articles.some(article=>Number(article.id)===selectedArticleId)){const current=db.prepare('SELECT id,symbol FROM articles WHERE id=?').get(selectedArticleId);if(current)articles.push(current);}
+  const currentArticle=articles.find(article=>Number(article.id)===selectedArticleId);
+  const articleInput=canChangeArticle?`<label>Symbol artykułu<select name="article_id" required>${articles.map(article=>`<option value="${article.id}"${Number(article.id)===selectedArticleId?' selected':''}>${V.esc(article.symbol)}</option>`).join('')}</select></label>`:`${hidden('article_id',selectedArticleId)}<div class="muted">Artykuł: <strong>${V.esc(currentArticle?.symbol||'—')}</strong>${newBale?'':' · zmiana artykułu jest zablokowana przez powiązany dokument'}</div>`;
+  const flags=db.prepare('SELECT status,reason FROM warehouse_bale_flags WHERE bale_local_id=?').get(bale.local_id)||{};
+  const tags=new Set(db.prepare('SELECT tag FROM warehouse_bale_tags WHERE bale_local_id=?').all(bale.local_id).map(row=>row.tag));
+  const customStatus=db.prepare('SELECT status FROM warehouse_bale_custom_statuses WHERE bale_local_id=?').get(bale.local_id)?.status||'';
+  const workers=ctx.db.prepare('SELECT employee_uid,name FROM knitting_workers ORDER BY active DESC,name COLLATE NOCASE').all();
+  const status=flags.status||'available';
+  const workerField=`<label class="warehouse-bale-workers">Dziewiarze · jeden wiersz: imię i nazwisko | metry<textarea name="workers_lines" rows="3" placeholder="Jan Kowalski | 120 m">${V.esc(baleWorkerLines(bale.workers_json))}</textarea><small class="muted">Zachowaj format: osoba | liczba metrów. Lista: ${V.esc(workers.map(worker=>worker.name).join(', ')||'brak osób w bibliotece')}.</small></label>`;
+  const backUrl=bale.local_id?`/warehouse/bales/${encodeURIComponent(bale.local_id)}`:trialGroup?'/warehouse?trials=1':`/warehouse?article_id=${selectedArticleId}`;
+  return `<form method="post" action="${action}" class="panel padded warehouse-bale-edit-form">${hidden('csrf',ctx.req.session.csrf)}${newBale?hidden('trial_group',trialGroup?'1':'0'):''}${articleInput}<div class="form-grid"><label>Numer sztuki<input name="bale_number" value="${V.esc(bale.bale_number||'')}" maxlength="80" required></label><label>Maszyna<input name="machine" value="${V.esc(bale.machine||'')}" maxlength="40" required></label><label>Data produkcji<input name="production_date" type="date" value="${V.esc(bale.production_date||ctx.todayWarsaw())}" max="${V.esc(ctx.todayWarsaw())}" required></label><label>Masa kg<input name="weight_kg" type="number" min="0.01" max="1000" step="0.01" value="${V.esc(bale.weight_kg??'')}" required></label><label>Metry<input name="meters" type="number" min="0.01" max="100000" step="0.01" value="${V.esc(bale.meters??'')}" required></label><label>Błędy<input name="errors" type="number" min="0" step="1" value="${V.esc(bale.errors??0)}" required></label><label>Stopy<input name="stops" type="number" min="0" step="1" value="${V.esc(bale.stops??0)}" required></label><label>LOT<input name="lot" value="${V.esc(bale.lot||'')}" maxlength="120"></label>${bale.trial_symbol!==undefined||newBale?`<label>Symbol próby${trialGroup?' (wymagany)':' (opcjonalnie)'}<input name="trial_symbol" value="${V.esc(bale.trial_symbol||'')}" maxlength="150"${trialGroup?' required':''}></label>`:''}<label>Status magazynowy<select name="inventory_status"><option value="available"${status==='available'?' selected':''}>Dostępna</option><option value="lost"${status==='lost'?' selected':''}>Zagubiona</option><option value="shipped_out"${status==='shipped_out'?' selected':''}>Wysłana poza stan</option></select></label><label>Powód statusu<input name="status_reason" value="${V.esc(flags.reason||'')}" maxlength="500"></label><label>Własny status<input name="custom_status" value="${V.esc(customStatus)}" maxlength="120"></label></div><fieldset class="warehouse-bale-tags"><legend>Oznaczenia jakości</legend><label><input type="checkbox" name="second_grade" value="1"${tags.has('second_grade')?' checked':''}> II gatunek</label><label><input type="checkbox" name="stripe_risk" value="1"${tags.has('stripe_risk')?' checked':''}> Ryzyko pasiastości</label></fieldset><label class="check"><input type="checkbox" name="needs_check" value="1"${bale.needs_check?' checked':''}> Wymaga sprawdzenia</label>${workerField}<label>Uwagi<textarea name="notes" rows="3" maxlength="1000">${V.esc(bale.notes||'')}</textarea></label><div class="actions"><a class="button" href="${backUrl}">Wróć</a><button class="primary">${submitLabel}</button></div></form>`;
+}
+
+function baleHasReferences(db,localId){
+  return Boolean(db.prepare(`SELECT 1 WHERE
+    EXISTS(SELECT 1 FROM shipment_bales WHERE bale_local_id=?) OR
+    EXISTS(SELECT 1 FROM shipment_corrections WHERE removed_bale_local_id=? OR replacement_bale_local_id=?) OR
+    EXISTS(SELECT 1 FROM shipment_correction_items WHERE bale_local_id=?) OR
+    EXISTS(SELECT 1 FROM finishing_order_bales WHERE bale_local_id=?)`).get(localId,localId,localId,localId,localId));
+}
+
+function baleEditableRecord(db,localId){
+  return db.prepare(`SELECT b.*,a.symbol FROM production_bales b JOIN articles a ON a.id=b.article_id WHERE b.local_id=?`).get(localId);
+}
+
+function parseBaleForm(ctx,{existing=null,forceArticleId=null}={}){
+  const form=ctx.form,db=ctx.db,articleId=Number(forceArticleId||form.article_id),article=db.prepare("SELECT id,symbol FROM articles WHERE id=? AND archived_at IS NULL AND purged_at IS NULL").get(articleId)||(existing&&Number(existing.article_id)===articleId?db.prepare('SELECT id,symbol FROM articles WHERE id=?').get(articleId):null);
+  if(!article)throw Object.assign(new Error('Wybierz aktywny symbol artykułu.'),{status:400});
+  const machine=String(form.machine||'').trim().replace(/\s+/g,' ').slice(0,40),baleNumber=String(form.bale_number||'').trim().replace(/\s+/g,' ').slice(0,80),productionDate=String(form.production_date||''),today=ctx.todayWarsaw();
+  const numeric=name=>{const raw=String(form[name]??'').trim().replace(',','.');if(!raw)return null;const value=Number(raw);return Number.isFinite(value)?value:null;};
+  const weight=numeric('weight_kg'),meters=numeric('meters'),errors=numeric('errors'),stops=numeric('stops');
+  const dateValid=/^\d{4}-\d{2}-\d{2}$/.test(productionDate)&&!Number.isNaN(Date.parse(`${productionDate}T12:00:00Z`))&&new Date(`${productionDate}T12:00:00Z`).toISOString().slice(0,10)===productionDate&&productionDate<=today;
+  if(!machine||!baleNumber||!dateValid)throw Object.assign(new Error('Wpisz maszynę, numer sztuki i prawidłową datę produkcji.'),{status:400});
+  if(weight===null||weight<=0||weight>1000||meters===null||meters<=0||meters>100000)throw Object.assign(new Error('Masa musi być większa od 0 kg, a metry od 0; sprawdź też maksymalne wartości.'),{status:400});
+  if(!Number.isSafeInteger(errors)||errors<0||!Number.isSafeInteger(stops)||stops<0)throw Object.assign(new Error('Błędy i stopy muszą być nieujemnymi liczbami całkowitymi.'),{status:400});
+  const rawWorkers=String(form.workers_lines||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean),workers=[];
+  for(const [index,line] of rawWorkers.entries()){
+    const match=line.match(/^(.+?)\s*\|\s*(\d+(?:[.,]\d+)?)\s*(?:m|mb)?$/i);
+    if(!match)throw Object.assign(new Error(`Wiersz dziewiarza ${index+1}: użyj formatu „Imię i nazwisko | metry”.`),{status:400});
+    const name=match[1].trim().slice(0,100),workerMeters=Number(match[2].replace(',','.'));
+    if(!name||!Number.isFinite(workerMeters)||workerMeters<0)throw Object.assign(new Error(`Wiersz dziewiarza ${index+1} zawiera nieprawidłowe dane.`),{status:400});
+    const known=db.prepare('SELECT employee_uid,name FROM knitting_workers WHERE lower(trim(name))=lower(trim(?)) ORDER BY active DESC,created_at LIMIT 1').get(name);
+    workers.push({employeeUid:known?.employee_uid||'',name:known?.name||name,meters:Math.round(workerMeters*100)/100});
+  }
+  if(workers.length>25)throw Object.assign(new Error('Można wpisać maksymalnie 25 dziewiarzy.'),{status:400});
+  const inventoryStatus=String(form.inventory_status||'available');
+  if(!['available','lost','shipped_out'].includes(inventoryStatus))throw Object.assign(new Error('Nieprawidłowy status magazynowy.'),{status:400});
+  const customStatus=String(form.custom_status||'').trim().replace(/\s+/g,' ').slice(0,120);
+  const trialSymbol=String(form.trial_symbol||'').trim().slice(0,150);
+  if(form.trial_group==='1'&&!trialSymbol)throw Object.assign(new Error('Wpisz symbol próby.'),{status:400});
+  return {articleId,articleSymbol:article.symbol,machine,baleNumber,productionDate,weightKg:Math.round(weight*100)/100,meters:Math.round(meters*100)/100,errors,stops,lot:String(form.lot||'').trim().slice(0,120),notes:String(form.notes||'').trim().slice(0,1000),trialSymbol,workersJson:JSON.stringify(workers),needsCheck:form.needs_check==='1'?1:0,inventoryStatus,statusReason:String(form.status_reason||'').trim().slice(0,500),customStatus,secondGrade:form.second_grade==='1',stripeRisk:form.stripe_risk==='1'};
+}
+
+function applyBaleStatus(ctx,localId,data){
+  const {db}=ctx,now=ctx.now(),userId=ctx.req.user.id;
+  if(data.inventoryStatus==='lost'||data.inventoryStatus==='shipped_out')db.prepare(`INSERT INTO warehouse_bale_flags(bale_local_id,status,reason,updated_at,updated_by) VALUES(?,?,?,?,?) ON CONFLICT(bale_local_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at,updated_by=excluded.updated_by`).run(localId,data.inventoryStatus,data.statusReason,now,userId);
+  else db.prepare('DELETE FROM warehouse_bale_flags WHERE bale_local_id=?').run(localId);
+  db.prepare('DELETE FROM warehouse_bale_tags WHERE bale_local_id=?').run(localId);
+  if(data.secondGrade)db.prepare('INSERT INTO warehouse_bale_tags(bale_local_id,tag,created_at,created_by) VALUES(?,?,?,?)').run(localId,'second_grade',now,userId);
+  if(data.stripeRisk)db.prepare('INSERT INTO warehouse_bale_tags(bale_local_id,tag,created_at,created_by) VALUES(?,?,?,?)').run(localId,'stripe_risk',now,userId);
+  if(data.customStatus)db.prepare(`INSERT INTO warehouse_bale_custom_statuses(bale_local_id,status,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,?) ON CONFLICT(bale_local_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,updated_by=excluded.updated_by`).run(localId,data.customStatus,now,userId,now,userId);
+  else db.prepare('DELETE FROM warehouse_bale_custom_statuses WHERE bale_local_id=?').run(localId);
+}
+
+function refreshBaleSnapshots(db,articleIds,uploadedAt){
+  for(const articleId of new Set(articleIds.filter(Number))){
+    db.prepare('DELETE FROM production_stock_snapshots WHERE article_id=?').run(articleId);
+    const rows=db.prepare(`SELECT production_date,count(*) pieces,round(coalesce(sum(weight_kg),0),2) weight_kg FROM production_bales WHERE article_id=? GROUP BY production_date`).all(articleId);
+    const insert=db.prepare('INSERT INTO production_stock_snapshots(snapshot_date,article_id,pieces,weight_kg,uploaded_at) VALUES(?,?,?,?,?)');
+    for(const row of rows)insert.run(row.production_date,articleId,row.pieces,row.weight_kg,uploadedAt);
+  }
 }
 
 function warehouseExcelStatus(row) {
@@ -349,11 +435,12 @@ function catalogPage(ctx) {
     const canManageStatuses = managerRoles.includes(ctx.req.user.role);
     const lostForm = canManageStatuses ? `<form method="post" action="/warehouse/bales/status" id="warehouse-bulk-status" class="warehouse-bulk-status">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="article_id" value="${current.id}"><input type="hidden" name="bale_ids" value="" data-warehouse-selected><input name="reason" placeholder="Powód zagubienia (opcjonalnie)" maxlength="500"><button name="status" value="lost" class="button danger">Oznacz jako zagubione</button><button name="status" value="second_grade" class="button warehouse-action-second-grade">Oznacz jako drugi gatunek</button><button name="status" value="stripe_risk" class="button warehouse-action-stripe-risk">Oznacz jako ryzyko pasiastości</button><input name="custom_status" maxlength="120" placeholder="Własny status"><button name="status" value="custom" class="button warehouse-action-custom-status">Dodaj status</button>${lostCount||bales.some(b=>b.quality_tags||b.custom_status) ? '<button name="status" value="available" class="button">Usuń oznaczenia / przywróć dostępność</button>' : ''}</form>` : '';
     const cols = canManageStatuses ? 11 : 10;
-    const exportIcons=`<span class="warehouse-export-icons no-print"><button type="button" class="warehouse-icon-button" data-print-page title="Drukuj wykaz" aria-label="Drukuj wykaz sztuk ${V.esc(current.symbol)}">${printerSvg}</button><a class="warehouse-icon-button" href="/warehouse/export.xlsx?${current.isTrialGroup?`trials=1&trial_sort=${trialSort}`:`article_id=${current.id}`}" title="Eksportuj do Excela" aria-label="Eksportuj wykaz sztuk ${V.esc(current.symbol)} do Excela">${excelSvg}</a></span>`;
-    const baleTableRows=baleRows(bales,{editNotes:editableRoles.includes(ctx.req.user.role),manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`;
+    const editBales=editableRoles.includes(ctx.req.user.role),exportIcons=`<span class="warehouse-export-icons no-print"><button type="button" class="warehouse-icon-button" data-print-page title="Drukuj wykaz" aria-label="Drukuj wykaz sztuk ${V.esc(current.symbol)}">${printerSvg}</button><a class="warehouse-icon-button" href="/warehouse/export.xlsx?${current.isTrialGroup?`trials=1&trial_sort=${trialSort}`:`article_id=${current.id}`}" title="Eksportuj do Excela" aria-label="Eksportuj wykaz sztuk ${V.esc(current.symbol)} do Excela">${excelSvg}</a></span>`;
+    const addBaleButton=manualBaleDialog(ctx,current);
+    const baleTableRows=baleRows(bales,{editNotes:editBales,edit:editBales,manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`;
     const listedWeight=bales.reduce((sum,b)=>sum+Number(b.weight_kg||0),0);
     const trialSortControl=current.isTrialGroup?`<form method="get" action="/warehouse" class="warehouse-trial-sort no-print"><input type="hidden" name="trials" value="1"><label>Sortuj belki<select name="trial_sort" data-auto-submit><option value="date_asc"${trialSort==='date_asc'?' selected':''}>Data produkcji · od najstarszej</option><option value="date_desc"${trialSort==='date_desc'?' selected':''}>Data produkcji · od najnowszej</option><option value="symbol_asc"${trialSort==='symbol_asc'?' selected':''}>Symbol próby · A–Z</option></select></label></form>`:'';
-    selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p>${trialSortControl}</div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
+    selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}${addBaleButton}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p>${trialSortControl}</div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
   }
   if (!current) {
     const canManageStatuses=managerRoles.includes(ctx.req.user.role),cols=canManageStatuses?11:10;
@@ -390,12 +477,27 @@ function baleDetailPage(ctx, localId) {
   const status=quality.join(' · ')||(bale.inventory_status==='shipped_out'?'Wysłana poza stan':'Dostępna');
   const shipmentStatus=bale.shipment_removed_at?(bale.correction_disposition?`Usunięta korektą (${bale.correction_disposition})`:'Usunięta z roboczej wysyłki'):(bale.shipment_status==='closed'?'Zamknięta':'W przygotowaniu');
   const shipment=bale.shipment_id?`<a href="/shipments/${bale.shipment_id}#specification-${bale.shipment_article_id}">${shipmentNo({sequence:bale.shipment_sequence,shipment_year:bale.shipment_year})} · ${shipmentStatus}</a>${bale.correction_reason||bale.shipment_removal_reason?`<div class="muted small">${V.esc(bale.correction_reason||bale.shipment_removal_reason)}</div>`:''}`:'—';
-  const canEditNote=editableRoles.includes(ctx.req.user.role)&&bale.shipment_status!=='closed'&&bale.inventory_status!=='shipped_out';
-  const noteForm=canEditNote?`<form method="post" action="/warehouse/bales/${encodeURIComponent(bale.local_id)}/notes" class="warehouse-detail-note" data-warehouse-note-form>${hidden('csrf',ctx.req.session.csrf)}<input name="notes" value="${V.esc(bale.notes)}" aria-label="Uwagi do belki" data-warehouse-note><span class="warehouse-note-status" aria-live="polite"></span></form>`:V.esc(bale.notes||'—');
-  const entries=[['Symbol artykułu',`<a href="${bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',noteForm],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
+  const canEdit=editableRoles.includes(ctx.req.user.role),canDelete=canEdit&&!baleHasReferences(ctx.db,bale.local_id);
+  const entries=[['Symbol artykułu',`<a href="${bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`}">${V.esc(bale.symbol)}</a>`],['Numer belki',V.esc(bale.bale_number)],['Status',V.esc(status)],['Maszyna',V.esc(bale.machine)],['Data produkcji',date(bale.production_date)],['Masa',`${money(bale.weight_kg)} kg`],['Długość',`${Number(bale.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} m`],['Błędy',String(bale.errors)],['Stopy',String(bale.stops)],['Dziewiarze',workerList],['LOT',V.esc(bale.lot||'—')],['Uwagi',V.esc(bale.notes||'—')],['Kontrola',bale.needs_check?'Wymaga sprawdzenia':'—'],['Wysyłka',shipment],['Zarejestrowano lokalnie',V.datepl(bale.local_created_at)],['Wysłano na serwer',V.datepl(bale.uploaded_at)]];
   if(bale.trial_symbol)entries.splice(1,0,['Symbol próby',V.esc(bale.trial_symbol)]);
-  const body=`<a class="breadcrumb" href="${bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`}">← Wykaz sztuk · ${V.esc(bale.trial_symbol?'Próby':bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY BELKI</span><h1>${V.esc(bale.bale_number)}</h1></div></div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
+  const actions=canEdit?`<div class="actions no-print"><a class="button primary" href="/warehouse/bales/${encodeURIComponent(bale.local_id)}/edit">Edytuj wszystkie dane</a>${canDelete?`<a class="button danger" href="/warehouse/bales/${encodeURIComponent(bale.local_id)}/delete">Usuń sztukę</a>`:`<button class="button danger" disabled title="Sztuka jest powiązana z wysyłką lub zleceniem i nie może być usunięta.">Usuń sztukę</button>`}</div>`:'';
+  const body=`<a class="breadcrumb" href="${bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`}">← Wykaz sztuk · ${V.esc(bale.trial_symbol?'Próby':bale.symbol)}</a><div class="pagehead"><div><span class="eyebrow">SZCZEGÓŁY SZTUKI</span><h1>${V.esc(bale.bale_number)}</h1></div>${actions}</div><section class="panel padded warehouse-bale-detail"><dl>${entries.map(([label,value])=>`<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl></section>`;
   return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Belka ${bale.bale_number} · Wykaz sztuk · Marand`,body});
+}
+
+function baleEditPage(ctx,localId){
+  const bale=baleEditableRecord(ctx.db,localId);if(!bale)throw Object.assign(new Error('Nie znaleziono sztuki.'),{status:404});
+  const canChangeArticle=!baleHasReferences(ctx.db,localId),canDelete=canChangeArticle;
+  const body=`<a class="breadcrumb" href="/warehouse/bales/${encodeURIComponent(localId)}">← Szczegóły sztuki ${V.esc(bale.bale_number)}</a><div class="pagehead"><div><span class="eyebrow">MAGAZYN · WYKAZ SZTUK</span><h1>Edytuj wszystkie dane sztuki</h1><p class="muted">Zmiana masy i metrów odświeży bieżące zestawienia magazynu.</p></div>${canDelete?`<a class="button danger" href="/warehouse/bales/${encodeURIComponent(localId)}/delete">Usuń sztukę</a>`:''}</div>${baleFormMarkup(ctx,{bale,action:`/warehouse/bales/${encodeURIComponent(localId)}/edit`,canChangeArticle})}`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Edytuj sztukę ${bale.bale_number}`,body});
+}
+
+function baleDeletePage(ctx,localId){
+  const bale=baleEditableRecord(ctx.db,localId);if(!bale)throw Object.assign(new Error('Nie znaleziono sztuki.'),{status:404});
+  const back=`/warehouse/bales/${encodeURIComponent(localId)}`;
+  const linked=baleHasReferences(ctx.db,localId);
+  const body=`<a class="breadcrumb" href="${back}">← Wróć do sztuki</a><dialog class="form-dialog delete-confirm-dialog" data-show-modal data-cancel-url="${back}"><div class="dialog-head"><strong>Usunąć sztukę z wykazu?</strong><a class="dialog-close" href="${back}" aria-label="Anuluj">×</a></div><div class="dialog-body"><h2 class="delete-confirm-object">${V.esc(bale.symbol)} · ${V.esc(bale.bale_number)}</h2>${linked?'<p class="alert error">Nie można usunąć sztuki, bo jest powiązana z wysyłką, korektą lub zleceniem wykończenia. Najpierw usuń to powiązanie.</p>':'<p>Usunięcie sztuki zmieni bieżący stan magazynu. Tego działania nie można cofnąć.</p>'}<form method="post" action="/warehouse/bales/${encodeURIComponent(localId)}/delete" class="actions">${hidden('csrf',ctx.req.session.csrf)}<a class="button" href="${back}">Wróć</a>${linked?'<button class="danger" disabled>Nie można usunąć</button>':'<button class="danger">Potwierdź usunięcie sztuki</button>'}</form></div></dialog>`;
+  return V.layout({user:ctx.req.user,csrf:ctx.req.session.csrf,flashes:ctx.getFlashes(ctx.req),title:`Usuń sztukę ${bale.bale_number}`,body});
 }
 
 function shipmentRecord(db, id) {
@@ -984,6 +1086,48 @@ function handle(ctx) {
     return send(req,res,200,warehouseExcel(ctx,article,trialSort),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{ 'Content-Disposition':`attachment; filename="${filename}"` });
   }
   if(p==='/warehouse'&&req.method==='GET') return send(req,res,200,catalogPage(ctx));
+  if(p==='/warehouse/bales/create'&&req.method==='POST'){
+    role(req.user,...editableRoles);
+    const data=parseBaleForm(ctx),localId=crypto.randomUUID(),now=ctx.now();
+    transaction(()=>{
+      db.prepare(`INSERT INTO production_bales(local_id,article_id,article_symbol,machine,bale_number,production_date,weight_kg,meters,errors,stops,needs_check,lot,notes,trial_symbol,workers_json,local_created_at,uploaded_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(localId,data.articleId,data.articleSymbol,data.machine,data.baleNumber,data.productionDate,data.weightKg,data.meters,data.errors,data.stops,data.needsCheck,data.lot,data.notes,data.trialSymbol,data.workersJson,now,now);
+      applyBaleStatus(ctx,localId,data);refreshBaleSnapshots(db,[data.articleId],now);
+    });
+    ctx.audit(req.user,'Ręcznie dodano sztukę do wykazu',null,JSON.stringify({localId,...data,workersJson:undefined}),data.articleId);
+    return redirect(req,res,data.trialSymbol?'/warehouse?trials=1':`/warehouse?article_id=${data.articleId}`,`Dodano sztukę ${data.baleNumber} do wykazu.`);
+  }
+  const baleEditMatch=p.match(/^\/warehouse\/bales\/([^/]+)\/edit$/);
+  if(baleEditMatch){
+    role(req.user,...editableRoles);
+    const localId=decodeURIComponent(baleEditMatch[1]),bale=baleEditableRecord(db,localId);
+    if(!bale)throw Object.assign(new Error('Nie znaleziono sztuki.'),{status:404});
+    if(req.method==='GET')return send(req,res,200,baleEditPage(ctx,localId));
+    if(req.method==='POST'){
+      const data=parseBaleForm(ctx,{existing:bale}),oldArticleId=Number(bale.article_id);
+      if(data.articleId!==oldArticleId&&baleHasReferences(db,localId))throw Object.assign(new Error('Nie można przenieść sztuki do innego artykułu, bo ma już powiązaną wysyłkę lub zlecenie.'),{status:409});
+      const now=ctx.now();
+      transaction(()=>{
+        db.prepare(`UPDATE production_bales SET article_id=?,article_symbol=?,machine=?,bale_number=?,production_date=?,weight_kg=?,meters=?,errors=?,stops=?,needs_check=?,lot=?,notes=?,trial_symbol=?,workers_json=?,uploaded_at=? WHERE local_id=?`).run(data.articleId,data.articleSymbol,data.machine,data.baleNumber,data.productionDate,data.weightKg,data.meters,data.errors,data.stops,data.needsCheck,data.lot,data.notes,data.trialSymbol,data.workersJson,now,localId);
+        applyBaleStatus(ctx,localId,data);refreshBaleSnapshots(db,[oldArticleId,data.articleId],now);
+      });
+      ctx.audit(req.user,'Zmieniono dane sztuki w wykazie',null,JSON.stringify({localId,oldArticleId,...data,workersJson:undefined}),data.articleId);
+      return redirect(req,res,data.trialSymbol?'/warehouse?trials=1':`/warehouse?article_id=${data.articleId}`,`Zapisano zmiany sztuki ${data.baleNumber}.`);
+    }
+  }
+  const baleDeleteMatch=p.match(/^\/warehouse\/bales\/([^/]+)\/delete$/);
+  if(baleDeleteMatch){
+    role(req.user,...editableRoles);
+    const localId=decodeURIComponent(baleDeleteMatch[1]),bale=baleEditableRecord(db,localId);
+    if(!bale)throw Object.assign(new Error('Nie znaleziono sztuki.'),{status:404});
+    if(req.method==='GET')return send(req,res,200,baleDeletePage(ctx,localId));
+    if(req.method==='POST'){
+      if(baleHasReferences(db,localId))throw Object.assign(new Error('Nie można usunąć sztuki powiązanej z wysyłką, korektą lub zleceniem wykończenia.'),{status:409});
+      transaction(()=>{db.prepare('DELETE FROM production_bales WHERE local_id=?').run(localId);refreshBaleSnapshots(db,[bale.article_id],ctx.now());});
+      ctx.audit(req.user,'Usunięto sztukę z wykazu',null,JSON.stringify({localId,baleNumber:bale.bale_number,symbol:bale.symbol}),bale.article_id);
+      return redirect(req,res,bale.trial_symbol?'/warehouse?trials=1':`/warehouse?article_id=${bale.article_id}`,`Usunięto sztukę ${bale.bale_number}.`);
+    }
+  }
   if(p==='/warehouse/bales/status'&&req.method==='POST') {
     role(req.user,...managerRoles);
     const ids=String(ctx.form.bale_ids||'').split(',').filter(Boolean);

@@ -341,7 +341,24 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-bale-detail dt,.warehouse-bale-detail dd{padding:8px 0;border-bottom:1px solid #edf0f2}
 .warehouse-bale-detail dd{text-align:left;overflow-wrap:anywhere}
 .warehouse-bale-detail ul{margin:0;padding-left:18px}
+.warehouse-bale-edit-link{display:inline-flex;margin-left:7px;width:22px;height:22px;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:5px;color:#48515a;text-decoration:none;font-size:14px}
+.warehouse-bale-edit-link:hover{border-color:var(--red);color:var(--red)}
+.warehouse-bale-row-actions{display:inline-flex;align-items:center}
+.warehouse-bale-row-actions .warehouse-bale-edit-link{margin-left:5px}
+.warehouse-bale-delete-link{color:var(--red)}
+.warehouse-bale-edit-form .form-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.warehouse-manual-bale-dialog{width:min(760px,calc(100vw - 28px));max-width:none}
+.warehouse-manual-bale-dialog .dialog-body{max-height:75vh;overflow:auto}
+.warehouse-bale-edit-form{display:grid;gap:14px}
+.warehouse-bale-edit-form label{display:grid;gap:5px}
+.warehouse-bale-edit-form input,.warehouse-bale-edit-form select,.warehouse-bale-edit-form textarea{box-sizing:border-box;width:100%;min-width:0}
+.warehouse-bale-edit-form .warehouse-bale-workers{grid-column:1/-1}
+.warehouse-bale-edit-form .warehouse-bale-tags{display:flex;gap:18px;flex-wrap:wrap;border:1px solid var(--line);border-radius:7px;padding:10px 12px}
+.warehouse-bale-edit-form .warehouse-bale-tags label,.warehouse-bale-edit-form label.check{display:flex;align-items:center;gap:7px}
+.warehouse-bale-edit-form .warehouse-bale-tags input,.warehouse-bale-edit-form label.check input{width:auto}
+.warehouse-bale-edit-form>.actions{justify-content:flex-end;margin:0}
 @media(max-width:650px){.warehouse-bale-detail dl{grid-template-columns:1fr;gap:0}.warehouse-bale-detail dd{padding-top:0;border-bottom:0}.warehouse-bale-detail dt{padding-bottom:2px}}
+@media(max-width:650px){.warehouse-bale-edit-form .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .finishing-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 20px;padding:5px;border:1px solid var(--line);border-radius:9px;background:#f7f8fa}
 .finishing-tabs a{display:inline-flex;padding:8px 12px;border-radius:6px;color:#445260;text-decoration:none;font-size:12px;font-weight:650}
 .finishing-tabs a:hover{background:#eaf0f5}.finishing-tabs a.selected{background:#29445d;color:#fff}
