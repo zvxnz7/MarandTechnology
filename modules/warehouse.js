@@ -305,9 +305,9 @@ function baleFormMarkup(ctx,{bale={},articleId=0,action,submitLabel='Zapisz dane
   if(selectedArticleId&&!articles.some(article=>Number(article.id)===selectedArticleId)){const current=db.prepare('SELECT id,symbol FROM articles WHERE id=?').get(selectedArticleId);if(current)articles.push(current);}
   const currentArticle=articles.find(article=>Number(article.id)===selectedArticleId);
   const articleInput=canChangeArticle?`<label>Symbol artykułu<select name="article_id" required>${articles.map(article=>`<option value="${article.id}"${Number(article.id)===selectedArticleId?' selected':''}>${V.esc(article.symbol)}</option>`).join('')}</select></label>`:`${hidden('article_id',selectedArticleId)}<div class="muted">Artykuł: <strong>${V.esc(currentArticle?.symbol||'—')}</strong>${newBale?'':' · zmiana artykułu jest zablokowana przez powiązany dokument'}</div>`;
-  const flags=db.prepare('SELECT status,reason FROM warehouse_bale_flags WHERE bale_local_id=?').get(bale.local_id)||{};
-  const tags=new Set(db.prepare('SELECT tag FROM warehouse_bale_tags WHERE bale_local_id=?').all(bale.local_id).map(row=>row.tag));
-  const customStatus=db.prepare('SELECT status FROM warehouse_bale_custom_statuses WHERE bale_local_id=?').get(bale.local_id)?.status||'';
+  const flags=bale.local_id?db.prepare('SELECT status,reason FROM warehouse_bale_flags WHERE bale_local_id=?').get(bale.local_id)||{}:{};
+  const tags=new Set(bale.local_id?db.prepare('SELECT tag FROM warehouse_bale_tags WHERE bale_local_id=?').all(bale.local_id).map(row=>row.tag):[]);
+  const customStatus=bale.local_id?db.prepare('SELECT status FROM warehouse_bale_custom_statuses WHERE bale_local_id=?').get(bale.local_id)?.status||'':'';
   const workers=ctx.db.prepare('SELECT employee_uid,name FROM knitting_workers ORDER BY active DESC,name COLLATE NOCASE').all();
   const status=flags.status||'available';
   const workerField=`<label class="warehouse-bale-workers">Dziewiarze · jeden wiersz: imię i nazwisko | metry<textarea name="workers_lines" rows="3" placeholder="Jan Kowalski | 120 m">${V.esc(baleWorkerLines(bale.workers_json))}</textarea><small class="muted">Zachowaj format: osoba | liczba metrów. Lista: ${V.esc(workers.map(worker=>worker.name).join(', ')||'brak osób w bibliotece')}.</small></label>`;
