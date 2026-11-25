@@ -23,7 +23,12 @@ const refreshLabelPreview = () => {
   if (extraRow) { extraRow.hidden = !checked.has('extra-text') || !extra; extraRow.querySelector('strong').textContent = extra; }
   const color = labelSettingsForm.elements.namedItem('color_text')?.value.trim();
   const colorRow = labelPreview.querySelector('[data-label-key="color"]');
-  if (colorRow && color) colorRow.querySelector('strong').textContent = color;
+  if (colorRow) colorRow.querySelector('strong').textContent = color || colorRow.dataset.labelValue;
+  const distance = labelSettingsForm.elements.namedItem('distance')?.value.trim();
+  const distanceRow = labelPreview.querySelector('[data-label-key="distance"]');
+  if (distanceRow) distanceRow.querySelector('strong').textContent = distance ? `${distance} mm` : distanceRow.dataset.labelValue;
+  const clientRow = labelPreview.querySelector('[data-label-key="client"]');
+  if (clientRow) clientRow.querySelector('strong').textContent = labelSettingsForm.elements.namedItem('client_name')?.value.trim() || '—';
   const brandMode = labelSettingsForm.elements.namedItem('brand_mode')?.value || 'logo';
   let brand = labelPreview.querySelector('[data-label-brand]');
   if (brandMode === 'logo' || brandMode === 'client-logo' || brandMode === 'text') {
@@ -35,7 +40,7 @@ const refreshLabelPreview = () => {
       labelPreview.prepend(brand);
     }
     if (brandMode === 'text') brand.textContent = labelSettingsForm.elements.namedItem('brand_text')?.value.trim() || '';
-    else { brand.src = brandMode === 'logo' ? '/static/marand-label-logo.png' : labelSettingsForm.elements.namedItem('client_logo')?.value || ''; brand.alt = brandMode === 'logo' ? 'MARAND Technical textiles' : 'Logo klienta'; }
+    else { brand.src = brandMode === 'logo' ? '/static/marand-label-logo.png' : labelSettingsDialog.dataset.clientLogo || ''; brand.alt = brandMode === 'logo' ? 'MARAND Technical textiles' : 'Logo klienta'; }
     brand.hidden = brandMode === 'text' && !brand.textContent.trim() || brandMode === 'client-logo' && !brand.getAttribute('src');
   } else brand?.remove();
   const quantity = labelSettingsForm.elements.namedItem('quantity_unit')?.value || 'meters';
@@ -52,6 +57,9 @@ const refreshLabelPreview = () => {
       secondary.textContent = `${labelSettingsForm.elements.namedItem('lang')?.value === 'en' ? 'LENGTH [m]' : 'DŁUGOŚĆ [m]'}: ${quantityRow.dataset.quantityMeters}`;
     } else secondary?.remove();
   }
+  const language = labelSettingsForm.elements.namedItem('lang')?.value === 'en' ? 'en' : 'pl';
+  const translated = language === 'en' ? {symbol:'INDEX',raw:'GREIGE INDEX',color:'COLOR',lot:'BATCH NO.',width:'WIDTH',grammage:'WEIGHT',client:'CLIENT',weight:'WEIGHT [kg]',distance:'DISTANCE'} : {symbol:'SYMBOL',raw:'SYMBOL SUROWY',color:'KOLOR',lot:'NR PARTII',width:'SZEROKOŚĆ',grammage:'GRAMATURA',client:'KLIENT',weight:'WAGA [kg]',distance:'DYSTANS'};
+  labelPreview.querySelectorAll('[data-label-key]').forEach(row => { const title = row.querySelector('span'); if (title && translated[row.dataset.labelKey]) title.textContent = translated[row.dataset.labelKey]; });
 };
 labelSettingsForm?.addEventListener('input', refreshLabelPreview);
 labelSettingsForm?.addEventListener('change', refreshLabelPreview);
