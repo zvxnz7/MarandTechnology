@@ -17,10 +17,10 @@ const escapeLabelHtml = value => String(value ?? '').replace(/[&<>"']/g, charact
 const refreshLabelPreview = () => {
   if (!labelSettingsForm || !labelPreview) return;
   const checked = new Set([...labelSettingsForm.querySelectorAll('input[type="checkbox"][name^="label_field_"]:checked')].map(input => input.name.replace('label_field_', '').replaceAll('_', '-')));
-  labelPreview.querySelectorAll('[data-label-key]').forEach(row => { row.hidden = !checked.has(row.dataset.labelKey); });
+  labelPreview.querySelectorAll('[data-label-key]').forEach(row => { if (row.dataset.labelKey === 'quantity') return; row.hidden = !checked.has(row.dataset.labelKey); row.style.display = row.hidden ? 'none' : ''; });
   const extra = labelSettingsForm.elements.namedItem('extra_text')?.value.trim();
   const extraRow = labelPreview.querySelector('[data-label-key="extra-text"]');
-  if (extraRow) { extraRow.hidden = !checked.has('extra-text') || !extra; extraRow.querySelector('strong').textContent = extra; }
+  if (extraRow) { extraRow.hidden = !checked.has('extra-text') || !extra; extraRow.style.display = extraRow.hidden ? 'none' : ''; extraRow.querySelector('strong').textContent = extra; }
   const color = labelSettingsForm.elements.namedItem('color_text')?.value.trim();
   const colorRow = labelPreview.querySelector('[data-label-key="color"]');
   if (colorRow) colorRow.querySelector('strong').textContent = color || colorRow.dataset.labelValue;
@@ -42,6 +42,7 @@ const refreshLabelPreview = () => {
     if (brandMode === 'text') brand.textContent = labelSettingsForm.elements.namedItem('brand_text')?.value.trim() || '';
     else { brand.src = brandMode === 'logo' ? '/static/marand-label-logo.png' : labelSettingsDialog.dataset.clientLogo || ''; brand.alt = brandMode === 'logo' ? 'MARAND Technical textiles' : 'Logo klienta'; }
     brand.hidden = brandMode === 'text' && !brand.textContent.trim() || brandMode === 'client-logo' && !brand.getAttribute('src');
+    brand.style.display = brand.hidden ? 'none' : '';
   } else brand?.remove();
   const quantity = labelSettingsForm.elements.namedItem('quantity_unit')?.value || 'meters';
   const quantityRow = labelPreview.querySelector('[data-label-key="quantity"]');
