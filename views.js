@@ -173,12 +173,11 @@ function csrfForm(csrf, action, content, classes = '', target = '') {
 function layout({ title = 'Marand · Technologia', user, csrf, body, flashes = [] }) {
   const notices = flashes.map(f => `<div class="notice ${esc(f.category || 'success')}" role="status">${esc(f.message)}</div>`).join('');
   const userBox = user ? `<div class="user">${esc(user.name)} <small>${esc(ROLE[user.role] || user.role)}</small>${csrfForm(csrf, '/logout', '<button class="link">Wyloguj</button>')}</div>` : '';
-  const adminNav = user && user.role === 'admin' ? '<a class="nav-link" href="/admin/import">Import danych</a><a class="nav-link" href="/admin/update">Aktualizacje GitHub</a><a class="nav-link" href="/production/connection">Połączenie z panelem lokalnym</a>' : '';
   const navigation = require('./modules/navigation').filter(item=>!item.roles||item.roles.includes(user?.role)).map(item => item.children
     ? `<details class="nav-group"><summary>${item.href?`<a class="nav-group-main-link" href="${item.href}" onclick="event.stopPropagation()">${esc(item.label)}</a>`:esc(item.label)}</summary><div class="nav-children">${item.children.filter(child=>!child.roles||child.roles.includes(user?.role)).map(child => `<a class="nav-link nav-sublink" href="${child.href}">${esc(child.label)}</a>`).join('')}</div></details>`
     : `<a class="nav-link" href="${item.href}">${esc(item.label)}</a>`).join('');
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/app.js"></script></head><body>
-<aside class="sidebar"><a class="brand" href="/"><img src="/static/logo.jpg?v=${LOGO_CACHE_VERSION}" alt="Marand Technical textiles"></a><div class="brand-caption">TECHNOLOGIA I ROZWÓJ</div><nav>${navigation}${adminNav}</nav><div class="sidebar-bottom">Wersja ${esc(process.env.MARAND_VERSION || '0.3.0')}<br><small>Dokumentacja technologiczna</small></div></aside>
+<aside class="sidebar"><a class="brand" href="/"><img src="/static/logo.jpg?v=${LOGO_CACHE_VERSION}" alt="Marand Technical textiles"></a><div class="brand-caption">TECHNOLOGIA I ROZWÓJ</div><nav>${navigation}</nav><div class="sidebar-bottom">Wersja ${esc(process.env.MARAND_VERSION || '0.3.0')}<br><small>Dokumentacja technologiczna</small></div></aside>
 <div class="workspace"><header class="topbar"><span>Marand / Dokumentacja technologiczna</span>${userBox}</header><main>${notices}${body}</main></div></body></html>`;
 }
 function errorPage({ error, returnTo = '/', ...base }) {
