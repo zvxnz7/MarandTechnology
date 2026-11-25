@@ -253,7 +253,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .shipment-documents-button{padding:5px 9px;font-size:12px}
 .shipment-documents-dialog{width:min(620px,calc(100vw - 32px))}
 .shipment-documents-dialog .dialog-body{max-height:min(65vh,560px);overflow:auto}
-.shipment-doc-list{margin:0;padding-left:18px}.shipment-doc-list li{margin:5px 0;font-size:12px;overflow-wrap:anywhere}
+.shipment-doc-list{margin:0;padding-left:18px}.shipment-doc-list li{margin:5px 0;font-size:12px;overflow-wrap:anywhere}.shipment-doc-item-link{display:block}.shipment-doc-item-link:hover{text-decoration:underline}
 .shipment-article{margin:8px 0;padding:8px 12px;background:#fff;border:1px solid var(--line);border-radius:7px}
 .shipment-article>summary{display:grid;grid-template-columns:minmax(220px,1fr) minmax(340px,1.25fr) minmax(190px,auto);align-items:center;gap:14px;font-size:14px}
 .shipment-article-title{min-width:0;font-weight:600}
