@@ -663,7 +663,7 @@ function shipmentPage(ctx, shipment) {
     return `<details class="shipment-article" id="specification-${item.id}"${openSpecificationId===item.id?' open':''}><summary><span class="shipment-article-title">${articleNo(shipment,item)} · ${V.esc(item.symbol)}</span><span class="shipment-article-actions"><a target="_blank" rel="noopener" href="/shipments/${shipment.id}/wz/${item.id}">Podgląd WZ</a>${editSpecification}${deleteSpecification}</span><span class="shipment-article-meta"><span>${item.bale_count} szt w wysyłce · ${money(item.weight_kg)} kg</span>${plant}</span></summary><div class="panel scroll"><table class="listing compact"><thead><tr><th>LP</th><th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>LOT</th><th>Data produkcji</th><th>Historia przypisania</th></tr></thead><tbody>${baleRowsHtml||'<tr><td colspan="8">Brak belek.</td></tr>'}</tbody></table></div></details>`;
   }).join('');
   const status = shipment.status==='closed'?`<span class="badge approved">Zamknięta · ${V.datepl(shipment.closed_at)}</span>`:shipment.status==='cancelled'?'<span class="badge archived">Anulowana</span>':'<span class="badge submitted">W przygotowaniu</span>';
-  const details = canEdit ? `<form method="post" action="/shipments/${shipment.id}/date" class="shipment-date-form" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="shipment_date" value="${V.esc(shipment.shipment_date)}" data-autosave-value required></label><span data-autosave-status class="autosave-status" aria-live="polite"></span></form>` : `<p>Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p>`;
+  const details = canEdit ? `<form method="post" action="/shipments/${shipment.id}/number" class="shipment-number-form">${hidden('csrf',ctx.req.session.csrf)}<label>Nr wysyłki<input name="shipment_number" value="${V.esc(shipmentNo(shipment))}" maxlength="11" pattern="[0-9]{1,6}/([0-9]{2}|[0-9]{4})" title="Wpisz numer w formacie 12/2026" required></label><button class="button">Zapisz numer</button></form><form method="post" action="/shipments/${shipment.id}/date" class="shipment-date-form" data-autosave>${hidden('csrf',ctx.req.session.csrf)}<label>Data wysyłki<input type="date" name="shipment_date" value="${V.esc(shipment.shipment_date)}" data-autosave-value required></label><span data-autosave-status class="autosave-status" aria-live="polite"></span></form>` : `<p>Numer wysyłki: <strong>${V.esc(shipmentNo(shipment))}</strong> · Data wysyłki: <strong>${date(shipment.shipment_date)}</strong></p>`;
   const actions = canEdit ? `<div class="actions"><a class="button primary" href="/shipments/${shipment.id}/select">+ Dodaj specyfikację do wysyłki</a></div>` : '';
   const close = canClose && items.some(item=>item.bale_count>0) ? `<form method="post" action="/shipments/${shipment.id}/close" class="shipment-close-form">${hidden('csrf',ctx.req.session.csrf)}<label class="check"><input type="checkbox" name="confirm_close" value="1" required> Potwierdzam zamknięcie wysyłki. Belki znikną z bieżącego rejestru.</label><button class="primary">Zamknij wysyłkę</button></form>` : '';
   const cancel = canClose ? `<a class="button danger" href="/shipments/${shipment.id}/cancel">Anuluj wysyłkę i zwolnij belki</a>` : '';
@@ -1182,7 +1182,7 @@ function handle(ctx) {
     ctx.audit(req.user,'Utworzono roboczą wysyłkę',null,JSON.stringify({shipmentId:id,year}),null);
     return redirect(req,res,`/shipments/${id}`,'Utworzono nową wysyłkę.');
   }
-  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|close|cancel|delete|report|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/(delete|edit)))?$/);
+  const pathMatch=p.match(/^\/shipments\/(\d+)(?:\/(select|add|remove|date|number|close|cancel|delete|report|wz\/(\d+)|correction\/(\d+)|specifications\/(\d+)\/(delete|edit)))?$/);
   if(pathMatch){
     const id=Number(pathMatch[1]),action=pathMatch[2]||'',itemId=Number(pathMatch[3]||0),correctionId=Number(pathMatch[4]||0),specificationId=Number(pathMatch[5]||0),specificationAction=pathMatch[6]||'',shipment=shipmentRecord(db,id);
     if(!shipment) throw Object.assign(new Error('Nie znaleziono wysyłki.'),{status:404});
@@ -1294,6 +1294,24 @@ function handle(ctx) {
       db.prepare('UPDATE shipments SET shipment_date=? WHERE id=?').run(shipmentDate,id);
       if(req.headers['x-requested-with']==='fetch') return send(req,res,200,JSON.stringify({ok:true}),'application/json; charset=utf-8');
       return redirect(req,res,`/shipments/${id}`,'Zapisano datę wysyłki.');
+    }
+    if(action==='number'&&req.method==='POST'){
+      role(req.user,...editableRoles);
+      if(shipment.status!=='draft') throw Object.assign(new Error('Numer można zmienić tylko podczas przygotowywania wysyłki.'),{status:409});
+      const raw=String(ctx.form.shipment_number||'').trim(),match=raw.match(/^(\d{1,6})\s*\/\s*(\d{2}|\d{4})$/);
+      if(!match) throw Object.assign(new Error('Wpisz numer wysyłki w formacie np. 12/2026.'),{status:400});
+      const sequence=Number(match[1]),yearPart=match[2],year=Number(yearPart.length===2?`20${yearPart}`:yearPart);
+      if(!Number.isInteger(sequence)||sequence<1||!Number.isInteger(year)||year<2000||year>9999) throw Object.assign(new Error('Numer wysyłki musi zawierać dodatni numer i prawidłowy rok.'),{status:400});
+      transaction(()=>{
+        const duplicate=db.prepare('SELECT id FROM shipments WHERE shipment_year=? AND sequence=? AND id<>?').get(year,sequence,id);
+        if(duplicate) throw Object.assign(new Error(`Numer wysyłki ${String(sequence).padStart(2,'0')}/${year} jest już zajęty.`),{status:409});
+        const changed=db.prepare('UPDATE shipments SET shipment_year=?,sequence=? WHERE id=? AND status=\'draft\'').run(year,sequence,id);
+        if(!changed.changes) throw Object.assign(new Error('Wysyłka przestała być robocza. Odśwież stronę i spróbuj ponownie.'),{status:409});
+        db.prepare('INSERT OR IGNORE INTO shipment_sequence_counters(shipment_year,last_value) VALUES(?,0)').run(year);
+        db.prepare('UPDATE shipment_sequence_counters SET last_value=max(last_value,?) WHERE shipment_year=?').run(sequence,year);
+      });
+      ctx.audit(req.user,'Zmieniono numer roboczej wysyłki',null,JSON.stringify({shipmentId:id,from:shipmentNo(shipment),to:`${String(sequence).padStart(2,'0')}/${year}`}),null);
+      return redirect(req,res,`/shipments/${id}`,`Zapisano numer wysyłki ${String(sequence).padStart(2,'0')}/${year}.`);
     }
     if(action==='close'&&req.method==='POST'){
       role(req.user,...managerRoles);

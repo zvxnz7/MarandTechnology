@@ -358,11 +358,11 @@ function migrateRecipeTradeSymbols(db) {
   try {
     const rows=db.prepare(`SELECT r.id,r.name,r.recipe_details,r.recipe_text,p.name finishing_plant_name FROM finishing_recipes r LEFT JOIN finishing_plants p ON p.id=r.finishing_plant_id`).all();
     const update=db.prepare('UPDATE finishing_recipes SET recipe_details=? WHERE id=?');
-    db.transaction(()=>{for(const row of rows){let details={};try{details=JSON.parse(row.recipe_details||'{}')||{}}catch{}if(!Object.keys(details).length||details.tradeColorSymbol!==undefined||details.trade_color_symbol!==undefined)continue;
+    for(const row of rows){let details={};try{details=JSON.parse(row.recipe_details||'{}')||{}}catch{}if(!Object.keys(details).length||details.tradeColorSymbol!==undefined||details.trade_color_symbol!==undefined)continue;
       const saved=details.tradeSymbol||details.trade_symbol||'';
       if(!saved)continue;
       const parts=splitLegacyTradeSymbol(saved,row.finishing_plant_name,row.name);details.tradeSymbol=parts.symbol;details.tradeColorSymbol=parts.color;delete details.trade_symbol;update.run(JSON.stringify(details),row.id);
-    }})()
+    }
   } catch (error) { migratedRecipeTradeSymbolDbs.delete(db); throw error; }
 }
 function recipeTradeSymbol(recipe) {
