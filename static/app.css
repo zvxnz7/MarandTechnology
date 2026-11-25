@@ -558,7 +558,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-preview-panel>small{color:var(--muted);font-size:12px}
 .finishing-label-preview-size{width:50mm;height:74mm;background:#fff;box-shadow:0 8px 22px #20283233}
 .finishing-label-preview{width:50mm;height:74mm;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif}
-.finishing-label-preview .label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:left center;margin:0 0 2mm}
+.finishing-label-preview .label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:center;margin:0 auto 2mm}
 .finishing-label-preview .label-custom-brand{min-height:12mm;display:flex;align-items:center;font-size:12pt;font-weight:700;margin:0 0 2mm}
 .finishing-label-preview .label-content{display:flex;flex:1;flex-direction:column;gap:1.1mm;min-height:0}
 .finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}
