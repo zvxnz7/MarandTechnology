@@ -9,11 +9,11 @@ module.exports = [
     { id: 'catalog', label: 'Wykaz sztuk', href: '/warehouse' },
     { id: 'shipments', label: 'Wysyłka', href: '/shipments' },
   ] },
-  { id: 'finishing', label: 'WYKAŃCZANIE', href: '/finishing/orders', children: [
+  { id: 'settings', label: 'USTAWIENIA', children: [
     { id: 'finishing-orders', label: 'Zlecenia wykańczania', href: '/finishing/orders' },
     { id: 'finishing-receipts', label: 'Przyjęcie towaru', href: '/finishing/receipts' },
     { id: 'finishing-recipes', label: 'Biblioteka receptur wykańczania', href: '/finishing/recipes' },
+    { id: 'libraries', label: 'Biblioteki', href: '/settings/libraries', roles: ['admin','approver'] },
   ] },
-  { id: 'settings', label: 'Biblioteki', href: '/settings/libraries', roles: ['admin','approver'] },
   { id: 'archive', label: 'Archiwum · 30 dni', href: '/archive' },
 ];
