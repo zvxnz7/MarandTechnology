@@ -297,7 +297,7 @@ function baleWorkerLines(value){
 function manualBaleDialog(ctx,article){
   const canEdit=editableRoles.includes(ctx.req.user.role);if(!canEdit)return '';
   const dialogId='warehouse-manual-bale-dialog',trialGroup=Boolean(article.isTrialGroup),articleId=trialGroup?0:article.id;
-  return `<button type="button" class="button primary" data-open-dialog="${dialogId}">+ ${trialGroup?'Dodaj próbę':'Dodaj sztukę'}</button><dialog id="${dialogId}" class="form-dialog warehouse-manual-bale-dialog"><div class="dialog-head"><strong>Ręcznie dodaj sztukę · ${V.esc(trialGroup?'próba':article.symbol)}</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body">${baleFormMarkup(ctx,{articleId,action:'/warehouse/bales/create',submitLabel:trialGroup?'Dodaj próbę':'Dodaj sztukę',newBale:true,canChangeArticle:trialGroup,trialGroup})}</div></dialog>`;
+  return `<button type="button" class="button primary" data-open-dialog="${dialogId}">+ ${trialGroup?'Dodaj próbę':'Dodaj sztukę ręcznie'}</button><dialog id="${dialogId}" class="form-dialog warehouse-manual-bale-dialog"><div class="dialog-head"><strong>Ręcznie dodaj sztukę · ${V.esc(trialGroup?'próba':article.symbol)}</strong><button type="button" class="dialog-close" data-close-dialog aria-label="Zamknij">×</button></div><div class="dialog-body">${baleFormMarkup(ctx,{articleId,action:'/warehouse/bales/create',submitLabel:trialGroup?'Dodaj próbę':'Dodaj sztukę ręcznie',newBale:true,canChangeArticle:trialGroup,trialGroup})}</div></dialog>`;
 }
 
 function baleFormMarkup(ctx,{bale={},articleId=0,action,submitLabel='Zapisz dane sztuki',newBale=false,canChangeArticle=true,trialGroup=false}){

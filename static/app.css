@@ -551,9 +551,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-dialog .dialog-head small{color:var(--muted);font-size:12px;font-weight:400}
 .finishing-receive-dialog .dialog-close{flex:none;cursor:pointer}
 .finishing-receive-dialog .dialog-body{flex:1 1 auto;min-height:0;max-height:none;padding:18px 22px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
-.finishing-label-config-dialog{width:min(1060px,calc(100vw - 32px));max-width:1060px;max-height:92vh}
-.finishing-label-config-dialog .dialog-body{max-height:calc(92vh - 72px);overflow:auto;padding:0}
-.finishing-label-config-layout{display:grid;grid-template-columns:minmax(260px,.85fr) minmax(420px,1.15fr);grid-template-rows:minmax(0,1fr) auto;gap:0 22px}
+.finishing-label-config-dialog{width:min(1060px,calc(100vw - 24px));max-width:1060px;max-height:calc(100dvh - 24px);overflow:hidden}
+.finishing-label-config-dialog .dialog-body{max-height:calc(100dvh - 84px);overflow:auto;padding:0}
+.finishing-label-config-layout{display:grid;grid-template-columns:minmax(230px,.75fr) minmax(0,1.25fr);grid-template-rows:auto;gap:0 18px;min-width:0}
 .finishing-label-preview-panel{display:grid;align-content:start;justify-items:center;gap:12px;padding:24px;background:#edf0f2;border-right:1px solid var(--line)}
 .finishing-label-preview-panel>small{color:var(--muted);font-size:12px}
 .finishing-label-preview-size{width:50mm;height:74mm;background:#fff;box-shadow:0 8px 22px #20283233}
@@ -570,9 +570,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-preview .label-quantity span{font-size:7pt;font-weight:700}
 .finishing-label-preview .label-quantity strong{font-size:calc(15pt * var(--label-data-scale,1));line-height:1.1}
 .finishing-label-preview .label-secondary-quantity{font-size:7pt;font-weight:600}
-.finishing-label-preview .label-extra-text{font-size:7pt;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}
+.finishing-label-preview .label-extra-text{justify-content:flex-start;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-label-preview>small{position:absolute;bottom:1mm;right:2mm;font-size:5.5pt}
-.finishing-label-options{display:grid;align-content:start;gap:12px;max-height:calc(92vh - 140px);overflow:auto;padding:18px 22px}
+.finishing-label-options{display:grid;align-content:start;gap:12px;min-width:0;max-height:calc(100dvh - 104px);overflow:auto;padding:16px 18px}
 .finishing-label-options fieldset{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;min-width:0;margin:0;padding:9px 11px 10px;border:1px solid var(--line);border-radius:7px}
 .finishing-label-options legend{padding:0 5px;font-size:12px;font-weight:700;color:#555e66}
 .finishing-label-option{display:flex;align-items:center;gap:8px;min-width:0;margin:0;padding:4px 2px;font-size:13px;font-weight:500;cursor:pointer}
@@ -589,6 +589,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-radio-row{display:flex;gap:18px;flex-wrap:wrap}
 .finishing-label-config-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:9px;padding:12px 18px;border-top:1px solid var(--line);background:#fafbfc}
 .finishing-recipe-label-template>p{margin-top:0}
+.finishing-recipe-label-config-layout{margin:0 -18px -14px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.finishing-recipe-label-config-layout .finishing-label-preview-panel{grid-column:1;grid-row:1;align-content:start}
+.finishing-recipe-label-config-layout .finishing-label-options{grid-column:2;grid-row:1;max-height:none;overflow:visible}
+.finishing-recipe-label-config-layout .finishing-recipe-label-template-controls{grid-template-columns:minmax(0,1fr)}
+.finishing-recipe-label-config-layout .finishing-recipe-label-template-controls>fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}
+.finishing-recipe-label-config-layout .finishing-recipe-label-template-controls>fieldset:first-child{grid-template-columns:minmax(0,1fr)}
+.finishing-label-language{display:grid;gap:6px;width:100%;margin:0;padding:9px 11px 10px;border:1px solid var(--line);border-radius:7px}
+.finishing-label-language legend{padding:0 5px;font-size:12px;font-weight:700;color:#555e66}
+.finishing-label-language .finishing-label-radio-row{justify-content:center}
 .finishing-recipe-label-template-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .finishing-recipe-label-template-controls fieldset{display:grid;gap:7px;min-width:0;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:7px}
 .finishing-recipe-label-template-controls legend{padding:0 5px;font-weight:700}
@@ -600,7 +609,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-recipe-client-logo-row img{grid-column:2;max-width:100%;max-height:70px;object-fit:contain;object-position:left center}
 .finishing-recipe-client-logo-row button,.finishing-recipe-client-logo-row small{grid-column:2;justify-self:start}
 @media(max-width:760px){.finishing-recipe-label-template-controls{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:760px){.finishing-label-config-dialog{max-height:94vh}.finishing-label-config-dialog .dialog-body{max-height:calc(94vh - 64px)}.finishing-label-config-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}.finishing-label-preview-panel{border-right:0;border-bottom:1px solid var(--line);padding:14px}.finishing-label-preview-panel .finishing-label-preview-size{transform:scale(.85);transform-origin:top center;margin-bottom:-42px}.finishing-label-options{max-height:none;padding:14px}.finishing-label-config-actions{position:sticky;bottom:0}}
+@media(max-width:760px){.finishing-label-config-dialog{max-height:calc(100dvh - 12px);width:calc(100vw - 12px)}.finishing-label-config-dialog .dialog-body{max-height:calc(100dvh - 72px)}.finishing-label-config-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto}.finishing-label-preview-panel{border-right:0;border-bottom:1px solid var(--line);padding:10px;gap:6px}.finishing-label-preview-panel .finishing-label-preview-size{transform:scale(.62);transform-origin:top center;margin-bottom:-90px}.finishing-label-options{max-height:none;padding:12px}.finishing-label-config-actions{position:sticky;bottom:0}.finishing-recipe-label-config-layout{margin:0 -12px -12px}.finishing-recipe-label-config-layout .finishing-label-preview-panel,.finishing-recipe-label-config-layout .finishing-label-options{grid-column:1;grid-row:auto}.finishing-recipe-label-config-layout .finishing-recipe-label-template-controls>fieldset{grid-template-columns:minmax(0,1fr)}}
 .finishing-receive-overview{display:grid;gap:8px}
 .finishing-receive-date-card,.finishing-receive-metric{display:grid;align-content:center;gap:2px;min-width:0;width:100%;height:56px;min-height:56px;padding:5px 10px;border:1px solid #e5e9ec;border-radius:6px;background:#f1f3f5;color:#4c5660}
 .finishing-receive-date-card small,.finishing-receive-metric small{color:var(--muted);font-size:11px;line-height:13px}
