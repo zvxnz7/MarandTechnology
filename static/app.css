@@ -926,3 +926,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-receipt-undo-dialog{width:min(520px,calc(100vw - 32px))}
 .finishing-receipt-undo-dialog .dialog-body>p{margin-top:0}
 .finishing-receipt-undo-dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.finishing-label-preview .label-content{position:relative;padding-bottom:13mm;overflow:hidden}
+.finishing-label-preview .label-row{flex:0 0 auto}
+.finishing-label-preview .label-quantity{position:absolute;left:0;right:0;bottom:0;margin:0;flex:0 0 auto}
+.finishing-pms-status{background:#e8efff;color:#314f90;border:1px solid #cbd8f3}

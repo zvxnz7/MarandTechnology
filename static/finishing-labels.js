@@ -15,6 +15,18 @@ const labelSettingsForm = labelSettingsDialog?.querySelector('form');
 const labelPreview = labelSettingsDialog?.querySelector('.finishing-label-preview');
 const escapeLabelHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const fitLabelRows = label => {
+  const content = label.querySelector('.label-content');
+  if (content) {
+    const quantity = content.querySelector('.label-quantity'), lastDataRow = quantity?.previousElementSibling;
+    label.style.setProperty('--label-data-scale', '1');
+    let scale = 1;
+    while ((content.scrollHeight > content.clientHeight + 1 || lastDataRow && lastDataRow.getBoundingClientRect().bottom > quantity.getBoundingClientRect().top - 1) && scale > .24) {
+      scale = Math.max(.22, scale - .04);
+      label.style.setProperty('--label-data-scale', scale.toFixed(2));
+      content.style.gap = `${Math.max(.25, 1.1 * scale)}mm`;
+      content.querySelectorAll('.label-row').forEach(row => { row.style.paddingBottom = `${Math.max(.1, .6 * scale)}mm`; });
+    }
+  }
   label.querySelectorAll('.label-row').forEach(row => {
     const value = row.querySelector('strong'), title = row.querySelector('span');
     if (!value || !row.getClientRects().length) return;
