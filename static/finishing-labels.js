@@ -9,11 +9,30 @@ document.querySelectorAll('[data-label-settings-close]').forEach(button => butto
   if (typeof labelSettingsDialog?.close === 'function') labelSettingsDialog.close();
   else labelSettingsDialog?.removeAttribute('open');
 }));
-document.querySelector('[data-label-print]')?.addEventListener('click', () => window.print());
+document.querySelector('[data-label-print]')?.addEventListener('click', () => { fitAllLabelRows(); window.print(); });
 
 const labelSettingsForm = labelSettingsDialog?.querySelector('form');
 const labelPreview = labelSettingsDialog?.querySelector('.finishing-label-preview');
 const escapeLabelHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+const fitLabelRows = label => {
+  label.querySelectorAll('.label-row').forEach(row => {
+    const value = row.querySelector('strong'), title = row.querySelector('span');
+    if (!value || !row.getClientRects().length) return;
+    row.style.setProperty('--label-row-scale', '1');
+    const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+    const available = () => Math.max(0, row.clientWidth - (title ? title.getBoundingClientRect().width + gap : 0));
+    let scale = 1;
+    while (value.scrollWidth > available() + 1 && scale > .25) { scale = Math.max(.22, scale - .05); row.style.setProperty('--label-row-scale', scale.toFixed(2)); }
+  });
+  const quantity = label.querySelector('.label-quantity'), value = quantity?.querySelector('strong'), summary = quantity?.querySelector(':scope > div');
+  if (quantity && value) {
+    quantity.style.setProperty('--label-quantity-scale', '1');
+    const available = () => Math.max(0, quantity.clientWidth - (summary?.getBoundingClientRect().width || 0) - 8);
+    let scale = 1;
+    while (value.scrollWidth > available() + 1 && scale > .65) { scale = Math.max(.6, scale - .05); quantity.style.setProperty('--label-quantity-scale', scale.toFixed(2)); }
+  }
+};
+const fitAllLabelRows = () => document.querySelectorAll('.labels .label, .label-settings .finishing-label-preview').forEach(fitLabelRows);
 const refreshLabelPreview = () => {
   if (!labelSettingsForm || !labelPreview) return;
   const checked = new Set([...labelSettingsForm.querySelectorAll('input[type="checkbox"][name^="label_field_"]:checked')].map(input => input.name.replace('label_field_', '').replaceAll('_', '-')));
@@ -61,7 +80,9 @@ const refreshLabelPreview = () => {
   const language = labelSettingsForm.elements.namedItem('lang')?.value === 'en' ? 'en' : 'pl';
   const translated = language === 'en' ? {symbol:'INDEX',raw:'GREIGE INDEX',color:'COLOR',lot:'BATCH NO.',width:'WIDTH',grammage:'WEIGHT',client:'CLIENT',weight:'WEIGHT [kg]',distance:'DISTANCE'} : {symbol:'SYMBOL',raw:'SYMBOL SUROWY',color:'KOLOR',lot:'NR PARTII',width:'SZEROKOŚĆ',grammage:'GRAMATURA',client:'KLIENT',weight:'WAGA [kg]',distance:'DYSTANS'};
   labelPreview.querySelectorAll('[data-label-key]').forEach(row => { const title = row.querySelector('span'); if (title && translated[row.dataset.labelKey]) title.textContent = translated[row.dataset.labelKey]; });
+  fitLabelRows(labelPreview);
 };
 labelSettingsForm?.addEventListener('input', refreshLabelPreview);
 labelSettingsForm?.addEventListener('change', refreshLabelPreview);
 refreshLabelPreview();
+fitAllLabelRows();
