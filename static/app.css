@@ -46,6 +46,10 @@
 .current-spec,.draft-specs,.spec-history{margin:18px 0 28px}
 .current-spec>h2,.draft-specs>h2{margin-bottom:12px}
 .draft-specs{border-left:3px solid #d6a64d;padding-left:18px}
+.article-comment-details{margin:18px 0 28px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.article-comment-details>summary{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;list-style-position:inside}
+.article-comment-details[open]>summary{border-bottom:1px solid var(--line);background:#f7f8fa;border-radius:9px 9px 0 0}
+.article-comment-details>.comment-journal{margin:0;border:0;box-shadow:none}
 .spec-history{padding:18px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .spec-history summary{font-size:16px}
 .spec-history .grid{margin-top:16px}

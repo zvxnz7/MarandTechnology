@@ -1287,8 +1287,9 @@ async function handle(req, res) {
     }
     if(recordArchiveMatch&&req.method==='POST'&&recordArchiveMatch[2]==='delete') {
       role(req.user,'technologist','approver','admin');const rid=Number(recordArchiveMatch[1]);
-      transaction(()=>{const r=record(rid);if(r.archived_at)fail(409,'Ten wpis jest już w archiwum.');if(r.state!=='draft'||!['trial','spec'].includes(r.kind))fail(409,'Można archiwizować wyłącznie robocze specyfikacje i próby.');db.prepare('UPDATE records SET archived_at=? WHERE id=?').run(now(),rid);audit(req.user,'Przeniesiono roboczy wpis do archiwum',rid,`${r.kind==='trial'?'Próba':'Specyfikacja'} ${r.symbol}`);});
-      return redirect(req,res,'/archive','Roboczy wpis został przeniesiony do archiwum na 30 dni.');
+      const archived=transaction(()=>{const r=record(rid);if(r.archived_at)fail(409,'Ten wpis jest już w archiwum.');if(r.state!=='draft'||!['trial','spec'].includes(r.kind))fail(409,'Można archiwizować wyłącznie robocze specyfikacje i próby.');db.prepare('UPDATE records SET archived_at=? WHERE id=?').run(now(),rid);audit(req.user,'Przeniesiono roboczy wpis do archiwum',rid,`${r.kind==='trial'?'Próba':'Specyfikacja'} ${r.symbol}`);return r;});
+      const returnTo=archived.kind==='spec'&&archived.article_id?`/articles/${archived.article_id}`:'/archive';
+      return redirect(req,res,returnTo,archived.kind==='spec'&&archived.article_id?'Robocza zmiana została odłożona do archiwum. Aktualna technologia artykułu pozostała bez zmian.':'Roboczy wpis został przeniesiony do archiwum na 30 dni.');
     }
     if(recordArchiveMatch&&req.method==='POST'&&recordArchiveMatch[2]==='restore') {
       role(req.user,'technologist','approver','admin');const rid=Number(recordArchiveMatch[1]);

@@ -82,6 +82,43 @@ async function handle(ctx) {
       audit(req.user,'Utworzono artykuł',null,`Artykuł ${aid}`); return aid;
     });redirect(req,res,`/articles/${id}`);return true;
   }
+  const articleComment=p.match(/^\/articles\/(\d+)\/comments$/);
+  if(articleComment&&req.method==='POST'){
+    edit();const id=Number(articleComment[1]),article=getArticle(db,id,fail),content=String(form.content||'').slice(0,3000),commentId=Number(form.comment_id||0);
+    if(article.archived_at||article.purged_at)fail(409,'Nie można dodawać komentarzy do zarchiwizowanego artykułu.');
+    let saved;
+    transaction(()=>{
+      const current=getArticle(db,id,fail);if(current.archived_at||current.purged_at)fail(409,'Nie można dodawać komentarzy do zarchiwizowanego artykułu.');
+      if(commentId){
+        const existing=db.prepare('SELECT * FROM article_comments WHERE id=? AND article_id=?').get(commentId,id);
+        if(!existing||existing.author_user_id!==req.user.id)fail(409,'Nie można edytować tego komentarza. Odśwież stronę i spróbuj ponownie.');
+        if(!content.trim()){saved=existing;return;}
+        if(existing.content!==content)db.prepare('UPDATE article_comments SET content=? WHERE id=?').run(content,commentId);
+        saved=db.prepare('SELECT * FROM article_comments WHERE id=?').get(commentId);
+      }else{
+        if(!content.trim()){saved=null;return;}
+        const stamp=now(),result=db.prepare('INSERT INTO article_comments(article_id,author_user_id,author_name,content,created_at) VALUES(?,?,?,?,?)').run(id,req.user.id,req.user.name,content,stamp);
+        saved=db.prepare('SELECT * FROM article_comments WHERE id=?').get(Number(result.lastInsertRowid));
+      }
+      audit(req.user,'Zapisano komentarz artykułu',null,JSON.stringify({article_id:id,comment_id:saved.id,author:req.user.name,content:saved.content,at:saved.created_at}),id);
+    });
+    return send(req,res,200,JSON.stringify({ok:true,comment:saved?{id:saved.id,author_name:saved.author_name,content:saved.content,created_at:saved.created_at}:null}),'application/json; charset=utf-8');
+  }
+  const articleCommentDelete=p.match(/^\/articles\/(\d+)\/comments\/(\d+)\/delete$/);
+  if(articleCommentDelete){
+    const id=Number(articleCommentDelete[1]),commentId=Number(articleCommentDelete[2]);
+    if(req.method==='GET'){
+      edit();const article=getArticle(db,id,fail),comment=db.prepare('SELECT * FROM article_comments WHERE id=? AND article_id=?').get(commentId,id);
+      if(article.archived_at||article.purged_at)fail(409,'Nie można usuwać komentarzy z zarchiwizowanego artykułu.');if(!comment)fail(404,'Nie znaleziono komentarza.');
+      const body=`<a class="breadcrumb" href="/articles/${id}">← ${e(article.symbol)}</a><div class="pagehead"><div><span class="eyebrow">KARTOTEKA ARTYKUŁU</span><h1>Potwierdź usunięcie komentarza</h1></div></div><section class="panel padded"><p><strong>${e(comment.author_name)} · ${date(comment.created_at)}</strong></p><blockquote class="delete-comment-quote">${e(comment.content)}</blockquote><form method="post" action="/articles/${id}/comments/${commentId}/delete" class="actions">${csrf}<a class="button" href="/articles/${id}">Wróć do artykułu</a><button class="danger">Potwierdź usunięcie komentarza</button></form></section>`;
+      page(body);return true;
+    }
+    if(req.method==='POST'){
+      edit();const article=getArticle(db,id,fail);if(article.archived_at||article.purged_at)fail(409,'Nie można usuwać komentarzy z zarchiwizowanego artykułu.');
+      transaction(()=>{const comment=db.prepare('SELECT * FROM article_comments WHERE id=? AND article_id=?').get(commentId,id);if(!comment)fail(404,'Nie znaleziono komentarza.');db.prepare('DELETE FROM article_comments WHERE id=? AND article_id=?').run(commentId,id);audit(req.user,'Usunięto komentarz artykułu',null,JSON.stringify({article_id:id,comment_id:commentId,author:comment.author_name,content:comment.content,at:comment.created_at}),id);});
+      redirect(req,res,`/articles/${id}`,'Komentarz został usunięty.');return true;
+    }
+  }
   const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|symbol|new|copy|delete|restore|purge|production-note))?$/);
   if(!match) return false;
   const id=Number(match[1]), a=getArticle(db,id,fail), action=match[2];
@@ -193,6 +230,7 @@ async function handle(ctx) {
     WHERE b.article_id=? AND ${Warehouse.activeStockSql()}`).get(id);
   const currentStockView=`<div class="article-current-stock"><span>Stan bieżący</span><strong>${currentStock?.pieces??0} <small>szt</small></strong><strong>${Number(currentStock?.weight_kg??0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} <small>kg</small></strong></div>`;
   const currentRecord=db.prepare('SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,1 is_current FROM records r WHERE r.id=? AND r.archived_at IS NULL').get(a.active_spec);
+  const articleComments=db.prepare('SELECT id,author_name,author_user_id,content,created_at FROM article_comments WHERE article_id=? ORDER BY id').all(id);
   const finishingRecipes=db.prepare("SELECT id,name,target_color,raw_symbol,recipe_details FROM finishing_recipes WHERE active=1 AND upper(replace(replace(replace(replace(raw_symbol,' ',''),'/', ''),'(',''),')',''))=upper(replace(replace(replace(replace(?,' ',''),'/', ''),'(',''),')','')) ORDER BY name COLLATE NOCASE,id").all(a.symbol);
   const historyCount=recordCount-(currentRecord?1:0);
   const historyRecords=db.prepare("SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,0 is_current FROM records r WHERE r.article_id=? AND r.archived_at IS NULL AND r.id<>coalesce(?,0) ORDER BY CASE WHEN r.kind='spec' AND r.state!='approved' THEN 0 WHEN r.kind='spec' THEN 1 ELSE 2 END,r.id DESC LIMIT 50 OFFSET ?").all(id,currentRecord?.id||0,(historyPage-1)*50);
@@ -215,6 +253,9 @@ async function handle(ctx) {
   const specs=records.filter(r=>r.kind==='spec'),trials=records.filter(r=>r.kind==='trial'),current=specs.find(r=>r.is_current),drafts=specs.filter(r=>r.state!=='approved'),history=specs.filter(r=>r.state==='approved'&&!r.is_current);
   const tile=r=>`<a class="record-tile" href="/records/${r.id}"><span class="badge ${e(r.state)}">${e(V.STATE[r.state])}${r.version?` · v${r.version}`:''}</span><h3>${e(r.symbol)}</h3><p>${r.is_current?'Obowiązująca technologia':r.state==='approved'?'Archiwalna wersja':'Robocza — nie wpływa na produkcję do czasu zatwierdzenia'}</p><small>${date(r.updated_at)} · wpis ${r.id}</small></a>`;
   const currentView=current?`<section class="current-spec"><h2>Aktualna specyfikacja</h2><div class="grid">${tile(current)}</div></section>`:'<section class="panel padded"><h2>Aktualna specyfikacja</h2><p class="muted">Brak zatwierdzonej technologii dla tego artykułu.</p></section>';
+  const articleCommentRows=articleComments.map(comment=>`<article class="project-comment" data-comment-entry="${comment.id}"><div class="project-comment-meta"><strong data-comment-author>${e(comment.author_name||'Nieznany autor')}</strong><time data-comment-time>${date(comment.created_at)}</time>${isWritable?`<a class="delete-x project-comment-delete" href="/articles/${id}/comments/${comment.id}/delete" aria-label="Usuń komentarz: ${e(comment.content.slice(0,80))}" title="Usuń komentarz">×</a>`:''}</div><p class="preline" data-comment-content>${e(comment.content)}</p></article>`).join('');
+  const articleCommentForm=isWritable?`<form class="comment-composer" action="/articles/${id}/comments" data-comment-composer data-comment-delete-base="/articles/${id}/comments/">${csrf}<label>Dodaj komentarz<textarea name="content" maxlength="3000" data-comment-input placeholder="Dopisz komentarz do artykułu…"></textarea></label><span class="autosave-status muted small" data-comment-status aria-live="polite">Komentarz zapisze się automatycznie.</span></form>`:'';
+  const articleCommentSection=`<details class="article-comment-details" data-comment-journal><summary><strong>Komentarze (${articleComments.length})</strong><span class="muted small">zapis automatyczny</span></summary><section class="panel padded comment-journal"><div class="project-comment-list" data-comment-list>${articleCommentRows||'<p class="muted" data-comment-empty>Nie dodano jeszcze komentarzy.</p>'}</div>${articleCommentForm}</section></details>`;
   const draftsView=drafts.length?`<section class="draft-specs"><h2>Robocze zmiany</h2><p class="muted small">Wymagają zatwierdzenia i nie zastępują aktualnej specyfikacji.</p><div class="grid">${drafts.map(r=>`<div class="draft-spec-entry">${tile(r)}${isWritable&&r.state==='draft'?`<a class="delete-x" href="/records/${r.id}/delete" aria-label="Archiwizuj roboczą specyfikację ${e(r.symbol)}" title="Archiwizuj roboczą specyfikację">×</a>`:''}</div>`).join('')}</div></section>`:'';
   const historyView=history.length?`<details class="spec-history"><summary>Archiwalne wersje (${history.length})</summary><div class="grid">${history.map(tile).join('')}</div></details>`:'';
   const trialsView=trials.length?`<h2>Próby i warianty</h2><div class="grid">${trials.map(r=>`<div class="draft-spec-entry">${tile(r)}${isWritable&&r.state==='draft'?`<a class="delete-x" href="/records/${r.id}/delete" aria-label="Archiwizuj roboczy wariant ${e(r.symbol)}" title="Archiwizuj roboczy wariant">×</a>`:''}</div>`).join('')}</div>`:'';
@@ -222,6 +263,6 @@ async function handle(ctx) {
   const articleArchiveNotice=a.purged_at?'<div class="notice warning"><strong>Artykuł usunięto z widocznej kartoteki.</strong> Historyczne specyfikacje, projekty i karty nadal są dostępne.</div>':a.archived_at?'<div class="notice warning"><strong>Artykuł jest w archiwum.</strong> Można go przywrócić przez 30 dni w zakładce Archiwum.</div>':'';
   const activeActions=`<div class="article-technology-actions">${a.active_spec?`<a class="button primary" href="/records/${a.active_spec}">Otwórz obowiązującą technologię</a>`:''}${productionNoteButton}</div>${a.pending_production_notes?`<p class="notice production-note-saved">Polecenia specjalne czekają na najbliższe wydanie karty.</p>`:''}${productionNoteDialog}`;
   const descriptionMarkup=isWritable?`<p class="preline article-description-value" data-article-description-view role="button" tabindex="0" aria-label="Edytuj opis artykułu" title="Kliknij, aby edytować opis">${e(a.description)||'<span class="muted">Kliknij, aby dodać opis artykułu</span>'}</p>${descriptionEditor}`:`<p class="preline">${e(a.description)}</p>`;
-  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><div class="article-symbol-line"><h1>${e(a.symbol)}</h1>${currentStockView}</div>${symbolEditor}<div class="article-description" data-article-description>${descriptionMarkup}</div><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${activeActions}<div class="article-technology-actions">${newSpecButton}${copyArticleButton}</div><h2>TECHNOLOGIA ARTYKUŁU</h2>${currentView}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${finishingRecipesView}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
+  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><div class="article-symbol-line"><h1>${e(a.symbol)}</h1>${currentStockView}</div>${symbolEditor}<div class="article-description" data-article-description>${descriptionMarkup}</div><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${activeActions}<div class="article-technology-actions">${newSpecButton}${copyArticleButton}</div><h2>TECHNOLOGIA ARTYKUŁU</h2>${currentView}${articleCommentSection}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${finishingRecipesView}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
 }
 module.exports={handle,projectArticleInput,associate};
