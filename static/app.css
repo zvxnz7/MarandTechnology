@@ -248,7 +248,12 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .lot-color-2{background:#f9e5cf;color:#87480c}.lot-color-3{background:#eadff4;color:#62407c}
 .lot-color-4{background:#f6dfe4;color:#8c3048}.lot-color-5{background:#d9efef;color:#286466}
 .lot-color-6{background:#f3edce;color:#665813}.lot-color-7{background:#e4e7ec;color:#3e4b5b}
-.shipment-doc-list{margin:6px 0;padding-left:18px}.shipment-doc-list li{margin:3px 0;font-size:12px}
+.shipment-history-table{table-layout:fixed}
+.shipment-documents-cell{white-space:nowrap}
+.shipment-documents-button{padding:5px 9px;font-size:12px}
+.shipment-documents-dialog{width:min(620px,calc(100vw - 32px))}
+.shipment-documents-dialog .dialog-body{max-height:min(65vh,560px);overflow:auto}
+.shipment-doc-list{margin:0;padding-left:18px}.shipment-doc-list li{margin:5px 0;font-size:12px;overflow-wrap:anywhere}
 .shipment-article{margin:8px 0;padding:8px 12px;background:#fff;border:1px solid var(--line);border-radius:7px}
 .shipment-article>summary{display:grid;grid-template-columns:minmax(220px,1fr) minmax(340px,1.25fr) minmax(190px,auto);align-items:center;gap:14px;font-size:14px}
 .shipment-article-title{min-width:0;font-weight:600}
