@@ -110,14 +110,17 @@ const renderManualLabel = () => {
     const amount = document.createElement('strong');
     amount.textContent = mainValue || '—';
     if (exampleMode) amount.classList.add('label-example-value');
-    quantity.append(summary,amount);
+    const amountStack = document.createElement('div');
+    amountStack.className = 'label-quantity-values';
+    amountStack.append(amount);
     if (secondaryEnabled && otherValue) {
       const secondary = document.createElement('small');
       secondary.className = 'label-secondary-quantity';
       secondary.textContent = `${unit === 'weight' ? words.secondaryMeters : words.secondaryWeight}: ${otherValue}`;
       if (exampleMode) secondary.classList.add('label-example-value');
-      quantity.append(secondary);
+      amountStack.append(secondary);
     }
+    quantity.append(summary,amountStack);
     content.append(quantity);
     label.lang = language;
     applyBrand(label,brandMode,brandText);
