@@ -61,7 +61,7 @@ const setValidation = message => {
 };
 const renderManualLabel = () => {
   if (!generatorForm || !labelList) return;
-  const language = generatorForm.querySelector('[name="manual_language"]:checked')?.value === 'en' ? 'en' : 'pl';
+  const language = document.querySelector('[name="manual_language"]:checked')?.value === 'en' ? 'en' : 'pl';
   const words = labelWords[language];
   const enabled = new Set([...generatorForm.querySelectorAll('[data-manual-field]:checked')].map(input => input.dataset.manualField));
   const meters = parseMeters(inputValue('meters'));
@@ -131,6 +131,7 @@ const renderManualLabel = () => {
 };
 
 generatorForm?.addEventListener('input',renderManualLabel);
+document.querySelectorAll('[name="manual_language"]').forEach(input=>input.addEventListener('change',renderManualLabel));
 generatorForm?.addEventListener('change',event => {
   const fieldToggle = event.target.closest('[data-manual-field]');
   if (fieldToggle) {

@@ -15,8 +15,9 @@ document.querySelector('[data-label-print]')?.addEventListener('click', () => {
   if(!manualLabels){window.print();return;}
   const printWindow=window.open('','_blank');
   if(!printWindow){window.print();return;}
+  const printLanguage=manualLabels.querySelector('[data-manual-label]')?.lang||'pl';
   printWindow.document.open();
-  printWindow.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Etykiety</title><style>
+  printWindow.document.write(`<!doctype html><html lang="${printLanguage}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Etykiety</title><style>
     @page{size:50mm 74mm;margin:0}
     *{box-sizing:border-box}
     html,body{width:50mm;margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif}
