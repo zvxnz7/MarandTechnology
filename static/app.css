@@ -182,8 +182,9 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .article-current-stock>span{font-size:14px;font-weight:650;color:#59616a}
 .article-current-stock strong{font-size:17px;color:#252b31;white-space:nowrap}
 .article-current-stock small{font-size:12px;font-weight:550;color:#71777e}
-.article-stock-summary{display:grid;gap:5px;min-width:0}
-.article-current-stock-lots{display:flex;flex-wrap:wrap;gap:5px}
+.article-stock-summary{display:flex;align-items:baseline;gap:14px;min-width:0;max-width:100%}
+.article-current-stock{flex:none}
+.article-current-stock-lots{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;max-width:65vw;overflow-x:auto;padding:0 0 2px}
 .article-current-stock-lot{display:inline-flex;align-items:center;gap:6px;padding:3px 7px;border:1px solid currentColor;border-radius:5px;font-size:11px;line-height:1.2;white-space:nowrap}
 .article-current-stock-lot strong{font-size:11px;color:inherit}
 
