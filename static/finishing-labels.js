@@ -16,13 +16,33 @@ document.querySelector('[data-label-print]')?.addEventListener('click', () => {
   const printWindow=window.open('','_blank');
   if(!printWindow){window.print();return;}
   printWindow.document.open();
-  printWindow.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Etykiety</title><link rel="stylesheet" href="/static/finishing-label-generator.css"></head><body><div class="manual-label-page">${manualLabels.outerHTML}</div></body></html>`);
+  printWindow.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Etykiety</title><style>
+    @page{size:50mm 74mm;margin:0}
+    *{box-sizing:border-box}
+    html,body{width:50mm;margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif}
+    .labels{display:block;width:50mm;margin:0;padding:0}
+    .label{box-sizing:border-box;width:50mm;height:74mm;margin:0;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif;page-break-after:always;break-after:page}
+    .label-logo{display:block;max-width:44mm!important;width:auto!important;height:auto!important;max-height:13mm!important;object-fit:contain;object-position:center;margin:0 auto 2mm}
+    .label-custom-brand{min-height:12mm;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12pt;font-weight:700;margin:0 0 2mm;overflow:hidden}
+    .label-content{display:flex;flex:1;flex-direction:column;gap:1.1mm;min-height:0;position:relative;padding-bottom:13mm;overflow:hidden}
+    .label-row{display:flex;flex:0 0 auto;flex-wrap:nowrap;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}
+    .label-row-before-quantity{border-bottom:0;padding-bottom:0}
+    .label-row span{flex:0 0 auto;font-size:6.2pt;color:#525a62;white-space:nowrap}
+    .label-row strong{min-width:0;font-size:calc(10.5pt * var(--label-data-scale,1) * var(--label-row-scale,1));line-height:1.05;text-align:right;white-space:nowrap;overflow-wrap:normal}
+    .label-extra-text{justify-content:flex-start;white-space:nowrap;overflow-wrap:normal}
+    .label-quantity{position:absolute;left:0;right:0;bottom:0;margin:0;padding-top:1.5mm;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-rows:auto auto!important;align-items:baseline;column-gap:2mm;border-top:.5mm solid #222}
+    .label-quantity>div:first-child{grid-column:1;grid-row:1;display:grid;gap:.5mm;white-space:nowrap}
+    .label-quantity span{font-size:7pt;font-weight:700}
+    .label-quantity-values{grid-column:2;grid-row:1/span 2;display:flex;flex-direction:column;align-items:flex-end;gap:.3mm;min-width:0;white-space:nowrap}
+    .label-quantity-values strong{font-size:calc(18pt * var(--label-quantity-scale,1));line-height:1.1;text-align:right;white-space:nowrap}
+    .label-secondary-quantity{text-align:right;font-size:7pt;font-weight:600;white-space:nowrap}
+  </style></head><body><div class="manual-label-page">${manualLabels.outerHTML}</div></body></html>`);
   printWindow.document.close();
-  printWindow.addEventListener('load',async()=>{
+  setTimeout(async()=>{
     await Promise.all([...printWindow.document.images].map(image=>image.decode().catch(()=>{})));
     printWindow.focus();
     printWindow.print();
-  },{once:true});
+  },100);
 });
 
 const labelSettingsForm = labelSettingsDialog?.querySelector('form');
