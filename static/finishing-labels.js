@@ -9,7 +9,21 @@ document.querySelectorAll('[data-label-settings-close]').forEach(button => butto
   if (typeof labelSettingsDialog?.close === 'function') labelSettingsDialog.close();
   else labelSettingsDialog?.removeAttribute('open');
 }));
-document.querySelector('[data-label-print]')?.addEventListener('click', () => { fitAllLabelRows(); window.print(); });
+document.querySelector('[data-label-print]')?.addEventListener('click', () => {
+  fitAllLabelRows();
+  const manualLabels=document.querySelector('[data-manual-labels]');
+  if(!manualLabels){window.print();return;}
+  const printWindow=window.open('','_blank');
+  if(!printWindow){window.print();return;}
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Etykiety</title><link rel="stylesheet" href="/static/finishing-label-generator.css"></head><body><div class="manual-label-page">${manualLabels.outerHTML}</div></body></html>`);
+  printWindow.document.close();
+  printWindow.addEventListener('load',async()=>{
+    await Promise.all([...printWindow.document.images].map(image=>image.decode().catch(()=>{})));
+    printWindow.focus();
+    printWindow.print();
+  },{once:true});
+});
 
 const labelSettingsForm = labelSettingsDialog?.querySelector('form');
 const labelPreview = labelSettingsDialog?.querySelector('.finishing-label-preview');
