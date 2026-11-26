@@ -308,7 +308,7 @@ test('GB auto numbering, finished parameters optional, approvals and immutable c
  const firstCard=Number(first.split('/').pop());assert.match(db.prepare('SELECT html FROM cards WHERE id=?').get(firstCard).html,/Ustawić średnicę tulei 76 mm/);assert.equal(db.prepare('SELECT pending_production_notes FROM articles WHERE id=?').get(aid).pending_production_notes,'');
  r=await post(s,`/records/${rid}/copy`,{kind:'spec'});assert.equal(r.status,303,r.text());const next=Number(r.headers.location.split('/')[2]);
  r=await post(s,`/records/${next}/edit`,{...values,gb_0_run_in:'1400'});assert.equal(r.status,303,r.text());
- r=await request(`${baseUrl}/records/${next}/preview`,{headers:{cookie:s.cookie}});const previewHtml=r.text().replace(/<style>[\s\S]*?<\/style>/g,'');assert.doesNotMatch(previewHtml,/data-update-alert|class="[^"]*\bchange-alert\b/);assert.match(r.text(),/1400/);assert.match(r.text(),/Test Admin/);
+ r=await request(`${baseUrl}/records/${next}/preview`,{headers:{cookie:s.cookie}});assert.equal(r.status,303);assert.equal(r.headers.location,`/records/${next}`);
  r=await post(s,`/records/${next}/submit`,{revision:2});assert.equal(r.status,303,r.text());
  r=await post(s,`/records/${next}/approve`,{revision:3,checked:'on',review_note:'Sprawdzono nową technologię.'});assert.equal(r.status,303,r.text());
  r=await request(baseUrl+first,{headers:{cookie:s.cookie}});assert.match(r.text(),/historyczna karta/);
