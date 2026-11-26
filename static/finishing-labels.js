@@ -45,6 +45,7 @@ const fitLabelRows = label => {
   }
 };
 const fitAllLabelRows = () => document.querySelectorAll('.labels .label, .label-settings .finishing-label-preview').forEach(fitLabelRows);
+window.fitFinishingLabelRows = fitAllLabelRows;
 const refreshLabelPreview = () => {
   if (!labelSettingsForm || !labelPreview) return;
   const checked = new Set([...labelSettingsForm.querySelectorAll('input[type="checkbox"][name^="label_field_"]:checked')].map(input => input.name.replace('label_field_', '').replaceAll('_', '-')));
