@@ -243,6 +243,7 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .warehouse-bales-table{min-width:1080px;font-size:11px}
 .warehouse-bales-table th{padding:7px 6px;font-size:9px;letter-spacing:.3px;white-space:nowrap}
 .warehouse-bales-table td{padding:5px 6px;font-size:11px;line-height:1.25;vertical-align:middle}
+.warehouse-article-symbol-link{font-weight:650;color:#334b63;text-decoration:underline;text-decoration-color:#c3ccd5;text-underline-offset:2px}
 .warehouse-bales-table td:first-child,.warehouse-bales-table td:nth-child(2),.warehouse-bales-table td:nth-child(4),.warehouse-bales-table td:nth-child(5),.warehouse-bales-table td:nth-child(6),.warehouse-bales-table td:nth-child(7),.warehouse-bales-table td:nth-child(8),.warehouse-bales-table td:nth-child(12){white-space:nowrap;text-align:center}
 .warehouse-pick input{width:15px;height:15px;margin:0;vertical-align:middle}
 .warehouse-pick{margin:0;text-align:center}
