@@ -1442,8 +1442,7 @@ async function handle(req, res) {
     id = matchId(p, /^\/records\/(\d+)\/preview$/);
     if (id && req.method === 'GET') {
       const r = record(id), v = parsePayload(r);
-      if (r.state !== 'approved') return redirect(req,res,`/records/${id}`,'Wydruk zablokowany — to wersja robocza. Zatwierdź do produkcji, aby przygotować kartę na maszynę.','warning');
-      const html = V.cardPage({ r, v, machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
+      const html = V.cardPage({ r, v, machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8'), printBlocked: r.state !== 'approved' });
       return send(req, res, 200, html);
     }
 
