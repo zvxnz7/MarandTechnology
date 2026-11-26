@@ -8,6 +8,12 @@ const editableRoles = ['admin', 'approver', 'technologist'];
 const managerRoles = ['admin', 'approver'];
 const hidden = (name, value) => `<input type="hidden" name="${V.esc(name)}" value="${V.esc(value)}">`;
 const normalizeSearch = value => String(value || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '');
+const lotColorClass = lot => {
+  const value=String(lot||'').trim();
+  if(!value||/\s/.test(value)||!/\d/.test(value)||!/^[\p{L}\d#./_-]+$/u.test(value))return 'lot-descriptive';
+  let hash=0;for(const char of value.toLocaleUpperCase('pl-PL'))hash=((hash*31)+char.codePointAt(0))>>>0;
+  return `lot-color-${hash%8}`;
+};
 const printerSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/><path d="M18 11h.01"/></svg>';
 const excelSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M7 12l4 6m0-6-4 6m7-5h2m-2 4h2"/></svg>';
 const shipmentPrintIcon = (id, label) => `<a class="shipment-print-icon" href="/shipments/${id}/report" target="_blank" rel="noopener" aria-label="Drukuj raport wysyłki ${V.esc(label)}" title="Drukuj raport wysyłki">${printerSvg}</a>`;
@@ -270,13 +276,6 @@ function baleRows(rows, options = {}) {
     if(!badges.length)badges.push(row.reserved_status==='draft'?'<span class="badge submitted">W przygotowaniu</span>':'<span class="badge approved">Dostępna</span>');
     return badges.join('');
   };
-  const lotClass = lot => {
-    const value = String(lot || '').trim();
-    if (!value || /\s/.test(value) || !/\d/.test(value) || !/^[\p{L}\d#./_-]+$/u.test(value)) return 'lot-descriptive';
-    let hash = 0;
-    for (const char of value.toLocaleUpperCase('pl-PL')) hash = ((hash * 31) + char.codePointAt(0)) >>> 0;
-    return `lot-color-${hash % 8}`;
-  };
   return rows.map((row, index) => {
     const noteForm = options.editNotes ? `<form method="post" action="/warehouse/bales/${encodeURIComponent(row.local_id)}/notes" class="warehouse-note-form" data-warehouse-note-form>${hidden('csrf', options.csrf)}<input name="notes" value="${V.esc(row.notes)}" aria-label="Uwagi do belki ${V.esc(row.bale_number)}" data-warehouse-note><span class="print-only">${V.esc(row.notes || '—')}</span><span class="warehouse-note-status no-print" aria-live="polite"></span></form>` : V.esc(row.notes || '—');
     const statusAction = options.manageStatuses && row.inventory_status !== 'lost' && row.reserved_status !== 'draft'
@@ -285,7 +284,7 @@ function baleRows(rows, options = {}) {
         ? `<label class="warehouse-pick"><input type="checkbox" value="${V.esc(row.local_id)}" data-warehouse-check aria-label="Zaznacz zagubioną belkę ${V.esc(row.bale_number)}"></label>`
         : '';
     const lot = String(row.lot || '').trim();
-     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}${row.trial_symbol?'<small class="badge submitted">Próba</small>':''}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${options.edit?`<span class="warehouse-bale-row-actions no-print"><a class="warehouse-bale-edit-link" href="/warehouse/bales/${encodeURIComponent(row.local_id)}/edit" title="Edytuj wszystkie dane sztuki" aria-label="Edytuj sztukę ${V.esc(row.bale_number)}">✎</a><a class="warehouse-bale-edit-link warehouse-bale-delete-link" href="/warehouse/bales/${encodeURIComponent(row.local_id)}/delete" title="Usuń sztukę" aria-label="Usuń sztukę ${V.esc(row.bale_number)}">×</a></span>`:''}${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
+     return `<tr class="${row.inventory_status === 'lost' ? 'warehouse-row-lost' : ''}"><td>${index + 1}</td>${options.manageStatuses ? `<td class="no-print">${statusAction}</td>` : ''}<td>${V.esc(row.symbol)}${row.trial_symbol?'<small class="badge submitted">Próba</small>':''}</td><td class="warehouse-bale-number"><a href="/warehouse/bales/${encodeURIComponent(row.local_id)}">${V.esc(row.bale_number)}</a>${options.edit?`<span class="warehouse-bale-row-actions no-print"><a class="warehouse-bale-edit-link" href="/warehouse/bales/${encodeURIComponent(row.local_id)}/edit" title="Edytuj wszystkie dane sztuki" aria-label="Edytuj sztukę ${V.esc(row.bale_number)}">✎</a><a class="warehouse-bale-edit-link warehouse-bale-delete-link" href="/warehouse/bales/${encodeURIComponent(row.local_id)}/delete" title="Usuń sztukę" aria-label="Usuń sztukę ${V.esc(row.bale_number)}">×</a></span>`:''}${statusText(row)}</td><td>${money(row.weight_kg)}</td><td>${Number(row.meters).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td>${row.errors}</td><td>${row.stops}</td><td><span class="lot-chip ${lotColorClass(lot)}">${V.esc(lot || '—')}</span></td><td>${noteForm}</td><td>${date(row.production_date)}</td></tr>`;
   }).join('');
 }
 
@@ -432,6 +431,13 @@ function catalogPage(ctx) {
     const availableCount = bales.filter(b => b.inventory_status === 'available').length;
     const currentWeight = bales.filter(b => b.inventory_status === 'available').reduce((sum, b) => sum + b.weight_kg, 0);
     const lostCount = bales.filter(b => b.inventory_status === 'lost').length;
+    const availableByLot=new Map();
+    for(const bale of bales.filter(item=>item.inventory_status==='available')){
+      const lot=String(bale.lot||'').trim(),balance=availableByLot.get(lot)||{pieces:0,weightKg:0};
+      balance.pieces++;balance.weightKg+=Number(bale.weight_kg||0);availableByLot.set(lot,balance);
+    }
+    const lotBalances=[...availableByLot.entries()].sort(([a],[b])=>a.localeCompare(b,'pl-PL',{sensitivity:'base',numeric:true}));
+    const currentStockByLot=lotBalances.map(([lot,balance])=>`<span class="warehouse-stock-lot ${lotColorClass(lot)}"><strong>${lot?`LOT ${V.esc(lot)}`:'Bez LOT-u'}</strong><span>${balance.pieces} szt. · ${money(balance.weightKg)} kg</span></span>`).join('');
     const canManageStatuses = managerRoles.includes(ctx.req.user.role);
     const lostForm = canManageStatuses ? `<form method="post" action="/warehouse/bales/status" id="warehouse-bulk-status" class="warehouse-bulk-status">${hidden('csrf',ctx.req.session.csrf)}<input type="hidden" name="article_id" value="${current.id}"><input type="hidden" name="bale_ids" value="" data-warehouse-selected><input name="reason" placeholder="Powód zagubienia (opcjonalnie)" maxlength="500"><button name="status" value="lost" class="button danger">Oznacz jako zagubione</button><button name="status" value="second_grade" class="button warehouse-action-second-grade">Oznacz jako drugi gatunek</button><button name="status" value="stripe_risk" class="button warehouse-action-stripe-risk">Oznacz jako ryzyko pasiastości</button><input name="custom_status" maxlength="120" placeholder="Własny status"><button name="status" value="custom" class="button warehouse-action-custom-status">Dodaj status</button>${lostCount||bales.some(b=>b.quality_tags||b.custom_status) ? '<button name="status" value="available" class="button">Usuń oznaczenia / przywróć dostępność</button>' : ''}</form>` : '';
     const cols = canManageStatuses ? 11 : 10;
@@ -440,7 +446,7 @@ function catalogPage(ctx) {
     const baleTableRows=baleRows(bales,{editNotes:editBales,edit:editBales,manageStatuses:canManageStatuses,csrf:ctx.req.session.csrf})||`<tr><td colspan="${cols}">Brak belek w bieżącej kartotece.</td></tr>`;
     const listedWeight=bales.reduce((sum,b)=>sum+Number(b.weight_kg||0),0);
     const trialSortControl=current.isTrialGroup?`<form method="get" action="/warehouse" class="warehouse-trial-sort no-print"><input type="hidden" name="trials" value="1"><label>Sortuj belki<select name="trial_sort" data-auto-submit><option value="date_asc"${trialSort==='date_asc'?' selected':''}>Data produkcji · od najstarszej</option><option value="date_desc"${trialSort==='date_desc'?' selected':''}>Data produkcji · od najnowszej</option><option value="symbol_asc"${trialSort==='symbol_asc'?' selected':''}>Symbol próby · A–Z</option></select></label></form>`:'';
-    selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}${addBaleButton}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p>${trialSortControl}</div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
+    selectedView = `<section class="warehouse-selected"><div class="pagehead warehouse-selected-head"><div><div class="warehouse-symbol-row"><h2>${V.esc(current.symbol)}</h2>${exportIcons}${addBaleButton}</div><p class="warehouse-stock-summary"><strong>Stan bieżący: ${availableCount} szt · ${money(currentWeight)} kg</strong><span class="warehouse-stock-by-lot">${currentStockByLot}</span>${lostCount ? `<span class="warehouse-lost-count">Zagubione: ${lostCount} szt</span>` : ''}</p>${trialSortControl}</div><time class="print-only warehouse-print-timestamp" data-print-timestamp></time></div>${lostForm}<div class="panel scroll"><table class="listing warehouse-bales-table"><thead><tr>${canManageStatuses ? '<th>LP</th><th class="no-print">✓</th>' : '<th>LP</th>'}<th>Symbol</th><th>Nr szt.</th><th>Masa kg</th><th>Metry</th><th>Błędy</th><th>Stopy</th><th>LOT</th><th>Uwagi</th><th>Data produkcji</th></tr></thead><tbody>${baleTableRows}<tr class="warehouse-print-total"><th colspan="3">Razem · ${bales.length} szt.</th><th>${money(listedWeight)}</th><th colspan="6"></th></tr></tbody></table></div></section>`;
   }
   if (!current) {
     const canManageStatuses=managerRoles.includes(ctx.req.user.role),cols=canManageStatuses?11:10;
