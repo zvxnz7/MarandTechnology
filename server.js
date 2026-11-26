@@ -1235,7 +1235,16 @@ async function handle(req, res) {
       const cards = db.prepare('SELECT c.*,u.name author FROM cards c JOIN records r ON r.id=c.record_id JOIN users u ON u.id=c.created_by WHERE r.project_id=? OR (r.project_id IS NULL AND EXISTS(SELECT 1 FROM project_articles pa WHERE pa.project_id=? AND pa.article_id=r.article_id)) ORDER BY c.id DESC').all(id,id);
       const stages=db.prepare('SELECT s.* FROM project_stages s WHERE s.project_id=? ORDER BY s.stage_no').all(id);
       const byStage=new Map(stages.map(stage=>[stage.id,[]]));
-      const stageArticles=db.prepare('SELECT sa.stage_id,sa.article_id,sa.record_id,a.symbol,a.active_spec,a.archived_at,a.purged_at,coalesce(r.payload,active.payload) payload,r.state,r.archived_at record_archived_at FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id LEFT JOIN records r ON r.id=sa.record_id LEFT JOIN records active ON active.id=a.active_spec JOIN project_stages s ON s.id=sa.stage_id WHERE s.project_id=? ORDER BY s.stage_no,a.symbol_key,a.id').all(id);
+      const stageArticles=db.prepare(`SELECT sa.stage_id,sa.article_id,a.symbol,a.active_spec,a.archived_at,a.purged_at,
+          coalesce(active.payload,draft.payload,CASE WHEN r.state IN ('draft','submitted') AND r.archived_at IS NULL THEN r.payload END) payload,
+          coalesce(draft.id,CASE WHEN r.state IN ('draft','submitted') AND r.archived_at IS NULL THEN r.id END) record_id,
+          CASE WHEN draft.id IS NOT NULL THEN draft.state ELSE r.state END state,
+          CASE WHEN draft.id IS NOT NULL THEN draft.archived_at ELSE r.archived_at END record_archived_at
+        FROM project_stage_articles sa JOIN articles a ON a.id=sa.article_id
+        LEFT JOIN records r ON r.id=sa.record_id
+        LEFT JOIN records active ON active.id=a.active_spec AND active.state='approved'
+        LEFT JOIN records draft ON draft.id=(SELECT d.id FROM records d WHERE d.article_id=a.id AND d.kind='spec' AND d.state IN ('draft','submitted') AND d.archived_at IS NULL ORDER BY d.updated_at DESC,d.id DESC LIMIT 1)
+        JOIN project_stages s ON s.id=sa.stage_id WHERE s.project_id=? ORDER BY s.stage_no,a.symbol_key,a.id`).all(id);
       for(const article of stageArticles)byStage.get(article.stage_id)?.push(article);
       for(const stage of stages)stage.articles=byStage.get(stage.id)||[];
       const commentsByStage=new Map(stages.map(stage=>[stage.id,[]]));
