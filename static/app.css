@@ -185,11 +185,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .article-current-stock strong{font-size:17px;color:#252b31;white-space:nowrap}
 .article-current-stock small{font-size:12px;font-weight:550;color:#71777e}
 .article-stock-summary{display:flex;align-items:baseline;gap:14px;min-width:0;max-width:100%}
-.article-min-stock-form{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;color:#515a63;font-size:13px}
-.article-min-stock-form>div{display:flex;align-items:center;gap:7px}
-.article-min-stock-form input{width:130px;padding:6px 9px}
+.article-edit-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 10px}
+.article-min-stock-form{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0;color:#515a63;font-size:13px}
+.article-min-stock-form>label{font-weight:650;white-space:nowrap}
+.article-min-stock-form>div{display:flex;align-items:center;gap:6px}
+.article-min-stock-form input{width:112px;height:34px;padding:5px 8px}
 .article-min-stock-form>div>span{color:#68727b;font-weight:650}
-.article-min-stock-form .button{padding:5px 10px;font-size:12px}
+.article-min-stock-form .autosave-status{min-width:114px;font-size:11px}
+.article-issue-shortcut{background:#26814d!important;border-color:#1d6d40!important;color:#fff!important;font-weight:700!important}.article-issue-shortcut:hover{background:#1e7041!important;border-color:#185f36!important;color:#fff!important}
+.production-note-saved{line-height:1.45}.production-note-saved .preline{margin-top:5px;color:#563b13;font-weight:600}
 .article-current-stock{flex:none}
 .article-current-stock-lots{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;max-width:65vw;overflow-x:auto;padding:0 0 2px}
 .article-current-stock-lot{display:inline-flex;align-items:center;gap:6px;padding:3px 7px;border:1px solid currentColor;border-radius:5px;font-size:11px;line-height:1.2;white-space:nowrap}

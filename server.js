@@ -1446,7 +1446,7 @@ async function handle(req, res) {
       if(Boolean(contextProjectRaw)!==Boolean(contextStageRaw))fail(400,'Niepełne powiązanie próby z wydawaną kartą.');
       const contextProjectId=contextProjectRaw?Number(contextProjectRaw):0,contextStageId=contextStageRaw?Number(contextStageRaw):0;
       const issueStage=stageIssueContext(contextProjectId,contextStageId,r.article_id);
-      if (!machine || token.length < 20) fail(400, 'Podaj maszynę, na którą ma zostać wydana karta.');
+      if (token.length < 20) fail(400, 'Nieprawidłowy identyfikator wydania karty.');
       if (machine.length > 100 || instructions.length > 30000 || V.instructionsText(instructions).length > 6000 || productionNotes.length > 6000) fail(400, 'Skróć nazwę maszyny, polecenia lub specjalne informacje do produkcji.');
       if(r.project_archived_at)fail(409,'Projekt/próba jest zarchiwizowany. Przywróć go, aby wydać kartę.');
       if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go, aby wydać kartę.');

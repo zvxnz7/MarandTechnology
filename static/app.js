@@ -1054,6 +1054,48 @@ document.querySelectorAll('[data-article-description]').forEach(container=>{
  form.addEventListener('focusout',()=>setTimeout(()=>{if(form.hidden||form.contains(document.activeElement))return;clearTimeout(timer);persist();},0));
 });
 
+document.querySelectorAll('[data-article-min-stock-form]').forEach(form=>{
+ const input=form.querySelector('input[name="min_stock_kg"]'),status=form.querySelector('[data-article-min-stock-status]');
+ if(!input||!status)return;
+ let saved=input.value,timer=null,busy=false,queued=false;
+ const setStatus=(message,error=false)=>{status.textContent=message;status.classList.toggle('save-error',error);};
+ const persist=async()=>{
+  if(input.value===saved&&!busy)return;
+  if(busy){queued=true;return;}
+  busy=true;
+  do{
+   queued=false;const snapshot=input.value;setStatus('Zapisywanie…');
+   try{
+    const response=await fetch(form.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-Requested-With':'fetch'},body:new URLSearchParams(new FormData(form))});
+    const raw=await response.text();let result={};try{result=JSON.parse(raw);}catch{}
+    if(!response.ok||!result.ok)throw new Error(result.error||'Nie udało się zapisać stanu minimalnego.');
+    saved=result.min_stock_kg==null?'':String(result.min_stock_kg);form.elements.updated_at.value=result.updated_at;
+    if(input.value!==snapshot||queued)queued=true;else setStatus('Zapisano automatycznie.');
+   }catch(error){setStatus(error.message||'Błąd zapisu. Spróbuj ponownie.',true);break;}
+  }while(queued);
+  busy=false;
+ };
+ input.addEventListener('input',()=>{clearTimeout(timer);setStatus('Niezapisane zmiany…');timer=setTimeout(persist,650);});
+ input.addEventListener('change',()=>{clearTimeout(timer);persist();});
+ form.addEventListener('focusout',()=>setTimeout(()=>{if(form.contains(document.activeElement))return;clearTimeout(timer);persist();},0));
+ form.addEventListener('submit',event=>event.preventDefault());
+});
+
+document.addEventListener('keydown',event=>{
+ const input=event.target.closest('form[data-specification-key-nav] input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])');
+ if(!input||input.disabled||input.readOnly||!['ArrowRight','ArrowDown','ArrowLeft','ArrowUp'].includes(event.key))return;
+ if((event.key==='ArrowRight'||event.key==='ArrowLeft')&&['text','search','tel','url','email','password'].includes(input.type)){
+  const start=input.selectionStart,end=input.selectionEnd;
+  if(event.key==='ArrowRight'&&(start!==end||end<input.value.length))return;
+  if(event.key==='ArrowLeft'&&(start!==end||start>0))return;
+ }
+ const form=input.closest('form[data-specification-key-nav]');
+ const fields=[...form.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),textarea')].filter(field=>!field.disabled&&!field.readOnly&&field.getClientRects().length);
+ const index=fields.indexOf(input),next=index+(event.key==='ArrowRight'||event.key==='ArrowDown'?1:-1);
+ if(index<0||next<0||next>=fields.length)return;
+ event.preventDefault();fields[next].focus();if(fields[next].select&&['text','search','tel','url','email','password'].includes(fields[next].type))fields[next].select();
+});
+
 document.querySelectorAll('[data-autosave]').forEach(form=>{
  const control=form.querySelector('[data-autosave-value]'),status=form.querySelector('[data-autosave-status]');
  if(!control||!status)return;
