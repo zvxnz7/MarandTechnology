@@ -80,6 +80,7 @@ const renderManualLabel = () => {
   const brandMode = generatorForm.querySelector('[name="manual_brand_mode"]:checked')?.value || 'logo';
   const brandText = inputValue('brand');
   const extraText = inputValue('extra');
+  const exampleMode = !hasMeters && !hasWeights;
   const previous = [...labelList.querySelectorAll('[data-manual-label]')];
   const templates = Array.from({length:count},(_,index) => previous[index] || previous[0]?.cloneNode(true));
   labelList.replaceChildren(...templates);
@@ -95,8 +96,8 @@ const renderManualLabel = () => {
     for (const [key,title,data,unitLabel] of definitions) if (enabled.has(key)) content.append(addManualRow(key,title,data,key==='distance'&&data?unitLabel:''));
     const metersValue = meters[index] || '';
     const weightValue = weights[index] || '';
-    const mainValue = unit === 'weight' ? weightValue : metersValue;
-    const otherValue = unit === 'weight' ? metersValue : weightValue;
+    const mainValue = unit === 'weight' ? (weightValue || (exampleMode?'22,1':'')) : (metersValue || (exampleMode?'100':''));
+    const otherValue = unit === 'weight' ? (metersValue || (exampleMode?'100':'')) : (weightValue || (exampleMode?'22,1':''));
     const quantity = document.createElement('div');
     quantity.className = 'label-quantity';
     quantity.dataset.labelKey = 'quantity';
@@ -108,11 +109,13 @@ const renderManualLabel = () => {
     summary.append(title);
     const amount = document.createElement('strong');
     amount.textContent = mainValue || '—';
+    if (exampleMode) amount.classList.add('label-example-value');
     quantity.append(summary,amount);
     if (secondaryEnabled && otherValue) {
       const secondary = document.createElement('small');
       secondary.className = 'label-secondary-quantity';
       secondary.textContent = `${unit === 'weight' ? words.secondaryMeters : words.secondaryWeight}: ${otherValue}`;
+      if (exampleMode) secondary.classList.add('label-example-value');
       quantity.append(secondary);
     }
     content.append(quantity);
