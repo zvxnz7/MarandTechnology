@@ -845,7 +845,8 @@ async function handle(req, res) {
       const file = path.resolve(ROOT, 'static', relative);
       if (!file.startsWith(path.resolve(ROOT, 'static') + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) fail(404, 'Nie znaleziono pliku.');
       const mime = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml' }[path.extname(file).toLowerCase()] || 'application/octet-stream';
-      const cacheHeaders = relative === 'logo.jpg' && url.searchParams.get('v') === V.LOGO_CACHE_VERSION
+      const cacheHeaders = (relative === 'logo.jpg' && url.searchParams.get('v') === V.LOGO_CACHE_VERSION)
+        || (relative === 'favicon.png' && url.searchParams.get('v') === V.FAVICON_CACHE_VERSION)
         ? { 'Cache-Control': 'private, max-age=31536000, immutable' }
         : {};
       return send(req, res, 200, fs.readFileSync(file), mime, cacheHeaders);
