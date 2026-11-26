@@ -21,7 +21,8 @@ document.querySelector('[data-label-print]')?.addEventListener('click', () => {
     *{box-sizing:border-box}
     html,body{width:50mm;margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif}
     .labels{display:block;width:50mm;margin:0;padding:0}
-    .label{box-sizing:border-box;width:50mm;height:74mm;margin:0;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif;page-break-after:always;break-after:page}
+    .label{box-sizing:border-box;width:50mm;height:73mm;margin:0;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif;page-break-inside:avoid;break-inside:avoid}
+    .label+.label{page-break-before:always;break-before:page}
     .label-logo{display:block;max-width:44mm!important;width:auto!important;height:auto!important;max-height:13mm!important;object-fit:contain;object-position:center;margin:0 auto 2mm}
     .label-custom-brand{min-height:12mm;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12pt;font-weight:700;margin:0 0 2mm;overflow:hidden}
     .label-content{display:flex;flex:1;flex-direction:column;gap:1.1mm;min-height:0;position:relative;padding-bottom:13mm;overflow:hidden}
