@@ -1385,7 +1385,7 @@ async function handle(req, res) {
       const operation = action[2];
       if (operation === 'approve') role(req.user, 'approver', 'admin');
       else role(req.user, 'technologist', 'approver', 'admin');
-      let approvedVersion = null;
+      let approvedVersion = null, approvedTrialTarget = '', approvedTrialSpecId = null;
       transaction(() => {
         const r = record(id); stale(r, form);
         if(r.article_archived_at)fail(409,'Artykuł jest zarchiwizowany. Przywróć go przed zmianą statusu specyfikacji.');
@@ -1401,28 +1401,48 @@ async function handle(req, res) {
           audit(req.user, 'Wycofano do poprawy', id);
         } else {
           const note = formText(form, 'review_note');
-          if (r.kind !== 'spec' || !['draft','submitted'].includes(r.state)) fail(409, 'Nie można zatwierdzić tego wpisu.');
+          if (!['spec','trial'].includes(r.kind) || !['draft','submitted'].includes(r.state)) fail(409, 'Nie można zatwierdzić tego wpisu.');
           validateReady(r);
           if (!form.checked) fail(400, 'Potwierdź, że sprawdzono dane i rozbieżności.');
-          if (r.active_spec !== r.expected_active) fail(409, 'W międzyczasie zatwierdzono inną specyfikację. Utwórz nową wersję na podstawie aktualnej i porównaj zmiany.');
-          const base=r.expected_active?db.prepare("SELECT * FROM records WHERE id=? AND article_id=? AND state='approved'").get(r.expected_active,r.article_id):null;
+          const trialApproval = r.kind === 'trial';
+          const article = trialApproval ? (r.article_id ? db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id) : makeArticle(r.project_id, r.symbol)) : db.prepare('SELECT * FROM articles WHERE id=?').get(r.article_id);
+          if (!article) fail(409, 'Nie znaleziono artykułu dla zatwierdzanej próby.');
+          if (article.archived_at || article.purged_at) fail(409, 'Artykuł jest zarchiwizowany. Przywróć go przed zatwierdzeniem.');
+          if (!trialApproval && r.active_spec !== r.expected_active) fail(409, 'W międzyczasie zatwierdzono inną specyfikację. Utwórz nową wersję na podstawie aktualnej i porównaj zmiany.');
+          const activeSpecId = trialApproval ? article.active_spec : r.expected_active;
+          const base=activeSpecId?db.prepare("SELECT * FROM records WHERE id=? AND article_id=? AND state='approved'").get(activeSpecId,article.id):null;
           const beforePayload=base?parsePayload(base):null,afterPayload=parsePayload(r);
           const difference=beforePayload?Changes.changes(beforePayload,afterPayload):[];
           const lastEdit=db.prepare("SELECT detail,user_id,at FROM audit WHERE record_id=? AND action='Zapisano zmiany' ORDER BY id DESC LIMIT 1").get(id);
           let changeComment='';try{changeComment=JSON.parse(lastEdit?.detail||'{}').comment||''}catch{}
-          approvedVersion = db.prepare('SELECT coalesce(max(version),0)+1 version FROM records WHERE article_id=?').get(r.article_id).version;
-          db.prepare("UPDATE records SET state='approved',version=?,approved_at=?,approved_by=?,review_note=?,updated_at=?,revision=revision+1 WHERE id=?").run(approvedVersion, now(), req.user.id, note, now(), id);
-          db.prepare('UPDATE articles SET active_spec=? WHERE id=?').run(id, r.article_id);
-          audit(req.user, 'Zatwierdzono specyfikację', id, note);
-          if(difference.length) audit(req.user,'Zatwierdzono zmianę karty',id,JSON.stringify({before:beforePayload,after:afterPayload,comment:changeComment,version:approvedVersion,author_id:lastEdit?.user_id||null,edited_at:lastEdit?.at||null}),r.article_id);
+          approvedVersion = db.prepare('SELECT coalesce(max(version),0)+1 version FROM records WHERE article_id=?').get(article.id).version;
+          if (trialApproval) {
+            const stamp=now();
+            const specId=Number(db.prepare(`INSERT INTO records(project_id,article_id,kind,symbol,number,state,revision,version,base_id,expected_active,payload,created_at,updated_at,approved_at,approved_by,review_note)
+              VALUES(?,?,'spec',?,?,'approved',1,?,?,?,?,?,?,?,?,?)`).run(r.project_id,article.id,r.symbol,r.number,approvedVersion,id,activeSpecId,dump(afterPayload),stamp,stamp,stamp,req.user.id,note).lastInsertRowid);
+            db.prepare('UPDATE records SET article_id=? WHERE id=?').run(article.id,id);
+            db.prepare('UPDATE articles SET active_spec=?,updated_at=? WHERE id=?').run(specId,stamp,article.id);
+            db.prepare('UPDATE project_stages SET record_id=?,updated_at=? WHERE record_id=?').run(specId,stamp,id);
+            db.prepare('UPDATE project_stage_articles SET record_id=? WHERE record_id=?').run(specId,id);
+            approvedTrialTarget=`/articles/${article.id}`;
+            approvedTrialSpecId=specId;
+            audit(req.user,'Zatwierdzono próbę jako specyfikację do produkcji',id,JSON.stringify({specification_id:specId,article_id:article.id,review_note:note}),article.id);
+            audit(req.user,'Utworzono zatwierdzoną specyfikację z próby',specId,JSON.stringify({trial_id:id,version:approvedVersion}),article.id);
+          } else {
+            db.prepare("UPDATE records SET state='approved',version=?,approved_at=?,approved_by=?,review_note=?,updated_at=?,revision=revision+1 WHERE id=?").run(approvedVersion, now(), req.user.id, note, now(), id);
+            db.prepare('UPDATE articles SET active_spec=?,updated_at=? WHERE id=?').run(id, now(), article.id);
+            audit(req.user, 'Zatwierdzono specyfikację', id, note);
+            if(difference.length) audit(req.user,'Zatwierdzono zmianę karty',id,JSON.stringify({before:beforePayload,after:afterPayload,comment:changeComment,version:approvedVersion,author_id:lastEdit?.user_id||null,edited_at:lastEdit?.at||null}),article.id);
+          }
         }
       });
-      return redirect(req, res, `/records/${id}`, approvedVersion ? `Zatwierdzono wersję ${approvedVersion}.` : '');
+      return redirect(req, res, approvedTrialTarget || `/records/${id}`, approvedVersion ? (approvedTrialTarget ? `Próba została zatwierdzona do produkcji jako specyfikacja #${approvedTrialSpecId} (wersja ${approvedVersion}).` : `Zatwierdzono wersję ${approvedVersion}.`) : '');
     }
 
     id = matchId(p, /^\/records\/(\d+)\/preview$/);
     if (id && req.method === 'GET') {
       const r = record(id), v = parsePayload(r);
+      if (r.state !== 'approved') return redirect(req,res,`/records/${id}`,'Wydruk zablokowany — to wersja robocza. Zatwierdź do produkcji, aby przygotować kartę na maszynę.','warning');
       const html = V.cardPage({ r, v, machine: '—', instructions: 'Podgląd danych. Karta niewydana.', cardno: null, issuedAt: now(), author: req.user.name, logo: fs.readFileSync(path.join(ROOT, 'static', 'logo.jpg')).toString('base64'), printcss: fs.readFileSync(path.join(ROOT, 'static', 'card.css'), 'utf8') });
       return send(req, res, 200, html);
     }
