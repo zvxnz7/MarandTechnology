@@ -228,7 +228,12 @@ async function handle(ctx) {
   const currentStock=db.prepare(`SELECT count(b.local_id) pieces,round(coalesce(sum(b.weight_kg),0),2) weight_kg
     FROM production_bales b LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
     WHERE b.article_id=? AND ${Warehouse.activeStockSql()}`).get(id);
-  const currentStockView=`<div class="article-current-stock"><span>Stan bieżący</span><strong>${currentStock?.pieces??0} <small>szt</small></strong><strong>${Number(currentStock?.weight_kg??0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} <small>kg</small></strong></div>`;
+  const currentStockLots=db.prepare(`SELECT trim(coalesce(b.lot,'')) lot,count(*) pieces,round(coalesce(sum(b.weight_kg),0),2) weight_kg
+    FROM production_bales b LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
+    WHERE b.article_id=? AND ${Warehouse.activeStockSql()} GROUP BY trim(coalesce(b.lot,'')) ORDER BY lot COLLATE NOCASE`).all(id);
+  const lotColorClass=lot=>{const value=String(lot||'').trim();if(!value||/\s/.test(value)||!/\d/.test(value)||!/^[\p{L}\d#./_-]+$/u.test(value))return 'lot-descriptive';let hash=0;for(const char of value.toLocaleUpperCase('pl-PL'))hash=((hash*31)+char.codePointAt(0))>>>0;return `lot-color-${hash%8}`;};
+  const stockLotsView=currentStockLots.length?`<div class="article-current-stock-lots">${currentStockLots.map(row=>`<span class="article-current-stock-lot ${lotColorClass(row.lot)}"><strong>${row.lot?`LOT ${e(row.lot)}`:'Bez LOT-u'}</strong><span>${row.pieces} szt.</span><span>${Number(row.weight_kg||0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} kg</span></span>`).join('')}</div>`:'';
+  const currentStockView=`<div class="article-stock-summary"><div class="article-current-stock"><span>Stan bieżący</span><strong>${currentStock?.pieces??0} <small>szt</small></strong><strong>${Number(currentStock?.weight_kg??0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})} <small>kg</small></strong></div>${stockLotsView}</div>`;
   const currentRecord=db.prepare('SELECT r.id,r.kind,r.symbol,r.state,r.version,r.updated_at,1 is_current FROM records r WHERE r.id=? AND r.archived_at IS NULL').get(a.active_spec);
   const articleComments=db.prepare('SELECT id,author_name,author_user_id,content,created_at FROM article_comments WHERE article_id=? ORDER BY id').all(id);
   const finishingRecipes=db.prepare("SELECT id,name,target_color,raw_symbol,recipe_details FROM finishing_recipes WHERE active=1 AND upper(replace(replace(replace(replace(raw_symbol,' ',''),'/', ''),'(',''),')',''))=upper(replace(replace(replace(replace(?,' ',''),'/', ''),'(',''),')','')) ORDER BY name COLLATE NOCASE,id").all(a.symbol);
