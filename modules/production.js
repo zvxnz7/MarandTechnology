@@ -200,7 +200,7 @@ function lastWorkingDays(today) {
 function overviewPage(ctx) {
   const days = lastWorkingDays(productionBusinessDate(ctx.now()));
   const latestDate = days.at(-1);
-  const latest = ctx.db.prepare(`SELECT a.id,a.symbol,coalesce(st.status,'standard') status,
+  const latest = ctx.db.prepare(`SELECT a.id,a.symbol,a.min_stock_kg,coalesce(st.status,'standard') status,
       count(b.local_id) pieces,round(coalesce(sum(b.weight_kg),0),2) weight_kg,max(b.uploaded_at) uploaded_at
     FROM articles a JOIN production_bales b ON b.article_id=a.id
     LEFT JOIN warehouse_bale_flags f ON f.bale_local_id=b.local_id
@@ -262,7 +262,13 @@ function overviewPage(ctx) {
       return `<td class="stock-day-start${shipmentDay?' stock-shipment-day':''}" data-stock-date="${date}" data-pieces="${piecesBalance}">${piecesBalance}</td><td class="stock-day-end${shipmentDay?' stock-shipment-day':''}" data-stock-date="${date}" data-weight-kg="${weightBalance}">${formatWeight(weightBalance)}</td>`;
     }).join('');
     const stockLink=article.isTrialGroup?'/warehouse?trials=1':`/warehouse?article_id=${article.id}`;
-    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><a class="item-title" href="${stockLink}">${V.esc(article.symbol)}</a></td>${values}</tr>`;
+    const minStock=article.min_stock_kg==null?null:Number(article.min_stock_kg);
+    const stockAlert=minStock==null||article.isTrialGroup?'':Number(article.weight_kg)<minStock
+      ? `<span class="stock-min-alert stock-min-alert-low" title="Stan minimalny: ${formatWeight(minStock)} kg · stan bieżący: ${formatWeight(article.weight_kg)} kg" aria-label="Poniżej stanu minimalnego ${formatWeight(minStock)} kg">!</span>`
+      : Number(article.weight_kg)<=minStock*1.1
+        ? `<span class="stock-min-alert stock-min-alert-near" title="Stan minimalny: ${formatWeight(minStock)} kg · stan bieżący: ${formatWeight(article.weight_kg)} kg" aria-label="Zbliża się do stanu minimalnego ${formatWeight(minStock)} kg">!</span>`
+        : `<span class="stock-min-alert stock-min-alert-safe" title="Stan minimalny: ${formatWeight(minStock)} kg · stan bieżący: ${formatWeight(article.weight_kg)} kg" aria-label="Stan bezpieczny; minimum ${formatWeight(minStock)} kg">✓</span>`;
+    return `<tr class="stock-row stock-row-${V.esc(article.status)}"><td>${state}</td><td><div class="stock-symbol-cell"><a class="item-title" href="${stockLink}">${V.esc(article.symbol)}</a>${stockAlert}</div></td>${values}</tr>`;
   }).join('');
   const pieces = latest.reduce((sum, row) => sum + row.pieces, 0);
   const weight = latest.reduce((sum, row) => sum + row.weight_kg, 0);

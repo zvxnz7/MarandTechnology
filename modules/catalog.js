@@ -119,7 +119,7 @@ async function handle(ctx) {
       redirect(req,res,`/articles/${id}`,'Komentarz został usunięty.');return true;
     }
   }
-  const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|symbol|new|copy|delete|restore|purge|production-note))?$/);
+  const match=p.match(/^\/articles\/(\d+)(?:\/(metadata|symbol|new|copy|delete|restore|purge|production-note|minimum-stock))?$/);
   if(!match) return false;
   const id=Number(match[1]), a=getArticle(db,id,fail), action=match[2];
   req.sourceImportNotice=SourceImport.noticeForArticle(db,id);
@@ -156,6 +156,20 @@ async function handle(ctx) {
       audit(req.user,'Zapisano jednorazowe informacje do produkcji',null,JSON.stringify({article:current.symbol,note}),id);
     });
     redirect(req,res,`/articles/${id}`,note?'Informacje zostaną dołączone do następnej wydanej karty.':'Usunięto oczekujące informacje do produkcji.');return true;
+  }
+  if(req.method==='POST'&&action==='minimum-stock') {
+    edit();if(a.archived_at||a.purged_at)fail(409,'Zarchiwizowanego artykułu nie można edytować.');
+    const raw=String(form.min_stock_kg??'').trim().replace(',','.');
+    const minimum=raw===''?null:Number(raw);
+    if(minimum!==null&&(!Number.isFinite(minimum)||minimum<0||minimum>100000000))fail(400,'Podaj prawidłowy stan minimalny w kg (wartość nieujemna).');
+    transaction(()=>{
+      const current=getArticle(db,id,fail);if(String(form.updated_at)!==current.updated_at)fail(409,'Artykuł został zmieniony. Odśwież dane przed zapisem.');
+      const before=current.min_stock_kg==null?null:Number(current.min_stock_kg);
+      if(before===minimum)return;
+      db.prepare('UPDATE articles SET min_stock_kg=?,updated_at=? WHERE id=?').run(minimum,now(),id);
+      audit(req.user,'Zmieniono ustalony stan minimalny',null,JSON.stringify({article:current.symbol,before_kg:before,after_kg:minimum}),id);
+    });
+    redirect(req,res,`/articles/${id}`,minimum===null?'Usunięto ustalony stan minimalny.':`Zapisano stan minimalny: ${minimum.toLocaleString('pl-PL')} kg.`);return true;
   }
   if(req.method==='POST'&&action==='purge') {
     edit();if(!a.archived_at||a.purged_at)fail(409,'Artykuł nie jest dostępny do usunięcia z archiwum.');
@@ -268,6 +282,7 @@ async function handle(ctx) {
   const articleArchiveNotice=a.purged_at?'<div class="notice warning"><strong>Artykuł usunięto z widocznej kartoteki.</strong> Historyczne specyfikacje, projekty i karty nadal są dostępne.</div>':a.archived_at?'<div class="notice warning"><strong>Artykuł jest w archiwum.</strong> Można go przywrócić przez 30 dni w zakładce Archiwum.</div>':'';
   const activeActions=`<div class="article-technology-actions">${a.active_spec?`<a class="button primary" href="/records/${a.active_spec}">Otwórz obowiązującą technologię</a>`:''}${productionNoteButton}</div>${a.pending_production_notes?`<p class="notice production-note-saved">Polecenia specjalne czekają na najbliższe wydanie karty.</p>`:''}${productionNoteDialog}`;
   const descriptionMarkup=isWritable?`<p class="preline article-description-value" data-article-description-view role="button" tabindex="0" aria-label="Edytuj opis artykułu" title="Kliknij, aby edytować opis">${e(a.description)||'<span class="muted">Kliknij, aby dodać opis artykułu</span>'}</p>${descriptionEditor}`:`<p class="preline">${e(a.description)}</p>`;
-  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><div class="article-symbol-line"><h1>${e(a.symbol)}</h1>${currentStockView}</div>${symbolEditor}<div class="article-description" data-article-description>${descriptionMarkup}</div><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p></div></div>${activeActions}<div class="article-technology-actions">${newSpecButton}${copyArticleButton}</div><h2>TECHNOLOGIA ARTYKUŁU</h2>${currentView}${articleCommentSection}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${finishingRecipesView}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
+  const minStockForm=isWritable?`<form method="post" action="/articles/${id}/minimum-stock" class="article-min-stock-form">${csrf}<input type="hidden" name="updated_at" value="${e(a.updated_at)}"><label for="article-min-stock">Ustalony stan minimalny</label><div><input id="article-min-stock" name="min_stock_kg" type="number" min="0" max="100000000" step="0.01" value="${a.min_stock_kg==null?'':e(a.min_stock_kg)}" placeholder="np. 500"><span>kg</span><button class="button">Zapisz</button></div></form>`:'';
+  page(`<a href="/articles">← Artykuły</a>${articleArchiveNotice}<div class="pagehead"><div><div class="article-symbol-line"><h1>${e(a.symbol)}</h1>${currentStockView}</div>${symbolEditor}<div class="article-description" data-article-description>${descriptionMarkup}</div><p>Utworzono: ${date(a.created_at)} · Aktualizacja: ${date(articleUpdated)}</p>${minStockForm}</div></div>${activeActions}<div class="article-technology-actions">${newSpecButton}${copyArticleButton}</div><h2>TECHNOLOGIA ARTYKUŁU</h2>${currentView}${articleCommentSection}${draftsView}${historyView}<h2>Próby i warianty artykułu</h2>${trialsView||'<p class="muted">Brak prób.</p>'}${finishingRecipesView}${changesView}<div class="pagination">${historyPage>1?`<a href="?history_page=${historyPage-1}">← Poprzednie wpisy</a>`:''}${historyPage*50<historyCount?`<a href="?history_page=${historyPage+1}">Kolejne wpisy →</a>`:''}</div><h2>Ostatnie wydane karty (do 50)</h2>${cards.map(c=>`<p><a href="/cards/${c.id}" target="_blank" rel="noopener">Karta #${c.id} · ${e(c.machine)} · ${date(c.created_at)} ↗</a></p>`).join('')||'<p>Brak wydanych kart.</p>'}<h2>Projekty / próby</h2>${projects.map(pr=>`<p><a href="/projects/${pr.id}">${e(pr.trial_number||`#${pr.id}`)} · ${e(pr.short_description||pr.name)}</a>${pr.archived_at?' <span class="badge archived">Archiwalny</span>':''}</p>`).join('')||'<p>Artykuł nie jest jeszcze przypisany do projektu / próby.</p>'}${ctx.photos.panel('article',id,{...req,readOnly:!isWritable})}`);return true;
 }
 module.exports={handle,projectArticleInput,associate};

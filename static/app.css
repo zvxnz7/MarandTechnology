@@ -155,6 +155,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .stock-table tbody td{font-size:12px;line-height:1.25;text-align:center}
 .stock-table tbody td:first-child{text-align:center}.stock-table tbody td:nth-child(2){text-align:left}
 .stock-table .item-title{font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+.stock-symbol-cell{display:flex;align-items:center;gap:8px;min-width:0;width:100%}.stock-symbol-cell>.item-title{min-width:0}
+.stock-min-alert{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;margin-left:auto;border:1px solid currentColor;border-radius:50%;font-size:13px;font-weight:800;line-height:1;box-shadow:0 1px 2px #00000012}.stock-min-alert-safe{color:#197043;background:#e4f4eb;border-color:#a9d6bb}.stock-min-alert-near{color:#93610b;background:#fff3ce;border-color:#ebce79}.stock-min-alert-low{color:#a6252b;background:#fde7e8;border-color:#e3a0a3}
 .stock-title-row{display:flex;align-items:center;gap:14px}.stock-title-row h1{margin-bottom:0}.production-stock-print{width:40px;height:40px;padding:8px}.production-stock-print svg{width:22px;height:22px}.stock-table tbody td.stock-shipment-day{color:#c62828!important;font-weight:700}
 .stock-table .stock-day-header,.stock-table .stock-day-start{border-left:2px solid #cbd1d6}
 .stock-table .stock-day-subheader{border-bottom:1px solid var(--line)}
@@ -183,6 +185,11 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .article-current-stock strong{font-size:17px;color:#252b31;white-space:nowrap}
 .article-current-stock small{font-size:12px;font-weight:550;color:#71777e}
 .article-stock-summary{display:flex;align-items:baseline;gap:14px;min-width:0;max-width:100%}
+.article-min-stock-form{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;color:#515a63;font-size:13px}
+.article-min-stock-form>div{display:flex;align-items:center;gap:7px}
+.article-min-stock-form input{width:130px;padding:6px 9px}
+.article-min-stock-form>div>span{color:#68727b;font-weight:650}
+.article-min-stock-form .button{padding:5px 10px;font-size:12px}
 .article-current-stock{flex:none}
 .article-current-stock-lots{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;max-width:65vw;overflow-x:auto;padding:0 0 2px}
 .article-current-stock-lot{display:inline-flex;align-items:center;gap:6px;padding:3px 7px;border:1px solid currentColor;border-radius:5px;font-size:11px;line-height:1.2;white-space:nowrap}
