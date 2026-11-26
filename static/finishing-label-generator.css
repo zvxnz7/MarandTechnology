@@ -1,9 +1,9 @@
 .manual-label-workspace{display:grid;grid-template-columns:minmax(240px,.72fr) minmax(400px,1.28fr);gap:22px;padding:20px}
 .manual-label-preview-panel{display:grid;align-content:start;justify-items:center;gap:10px;padding:18px;background:#edf0f2;border-radius:8px}
 .manual-label-preview-panel>small{color:var(--muted);font-size:12px}
-.manual-label-preview-panel .manual-label-language{display:grid;gap:6px;width:100%;margin:2px 0 0;padding:9px 11px 10px;border:1px solid var(--line);border-radius:7px;background:#fff}
+.manual-label-preview-panel .manual-label-language{display:grid;gap:6px;width:100%;margin:2px 0 0;padding:9px 11px 10px;border:1px solid var(--line);border-radius:7px;background:transparent}
 .manual-label-preview-panel .manual-label-language legend{padding:0 5px;font-size:12px;font-weight:700;color:#555e66}
-.manual-label-preview-panel .manual-label-language .manual-label-quantity-options{justify-content:center;padding-top:0}
+.manual-label-preview-panel .manual-label-language .finishing-label-radio-row{justify-content:center}
 .manual-label-preview-list{display:flex;align-content:start;justify-content:center;flex-wrap:wrap;gap:12px;width:100%;max-height:570px;overflow:auto;padding:4px}
 .manual-label-preview{width:50mm;height:74mm;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif}
 .manual-label-preview{flex:none;box-shadow:0 8px 22px #20283233}
