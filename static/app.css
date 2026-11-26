@@ -961,3 +961,9 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-label-preview .label-row{flex:0 0 auto}
 .finishing-label-preview .label-quantity{position:absolute;left:0;right:0;bottom:0;margin:0;flex:0 0 auto}
 .finishing-pms-status{background:#e8efff;color:#314f90;border:1px solid #cbd8f3}
+.warehouse-symbol-row .warehouse-manual-bale-trigger{margin-left:auto}
+.copy-article-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;align-items:end}
+.copy-article-form>label{margin:0}
+.copy-article-source{grid-column:1/-1;margin:0}
+.copy-article-actions{grid-column:1/-1;justify-content:flex-end;align-items:center}
+@media(max-width:650px){.copy-article-form{grid-template-columns:1fr}}
