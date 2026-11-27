@@ -259,6 +259,7 @@ function orderRecord(db,id) {
 function orderBatches(db,orderId) {
   return db.prepare(`SELECT b.*,count(DISTINCT r.id) receipt_count,
       coalesce(sum(r.raw_pieces_received),0) raw_received_pieces,
+      coalesce(sum(r.used_weight_kg),0) raw_received_weight_kg,
       coalesce(sum(r.finished_pieces),0) finished_pieces,
       coalesce((SELECT sum(i.lost_pieces) FROM finishing_incidents i WHERE i.batch_id=b.id AND i.auto_generated=1 AND i.incident_type='lost'),0) lost_pieces,
       CASE WHEN EXISTS(SELECT 1 FROM finishing_receipts rr WHERE rr.batch_id=b.id AND rr.finished_weight_kg>0) THEN round(sum(r.finished_weight_kg),2) ELSE NULL END finished_weight_kg,
@@ -436,8 +437,10 @@ function prepareRecipe(form,fail) {
 }
 function unassignedOrderPieces(db,order,batches=null) {
   if(!order||order.manual_entry||!order.shipment_article_id)return 0;
-  const currentBatches=batches||db.prepare('SELECT sent_pieces,correction_parent_batch_id,correction_of_batch_id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(order.id);
-  const allocated=currentBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).reduce((sum,batch)=>sum+Number(batch.sent_pieces||0),0);
+  const currentBatches=batches||db.prepare(`SELECT b.sent_pieces,b.correction_parent_batch_id,b.correction_of_batch_id,
+      coalesce((SELECT sum(r.raw_pieces_received) FROM finishing_receipts r WHERE r.batch_id=b.id),0) raw_received_pieces
+    FROM finishing_batches b WHERE b.order_id=? AND b.cancelled_at IS NULL`).all(order.id);
+  const allocated=currentBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).reduce((sum,batch)=>sum+(Number(batch.sent_pieces||0)>0?Number(batch.sent_pieces):Number(batch.raw_received_pieces??batch.raw_received??0)),0);
   return Math.max(0,sourcePieces(db,order.shipment_article_id).length-allocated);
 }
 function orderStatus(db,orderId) {
@@ -860,8 +863,8 @@ function orderPage(ctx,id) {
   const pmAllocationBatches=activeBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).sort((a,b)=>a.id-b.id);
   const mainPmAllocation=pmAllocationBatches[0]||null;
   const additionalPmAllocation=pmAllocationBatches.slice(1);
-  const mainPmAssignedPieces=mainPmAllocation?Math.min(Number(mainPmAllocation.sent_pieces||0),Math.max(0,pmAllocationPieces-additionalPmAllocation.reduce((sum,batch)=>sum+Number(batch.sent_pieces||0),0))):0;
-  const mainPmAssignedWeight=mainPmAllocation?Math.min(Number(mainPmAllocation.raw_weight_kg||0),Math.max(0,Math.round((pmAllocationWeight-additionalPmAllocation.reduce((sum,batch)=>sum+Number(batch.raw_weight_kg||0),0))*100)/100)):0;
+  const mainPmAssignedPieces=mainPmAllocation?Math.min(Number(mainPmAllocation.sent_pieces||0),Math.max(0,pmAllocationPieces-additionalPmAllocation.reduce((sum,batch)=>sum+(Number(batch.sent_pieces||0)>0?Number(batch.sent_pieces):Number(batch.raw_received_pieces||0)),0))):0;
+  const mainPmAssignedWeight=mainPmAllocation?Math.min(Number(mainPmAllocation.raw_weight_kg||0),Math.max(0,Math.round((pmAllocationWeight-additionalPmAllocation.reduce((sum,batch)=>sum+(Number(batch.raw_weight_kg||0)>0?Number(batch.raw_weight_kg):Number(batch.raw_received_weight_kg||0)),0))*100)/100)):0;
   const batchRows=[...batches].sort((a,b)=>a.id-b.id).map((batch,index)=>{
     const batchStatusLabel=finishingBatchStatusLabel(db,order,batch),batchStatus=`<span class="badge ${finishingBatchStatusClass(db,order,batch)}">${V.esc(batchStatusLabel)}</span>`;
     const parent=batch.correction_parent_batch_id?db.prepare('SELECT id,order_id,finishing_lot,sent_at FROM finishing_batches WHERE id=?').get(batch.correction_parent_batch_id):null;
@@ -1796,7 +1799,6 @@ function handle(ctx) {
           WHERE pb.id=finishing_receipts.batch_id AND po.recipe_id=?)`).run(now(),id,priorCommentReceiptId,order.recipe_id);
       for(let i=0;i<finishedPieces;i++)insert.run(id,i+1,measureMeters?meters[i]:null,measureWeight?weights[i]:null);
       const receiptTotals=db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces,coalesce(sum(used_weight_kg),0) kg FROM finishing_receipts WHERE batch_id=?').get(batchId),receivedTotal=Number(receiptTotals.pieces||0),mainPmBatch=isMainPmBatch(db,order,{...batch,...liveBatch}),additionalPmBatch=isAdditionalPmBatch(db,order,{...batch,...liveBatch});
-      if(additionalPmBatch)db.prepare('UPDATE finishing_batches SET sent_pieces=?,raw_weight_kg=?,updated_at=?,updated_by=? WHERE id=?').run(receivedTotal,Math.round(Number(receiptTotals.kg||0)*100)/100,now(),req.user.id,batchId);
       const expectedBatchPieces=Math.max(0,Number(capacity.effectiveBatchPieces||0)),stillPartial=!additionalPmBatch&&expectedBatchPieces>0&&receivedTotal<expectedBatchPieces,closeWithMissing=stillPartial&&mainPmBatch&&form.close_incomplete==='1';
       if(stillPartial&&mainPmBatch&&modalReceipt&&!['0','1'].includes(form.close_incomplete))fail(400,'Wybierz, czy zostawić główne zlecenie otwarte, czy zamknąć je z brakami.');
       db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial&&!closeWithMissing?1:0,batchId);
@@ -1823,7 +1825,9 @@ function handle(ctx) {
       if(!liveReceipt)fail(409,'Ostatnie przyjęcie zostało już zmienione. Odśwież stronę.');
       db.prepare('UPDATE finishing_receipts SET comment_consumed_at=NULL,comment_consumed_by=NULL WHERE comment_consumed_by=?').run(liveReceipt.id);
       db.prepare('DELETE FROM finishing_receipts WHERE id=? AND batch_id=?').run(liveReceipt.id,batchId);
-      const remainingPieces=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces FROM finishing_receipts WHERE batch_id=?').get(batchId)?.pieces||0),currentBatch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId),currentOrder=orderRecord(db,batch.order_id),capacity=receiptCapacity(db,currentOrder,currentBatch),hasReceipts=Boolean(db.prepare('SELECT 1 FROM finishing_receipts WHERE batch_id=? LIMIT 1').get(batchId)),stillPartial=hasReceipts&&Number(capacity.effectiveBatchPieces||0)>remainingPieces;
+      const currentBatch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId),currentOrder=orderRecord(db,batch.order_id);
+      if(isAdditionalPmBatch(db,currentOrder,currentBatch))db.prepare('UPDATE finishing_batches SET sent_pieces=0,raw_weight_kg=0 WHERE id=?').run(batchId);
+      const remainingPieces=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces FROM finishing_receipts WHERE batch_id=?').get(batchId)?.pieces||0),capacity=receiptCapacity(db,currentOrder,currentBatch),hasReceipts=Boolean(db.prepare('SELECT 1 FROM finishing_receipts WHERE batch_id=? LIMIT 1').get(batchId)),stillPartial=hasReceipts&&Number(capacity.effectiveBatchPieces||0)>remainingPieces;
       if(hasReceipts)db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial?1:0,batchId);
       const stamp=now(),complete=recomputeBatchClosure(db,batchId,req.user.id,stamp);
       syncAutoLostIncident(db,batchId,req.user.id,stamp);
