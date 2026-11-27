@@ -438,9 +438,10 @@ function prepareRecipe(form,fail) {
 function unassignedOrderPieces(db,order,batches=null) {
   if(!order||order.manual_entry||!order.shipment_article_id)return 0;
   const currentBatches=batches||db.prepare(`SELECT b.sent_pieces,b.correction_parent_batch_id,b.correction_of_batch_id,
+      (SELECT count(*) FROM finishing_receipts r WHERE r.batch_id=b.id) receipt_count,
       coalesce((SELECT sum(r.raw_pieces_received) FROM finishing_receipts r WHERE r.batch_id=b.id),0) raw_received_pieces
     FROM finishing_batches b WHERE b.order_id=? AND b.cancelled_at IS NULL`).all(order.id);
-  const allocated=currentBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).reduce((sum,batch)=>sum+(Number(batch.sent_pieces||0)>0?Number(batch.sent_pieces):Number(batch.raw_received_pieces??batch.raw_received??0)),0);
+  const allocated=currentBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).reduce((sum,batch)=>sum+(Number(batch.receipt_count||0)>0?Number(batch.raw_received_pieces??batch.raw_received??0):Number(batch.sent_pieces||0)),0);
   return Math.max(0,sourcePieces(db,order.shipment_article_id).length-allocated);
 }
 function orderStatus(db,orderId) {
@@ -863,8 +864,8 @@ function orderPage(ctx,id) {
   const pmAllocationBatches=activeBatches.filter(batch=>!batch.correction_parent_batch_id&&!batch.correction_of_batch_id).sort((a,b)=>a.id-b.id);
   const mainPmAllocation=pmAllocationBatches[0]||null;
   const additionalPmAllocation=pmAllocationBatches.slice(1);
-  const mainPmAssignedPieces=mainPmAllocation?Math.min(Number(mainPmAllocation.sent_pieces||0),Math.max(0,pmAllocationPieces-additionalPmAllocation.reduce((sum,batch)=>sum+(Number(batch.sent_pieces||0)>0?Number(batch.sent_pieces):Number(batch.raw_received_pieces||0)),0))):0;
-  const mainPmAssignedWeight=mainPmAllocation?Math.min(Number(mainPmAllocation.raw_weight_kg||0),Math.max(0,Math.round((pmAllocationWeight-additionalPmAllocation.reduce((sum,batch)=>sum+(Number(batch.raw_weight_kg||0)>0?Number(batch.raw_weight_kg):Number(batch.raw_received_weight_kg||0)),0))*100)/100)):0;
+  const mainPmAssignedPieces=mainPmAllocation?Math.min(Number(mainPmAllocation.sent_pieces||0),Math.max(0,pmAllocationPieces-additionalPmAllocation.reduce((sum,batch)=>sum+(Number(batch.receipt_count||0)>0?Number(batch.raw_received_pieces||0):Number(batch.sent_pieces||0)),0))):0;
+  const mainPmAssignedWeight=mainPmAllocation?Math.min(Number(mainPmAllocation.raw_weight_kg||0),Math.max(0,Math.round((pmAllocationWeight-additionalPmAllocation.reduce((sum,batch)=>sum+(Number(batch.receipt_count||0)>0?Number(batch.raw_received_weight_kg||0):Number(batch.raw_weight_kg||0)),0))*100)/100)):0;
   const batchRows=[...batches].sort((a,b)=>a.id-b.id).map((batch,index)=>{
     const batchStatusLabel=finishingBatchStatusLabel(db,order,batch),batchStatus=`<span class="badge ${finishingBatchStatusClass(db,order,batch)}">${V.esc(batchStatusLabel)}</span>`;
     const parent=batch.correction_parent_batch_id?db.prepare('SELECT id,order_id,finishing_lot,sent_at FROM finishing_batches WHERE id=?').get(batch.correction_parent_batch_id):null;
@@ -872,7 +873,7 @@ function orderPage(ctx,id) {
     const correctionInstruction=[batch.correction_instruction,batch.correction_notes].filter(value=>String(value||'').trim()).join(' · ');
     const correctionText=batch.correction_parent_batch_id?`<small class="finishing-subline"><b>Instrukcja poprawki:</b> ${V.esc(correctionInstruction||'—')}</small>`:'';
     const isMainPmAllocation=batch.id===mainPmAllocation?.id;
-    const assignedPieces=isMainPmAllocation?mainPmAssignedPieces:Number(batch.sent_pieces||0),assignedWeight=isMainPmAllocation?mainPmAssignedWeight:Number(batch.raw_weight_kg||0);
+    const assignedPieces=isMainPmAllocation?mainPmAssignedPieces:(Number(batch.receipt_count||0)>0?Number(batch.raw_received_pieces||0):Number(batch.sent_pieces||0)),assignedWeight=isMainPmAllocation?mainPmAssignedWeight:(Number(batch.receipt_count||0)>0?Number(batch.raw_received_weight_kg||0):Number(batch.raw_weight_kg||0));
     const provisionalMainAllocation=isMainPmAllocation&&additionalPmAllocation.length>0&&!batch.closed_at;
     const assignedText=provisionalMainAllocation?`<em class="finishing-provisional-quantity">${Number(batch.sent_pieces||0)} szt. · ${money(batch.raw_weight_kg)} kg</em><small class="finishing-provisional-note">Rzeczywista ilość będzie podana po przyjęciu partii składowych.</small>`:isMainPmAllocation?`${assignedPieces} szt. · ${money(assignedWeight)} kg`:assignedPieces>0?`${assignedPieces} szt. · ${money(assignedWeight)} kg`:batch.receipt_count?`${batch.raw_received_pieces} szt. · ${money(batch.finished_weight_kg||0)} kg`:'Do uzupełnienia przy przyjęciu';
     return `<tr><td><strong>${batch.correction_of_batch_id||batch.correction_parent_batch_id?'Poprawkowe':index===0?'Główne':`Dodatkowe ${index}`}</strong>${batch.complaint_status==='reklamowana'?' · Reklamowane':batch.complaint_status==='poprawiona'?' · Poprawione':''}${correctionLink}${correctionText}</td><td>${V.esc(finishingOrderNo(batch)||'Do uzupełnienia')}</td><td>${batchStatus}</td><td>${V.datepl(batch.sent_at)}</td><td>${assignedText}</td><td>${V.esc(batch.yarn_lot||'—')}</td><td>${batch.finished_pieces} szt. · ${batch.finished_meters===null?'—':`${qty(batch.finished_meters)} mb`}</td></tr>`;
