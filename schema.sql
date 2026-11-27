@@ -126,7 +126,6 @@ CREATE TABLE IF NOT EXISTS finishing_batches(
   cancelled_at TEXT,
   cancelled_by INTEGER REFERENCES users(id),
   finishing_lot TEXT NOT NULL DEFAULT '',
-  finishing_plant_order_no TEXT NOT NULL DEFAULT '',
   sent_at TEXT NOT NULL,
   sent_pieces INTEGER NOT NULL CHECK(sent_pieces >= 0),
   raw_weight_kg REAL NOT NULL CHECK(raw_weight_kg >= 0),

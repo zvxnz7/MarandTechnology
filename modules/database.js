@@ -550,7 +550,7 @@ function migrateV28(db){
 }
 function migrateV29(db){
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>=29){db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));return;}
+  if(version>=29){db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));migrateV30(db);return;}
   db.exec('BEGIN IMMEDIATE');
   try{
     const columns=new Set(db.prepare("PRAGMA table_info('finishing_batches')").all().map(column=>column.name));
@@ -558,6 +558,22 @@ function migrateV29(db){
     db.exec('PRAGMA user_version=29; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
   db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  migrateV30(db);
+}
+function migrateV30(db){
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  const schema=fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8');
+  if(version>=30){db.exec(schema);return;}
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const columns=new Set(db.prepare("PRAGMA table_info('finishing_batches')").all().map(column=>column.name));
+    if(columns.has('finishing_plant_order_no')){
+      db.exec("UPDATE finishing_batches SET finishing_lot=finishing_plant_order_no WHERE trim(finishing_lot)='' AND trim(finishing_plant_order_no)<>''");
+      db.exec('ALTER TABLE finishing_batches DROP COLUMN finishing_plant_order_no');
+    }
+    db.exec('PRAGMA user_version=30; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+  db.exec(schema);
 }
 // All schema changes are transactional. The original database is snapshotted
 // before changing legacy tables; IDs, approved payloads and issued HTML survive.
@@ -566,8 +582,9 @@ function migrate(db, dbPath) {
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
   if (!legacy.length) { db.exec(schema); db.exec('CREATE UNIQUE INDEX IF NOT EXISTS finishing_orders_source_remainder_batch ON finishing_orders(source_remainder_batch_id) WHERE source_remainder_batch_id IS NOT NULL'); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>29)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===29) { db.exec(schema); return; }
+  if(version>30)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===30) { db.exec(schema); return; }
+  if(version===29) { migrateV30(db); return; }
   if(version===28) { migrateV29(db); return; }
   if(version===27) { db.exec(schema); migrateV28(db); return; }
   if(version===26) { migrateV27(db); return; }
