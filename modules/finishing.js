@@ -1199,16 +1199,23 @@ function syncAutoLostIncident(db,batchId,userId,stamp) {
   else if(changed)db.prepare('UPDATE finishing_incidents SET description=?,lost_weight_kg=? WHERE id=?').run(description,lostWeight,existing.id);
 }
 function reconcileAutoLostIncidents(db) {
-  const rows=db.prepare(`SELECT order_id FROM finishing_batches WHERE cancelled_at IS NULL AND closed_at IS NOT NULL
-      AND correction_parent_batch_id IS NULL AND correction_of_batch_id IS NULL
-    UNION
-    SELECT b.order_id FROM finishing_incidents i JOIN finishing_batches b ON b.id=i.batch_id
-      WHERE i.auto_generated=1 AND i.incident_type='lost' AND i.batch_id IS NOT NULL`).all();
+  const rows=db.prepare("SELECT batch_id,created_by FROM finishing_incidents WHERE auto_generated=1 AND incident_type='lost' AND batch_id IS NOT NULL").all();
   const stamp=new Date().toISOString();
-  for(const row of rows){
-    syncAutoLostIncidentsForOrder(db,row.order_id,0,stamp);
-    syncAutoRemainderPmrsForOrder(db,row.order_id,0,stamp);
-  }
+  for(const row of rows)syncAutoLostIncident(db,row.batch_id,row.created_by||0,stamp);
+  cleanupPrematureAutoRemainderPmrs(db);
+}
+function cleanupPrematureAutoRemainderPmrs(db) {
+  const rows=db.prepare(`SELECT o.id FROM finishing_orders o JOIN finishing_batches source ON source.id=o.source_remainder_batch_id
+    WHERE source.cancelled_at IS NULL AND source.closed_at IS NOT NULL
+      AND source.correction_parent_batch_id IS NULL AND source.correction_of_batch_id IS NULL
+      AND EXISTS(SELECT 1 FROM finishing_batches pending WHERE pending.order_id=source.order_id
+        AND pending.cancelled_at IS NULL AND pending.correction_parent_batch_id IS NULL AND pending.correction_of_batch_id IS NULL
+        AND pending.closed_at IS NULL)
+      AND o.status='draft' AND o.updated_at=o.created_at
+      AND NOT EXISTS(SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=o.id)
+      AND NOT EXISTS(SELECT 1 FROM finishing_settlements s JOIN finishing_batches b ON b.id=s.batch_id WHERE b.order_id=o.id)`).all();
+  for(const row of rows)db.prepare('DELETE FROM finishing_orders WHERE id=?').run(row.id);
+  return rows.length;
 }
 function syncAutoLostIncidentsForOrder(db,orderId,userId,stamp) {
   const batches=db.prepare('SELECT id,correction_parent_batch_id,correction_of_batch_id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(orderId);
