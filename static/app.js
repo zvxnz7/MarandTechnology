@@ -60,7 +60,7 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
    lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia zapisany';updateRemoveForm();updateReceiveButton(value,result.display_order_number||value);
    const orderRow=form.closest('tr'),batchStatusRow=orderRow?.querySelector(`td:nth-child(8) [data-batch-status="${form.elements.batch_id?.value||''}"]`),statusBadge=batchStatusRow?.querySelector('.badge');
    if(statusBadge&&result.batch_status_label){statusBadge.textContent=result.batch_status_label;statusBadge.className=`badge ${result.batch_status_class||'submitted'}`;}
-   if(result.parent_correction_batch_id){const parentStatusBadge=orderRow?.querySelector(`td:nth-child(8) [data-batch-status="${result.parent_correction_batch_id}"] .badge`);if(parentStatusBadge){parentStatusBadge.textContent=`Wys. do poprawy${result.display_order_number?`: spec. ${result.display_order_number}`:''}`;parentStatusBadge.className='badge finishing-correction-sent';}}
+   if(result.parent_correction_batch_id){const parentStatusBadge=orderRow?.querySelector(`td:nth-child(8) [data-batch-status="${result.parent_correction_batch_id}"] .badge`);if(parentStatusBadge){parentStatusBadge.textContent=`Poprawa spec.${result.display_order_number?`: ${result.display_order_number}`:''}`;parentStatusBadge.className='badge finishing-correction-sent';}}
   }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru LOT. Sprawdź połączenie i spróbuj ponownie.';}
   finally{saving=false;updateRemoveForm();if(queued){queued=false;timer=setTimeout(save,150);}}
  };
