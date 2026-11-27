@@ -483,10 +483,10 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-correction-details p{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .finishing-order-notes-view{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#fff}
 .finishing-row-actions{white-space:nowrap;text-align:left!important;vertical-align:middle!important}
-.finishing-order-actions-cell{vertical-align:top!important;padding-top:12px!important}
+.finishing-order-actions-cell{vertical-align:top!important;padding:12px 10px 12px 0!important}
 .finishing-order-actions-inline{display:flex;align-items:center;justify-content:flex-start;gap:5px;min-height:34px}
 .finishing-order-receive-actions{display:grid;align-content:start;gap:6px;width:100%;margin-top:6px}
-.finishing-order-batch-actions-row{display:flex;align-items:center;justify-content:flex-end;gap:5px;width:100%;min-height:34px}
+.finishing-order-batch-actions-row{display:flex;align-items:center;justify-content:flex-start;gap:5px;width:100%;min-height:34px}
 .finishing-order-batch-actions-row .finishing-order-remove-spec-form{display:inline-flex;margin:0}
 .finishing-order-receive-actions .finishing-row-action{margin:0}
 .finishing-orders-list td,.finishing-orders-list td .badge{font-size:13px}
