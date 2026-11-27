@@ -594,8 +594,13 @@ function ordersPage(ctx) {
   }
   for(const order of all)order.finishing_lots=(batchesByOrder.get(order.id)||[]).map(batch=>finishingOrderNo(batch)||'Do uzupełnienia').join(', ');
   const query=normalizeSearch(q);
+  const orderFullyReceived=order=>{
+    if(order.order_type==='raw_sale'||order.status==='received')return true;
+    const activeBatches=(batchesByOrder.get(order.id)||[]).filter(batch=>!batch.cancelled_at);
+    return activeBatches.length>0&&activeBatches.every(batch=>Boolean(batch.closed_at));
+  };
   const receiveDialogs=[];
-  const rows=all.filter(order=>(!status||(status==='not_received'?order.status!=='received':order.status===status||(status==='sent'&&order.status==='partial')))&&(!query||[order.source_shipment_no,order.raw_symbol,order.article_description,order.manual_input_description,order.client_name,order.trade_symbol,order.finishing_plant_name,order.finishing_lots,order.manual_entry||order.article_sequence?pmReference(order):''].map(normalizeSearch).join(' ').includes(query))).map(order=>{
+  const rows=all.filter(order=>(!status||(status==='not_received'?!orderFullyReceived(order):order.status===status||(status==='sent'&&order.status==='partial')))&&(!query||[order.source_shipment_no,order.raw_symbol,order.article_description,order.manual_input_description,order.client_name,order.trade_symbol,order.finishing_plant_name,order.finishing_lots,order.manual_entry||order.article_sequence?pmReference(order):''].map(normalizeSearch).join(' ').includes(query))).map(order=>{
     const canReceive=editableRoles.includes(ctx.req.user.role)&&order.open_batch_id&&!['raw_sale','cancelled','received'].includes(order.status);
     const canEditLots=editableRoles.includes(ctx.req.user.role);
     const pm=pmReference(order);
