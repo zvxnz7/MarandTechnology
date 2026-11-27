@@ -1172,10 +1172,22 @@ function recomputeBatchClosure(db,batchId,userId,stamp) {
   db.prepare('UPDATE finishing_batches SET closed_at=?,updated_at=?,updated_by=? WHERE id=?').run(closedAt,stamp,userId,batchId);
   return complete;
 }
+function orderHasPendingBaseBatch(db,orderId) {
+  return Boolean(db.prepare(`SELECT 1 FROM finishing_batches
+    WHERE order_id=? AND cancelled_at IS NULL
+      AND correction_parent_batch_id IS NULL AND correction_of_batch_id IS NULL
+      AND closed_at IS NULL LIMIT 1`).get(orderId));
+}
 function syncAutoLostIncident(db,batchId,userId,stamp) {
   const batch=db.prepare('SELECT * FROM finishing_batches WHERE id=?').get(batchId);
   if(!batch)return;
   const existing=db.prepare("SELECT * FROM finishing_incidents WHERE batch_id=? AND auto_generated=1 AND incident_type='lost'").get(batchId);
+  // A missing quantity is not a loss while another base batch from this PM is still in process.
+  // Wait until every assigned dyeing batch has been closed before reconciling lost bales.
+  if(batch.closed_at&&!batch.cancelled_at&&!batch.correction_parent_batch_id&&!batch.correction_of_batch_id&&orderHasPendingBaseBatch(db,batch.order_id)){
+    if(existing&&existing.status==='open'&&!String(existing.resolution||'').trim())db.prepare('DELETE FROM finishing_incidents WHERE id=?').run(existing.id);
+    return;
+  }
   if(!batch.closed_at){if(existing)db.prepare('DELETE FROM finishing_incidents WHERE id=?').run(existing.id);return;}
   const order=orderRecord(db,batch.order_id),capacity=order?receiptCapacity(db,order,batch):null,effectiveSentPieces=capacity?capacity.effectiveBatchPieces:Number(batch.sent_pieces||0),effectiveSentKg=capacity?capacity.effectiveBatchKg:Number(batch.raw_weight_kg||0);
   const accounted=db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces,coalesce(sum(used_weight_kg),0) kg FROM finishing_receipts WHERE batch_id=?').get(batchId),returned=Number(accounted.pieces||0),sent=Math.max(0,Number(effectiveSentPieces||0)),lostPieces=Math.max(0,sent-returned);
@@ -1187,9 +1199,28 @@ function syncAutoLostIncident(db,batchId,userId,stamp) {
   else if(changed)db.prepare('UPDATE finishing_incidents SET description=?,lost_weight_kg=? WHERE id=?').run(description,lostWeight,existing.id);
 }
 function reconcileAutoLostIncidents(db) {
-  const rows=db.prepare("SELECT batch_id,created_by FROM finishing_incidents WHERE auto_generated=1 AND incident_type='lost' AND batch_id IS NOT NULL").all();
+  const rows=db.prepare(`SELECT order_id FROM finishing_batches WHERE cancelled_at IS NULL AND closed_at IS NOT NULL
+      AND correction_parent_batch_id IS NULL AND correction_of_batch_id IS NULL
+    UNION
+    SELECT b.order_id FROM finishing_incidents i JOIN finishing_batches b ON b.id=i.batch_id
+      WHERE i.auto_generated=1 AND i.incident_type='lost' AND i.batch_id IS NOT NULL`).all();
   const stamp=new Date().toISOString();
-  for(const row of rows)syncAutoLostIncident(db,row.batch_id,row.created_by||0,stamp);
+  for(const row of rows){
+    syncAutoLostIncidentsForOrder(db,row.order_id,0,stamp);
+    syncAutoRemainderPmrsForOrder(db,row.order_id,0,stamp);
+  }
+}
+function syncAutoLostIncidentsForOrder(db,orderId,userId,stamp) {
+  const batches=db.prepare('SELECT id,correction_parent_batch_id,correction_of_batch_id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL').all(orderId);
+  if(orderHasPendingBaseBatch(db,orderId)){
+    for(const batch of batches){
+      if(batch.correction_parent_batch_id||batch.correction_of_batch_id){syncAutoLostIncident(db,batch.id,userId,stamp);continue;}
+      const existing=db.prepare("SELECT id,status,resolution FROM finishing_incidents WHERE batch_id=? AND auto_generated=1 AND incident_type='lost'").get(batch.id);
+      if(existing&&existing.status==='open'&&!String(existing.resolution||'').trim())db.prepare('DELETE FROM finishing_incidents WHERE id=?').run(existing.id);
+    }
+    return;
+  }
+  for(const batch of batches)syncAutoLostIncident(db,batch.id,userId,stamp);
 }
 function syncAutoRemainderPmr(db,batchId,userId,stamp) {
   const batch=db.prepare(`SELECT b.*,o.raw_symbol,o.client_name,o.trade_symbol,o.recipe_snapshot,o.target_color,o.target_stiffening,o.target_width_cm,o.target_grammage,o.finishing_plant_id,o.manual_entry,o.order_type,o.id order_id,o.created_at order_created_at
@@ -1205,6 +1236,14 @@ function syncAutoRemainderPmr(db,batchId,userId,stamp) {
     if(existing&&existing.status==='draft'&&existing.updated_at===existing.created_at&&!db.prepare('SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=? LIMIT 1').get(existing.id))db.prepare('DELETE FROM finishing_orders WHERE id=?').run(existing.id);
     return null;
   }
+  // Defer remainder PMRs until all sibling batches are received or explicitly closed with shortages.
+  if(orderHasPendingBaseBatch(db,batch.order_id)){
+    const untouched=existing&&existing.status==='draft'&&existing.updated_at===existing.created_at
+      &&!db.prepare('SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=? LIMIT 1').get(existing.id)
+      &&!db.prepare('SELECT 1 FROM finishing_settlements s JOIN finishing_batches b ON b.id=s.batch_id WHERE b.order_id=? LIMIT 1').get(existing.id);
+    if(untouched)db.prepare('DELETE FROM finishing_orders WHERE id=?').run(existing.id);
+    return null;
+  }
   const capacity=receiptCapacity(db,orderRecord(db,batch.order_id),batch),accounted=db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces,coalesce(sum(used_weight_kg),0) kg FROM finishing_receipts WHERE batch_id=?').get(batchId),missingPieces=Math.max(0,Number(capacity.effectiveBatchPieces||0)-Number(accounted.pieces||0)),missingKg=Math.max(0,Math.round((Number(capacity.effectiveBatchKg||0)-Number(accounted.kg||0))*100)/100);
   const hasMissing=missingPieces>0||missingKg>0.005;
   if(!hasMissing){
@@ -1214,7 +1253,7 @@ function syncAutoRemainderPmr(db,batchId,userId,stamp) {
   if(existing){
     const untouched=existing.status==='draft'&&existing.updated_at===existing.created_at&&!db.prepare('SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=? LIMIT 1').get(existing.id);
     if(untouched){const remainderBatch=db.prepare('SELECT id FROM finishing_batches WHERE order_id=? ORDER BY id LIMIT 1').get(existing.id);if(remainderBatch)db.prepare('UPDATE finishing_batches SET sent_pieces=?,raw_weight_kg=?,updated_at=?,updated_by=? WHERE id=?').run(missingPieces,missingKg,stamp,userId,remainderBatch.id);}
-    return {id:existing.id,reference:existing.manual_reference,kg:missingKg,pieces:missingPieces,created:false};
+    return {id:existing.id,reference:existing.manual_reference,kg:missingKg,pieces:missingPieces,created:false,batchId};
   }
   const manualReference=nextManualReference(db,stamp),sourceOrder=orderRecord(db,batch.order_id),sourceOrderLabel=pmReference(sourceOrder),sourceBatchLabel=finishingOrderNo(batch)||`#${batchId}`,description=`Automatycznie utworzono z braków po niepełnym przyjęciu zlecenia barwiarskiego ${sourceBatchLabel} · ${sourceOrderLabel}.`;
   const result=db.prepare(`INSERT INTO finishing_orders(shipment_article_id,order_type,finishing_plant_id,source_shipment_no,source_shipment_date,raw_symbol,client_name,trade_symbol,recipe_snapshot,target_color,target_stiffening,target_width_cm,target_grammage,manual_entry,manual_reference,manual_input_description,source_remainder_batch_id,status,created_at,created_by,updated_at,updated_by)
@@ -1222,7 +1261,26 @@ function syncAutoRemainderPmr(db,batchId,userId,stamp) {
   const pmrId=Number(result.lastInsertRowid),receivedAt=db.prepare('SELECT max(received_at) received_at FROM finishing_receipts WHERE batch_id=?').get(batchId)?.received_at||V.todayInput();
   db.prepare(`INSERT INTO finishing_batches(order_id,finishing_lot,sent_at,sent_pieces,raw_weight_kg,yarn_lot,notes,created_at,created_by,updated_at,updated_by)
     VALUES(?,'',?,?,?,?,?,?,?, ?,?)`).run(pmrId,receivedAt,missingPieces,missingKg,batch.yarn_lot||'',description,stamp,userId,stamp,userId);
-  return {id:pmrId,reference:manualReference,kg:missingKg,pieces:missingPieces,created:true};
+  return {id:pmrId,reference:manualReference,kg:missingKg,pieces:missingPieces,created:true,batchId};
+}
+function syncAutoRemainderPmrsForOrder(db,orderId,userId,stamp) {
+  const correctionBatches=db.prepare(`SELECT id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL
+    AND (correction_parent_batch_id IS NOT NULL OR correction_of_batch_id IS NOT NULL)`).all(orderId);
+  for(const batch of correctionBatches)syncAutoRemainderPmr(db,batch.id,userId,stamp);
+  if(orderHasPendingBaseBatch(db,orderId)){
+    // Remove only untouched auto-generated PMRs that were created prematurely by an older version.
+    const premature=db.prepare(`SELECT o.id FROM finishing_orders o JOIN finishing_batches source ON source.id=o.source_remainder_batch_id
+      WHERE source.order_id=? AND source.cancelled_at IS NULL AND source.closed_at IS NOT NULL
+        AND source.correction_parent_batch_id IS NULL AND source.correction_of_batch_id IS NULL
+        AND o.status='draft' AND o.updated_at=o.created_at
+        AND NOT EXISTS(SELECT 1 FROM finishing_receipts r JOIN finishing_batches b ON b.id=r.batch_id WHERE b.order_id=o.id)
+        AND NOT EXISTS(SELECT 1 FROM finishing_settlements s JOIN finishing_batches b ON b.id=s.batch_id WHERE b.order_id=o.id)`).all(orderId);
+    for(const row of premature)db.prepare('DELETE FROM finishing_orders WHERE id=?').run(row.id);
+    return [];
+  }
+  const batches=db.prepare(`SELECT id FROM finishing_batches WHERE order_id=? AND cancelled_at IS NULL
+    AND correction_parent_batch_id IS NULL AND correction_of_batch_id IS NULL AND closed_at IS NOT NULL ORDER BY id`).all(orderId);
+  return batches.map(batch=>syncAutoRemainderPmr(db,batch.id,userId,stamp)).filter(Boolean);
 }
 function cleanupCorrectionRemainderPmrs(db) {
   const invalid=db.prepare(`SELECT o.id FROM finishing_orders o JOIN finishing_batches source ON source.id=o.source_remainder_batch_id
@@ -1492,7 +1550,9 @@ function handle(ctx) {
         db.prepare('DELETE FROM finishing_orders WHERE id=?').run(id);
         if(sourceRemainderBatchId){
           db.prepare("UPDATE finishing_incidents SET settled_at=NULL,settled_by=NULL WHERE batch_id=? AND auto_generated=1 AND incident_type='lost'").run(sourceRemainderBatchId);
-          syncAutoLostIncident(db,sourceRemainderBatchId,req.user.id,now());
+          const source=db.prepare('SELECT order_id FROM finishing_batches WHERE id=?').get(sourceRemainderBatchId),stamp=now();
+          if(source)syncAutoLostIncidentsForOrder(db,source.order_id,req.user.id,stamp);
+          if(source)syncAutoRemainderPmrsForOrder(db,source.order_id,req.user.id,stamp);
         }
         audit(req.user,'Usunięto zlecenie wykańczania wraz z przyjęciami i rozliczeniami',null,JSON.stringify({orderId:id,rawSymbol:current.raw_symbol,client:current.client_name,status:current.status,sourceShipmentArticleId:current.shipment_article_id,sourceRemainderBatchId}),null);
       });
@@ -1576,8 +1636,9 @@ function handle(ctx) {
         for(const batch of editedBatches){
           const closedAt=batch.closed?(batch.oldClosedAt||now()):null;
           saveBatch.run(batch.finishingLot,batch.sentAt,batch.sentPieces,batch.rawWeight,batch.yarnLot,batch.batchNotes,closedAt,batch.correctionInstruction,batch.correctionTradeSymbol,batch.correctionTargetColor,batch.correctionTargetWidth,batch.correctionTargetGrammage,now(),req.user.id,batch.id,id);
-          const stamp=now();recomputeBatchClosure(db,batch.id,req.user.id,stamp);syncAutoLostIncident(db,batch.id,req.user.id,stamp);syncAutoRemainderPmr(db,batch.id,req.user.id,stamp);
+          recomputeBatchClosure(db,batch.id,req.user.id,now());
         }
+        const syncStamp=now();syncAutoLostIncidentsForOrder(db,id,req.user.id,syncStamp);syncAutoRemainderPmrsForOrder(db,id,req.user.id,syncStamp);
         const calculationInputsChanged=rawSymbol!==order.raw_symbol||tradeSymbol!==order.trade_symbol||editedBatches.some((batch,index)=>Math.abs(batch.rawWeight-Number(currentBatches[index].raw_weight_kg||0))>0.001||batch.sentPieces!==Number(currentBatches[index].sent_pieces)||batch.correctionTradeSymbol!==currentBatches[index].correction_trade_symbol||batch.correctionTargetColor!==currentBatches[index].correction_target_color||batch.correctionTargetGrammage!==currentBatches[index].correction_target_grammage||batch.correctionTargetWidth!==currentBatches[index].correction_target_width_cm);
         if(calculationInputsChanged)markSettlementChanged(db,editedBatches.map(batch=>batch.id),req.user.id,now());
         updateOrderStatus(ctx,id);
@@ -1628,6 +1689,7 @@ function handle(ctx) {
             db.prepare('DELETE FROM finishing_orders WHERE id=?').run(id);
           }else{
             if(root.correction_parent_batch_id)db.prepare("UPDATE finishing_batches SET workflow_status='do_poprawy',closed_at=NULL WHERE id=?").run(root.correction_parent_batch_id);
+            const stamp=now();syncAutoLostIncidentsForOrder(db,id,req.user.id,stamp);syncAutoRemainderPmrsForOrder(db,id,req.user.id,stamp);
             updateOrderStatus(ctx,id);
           }
           audit(req.user,'Usunięto zlecenie barwiarskie i powiązane poprawki, przyjęcia oraz rozliczenia',null,JSON.stringify({orderId:id,batchId:removeBatchId,deletedBatchIds:removed,receiptCount:info.receipt_count,finishedPieces:info.finished_pieces,sourceShipmentArticleId:order.shipment_article_id,orderRemoved:!remaining}),null);
@@ -1804,7 +1866,7 @@ function handle(ctx) {
       const expectedBatchPieces=Math.max(0,Number(capacity.effectiveBatchPieces||0)),stillPartial=!additionalPmBatch&&expectedBatchPieces>0&&receivedTotal<expectedBatchPieces,closeWithMissing=stillPartial&&mainPmBatch&&form.close_incomplete==='1';
       if(stillPartial&&mainPmBatch&&modalReceipt&&!['0','1'].includes(form.close_incomplete))fail(400,'Wybierz, czy zostawić główne zlecenie otwarte, czy zamknąć je z brakami.');
       db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial&&!closeWithMissing?1:0,batchId);
-      const stamp=now(),complete=recomputeBatchClosure(db,batchId,req.user.id,stamp);syncAutoLostIncident(db,batchId,req.user.id,stamp);const autoPmr=complete?syncAutoRemainderPmr(db,batchId,req.user.id,stamp):null;
+      const stamp=now(),complete=recomputeBatchClosure(db,batchId,req.user.id,stamp);syncAutoLostIncidentsForOrder(db,batch.order_id,req.user.id,stamp);const autoPmrs=syncAutoRemainderPmrsForOrder(db,batch.order_id,req.user.id,stamp),autoPmr=complete?autoPmrs.find(item=>item.batchId===batchId)||null:null;
       if(complete&&batch.correction_of_batch_id)db.prepare("UPDATE finishing_batches SET complaint_status='poprawiona',updated_at=?,updated_by=? WHERE id=? AND complaint_status='reklamowana'").run(stamp,req.user.id,batch.correction_of_batch_id);
       markSettlementChanged(db,[batchId],req.user.id,now());
       updateOrderStatus(ctx,batch.order_id);
@@ -1832,8 +1894,8 @@ function handle(ctx) {
       const remainingPieces=Number(db.prepare('SELECT coalesce(sum(raw_pieces_received),0) pieces FROM finishing_receipts WHERE batch_id=?').get(batchId)?.pieces||0),capacity=receiptCapacity(db,currentOrder,currentBatch),hasReceipts=Boolean(db.prepare('SELECT 1 FROM finishing_receipts WHERE batch_id=? LIMIT 1').get(batchId)),stillPartial=hasReceipts&&Number(capacity.effectiveBatchPieces||0)>remainingPieces;
       if(hasReceipts)db.prepare('UPDATE finishing_receipts SET incomplete=? WHERE batch_id=?').run(stillPartial?1:0,batchId);
       const stamp=now(),complete=recomputeBatchClosure(db,batchId,req.user.id,stamp);
-      syncAutoLostIncident(db,batchId,req.user.id,stamp);
-      syncAutoRemainderPmr(db,batchId,req.user.id,stamp);
+      syncAutoLostIncidentsForOrder(db,batch.order_id,req.user.id,stamp);
+      syncAutoRemainderPmrsForOrder(db,batch.order_id,req.user.id,stamp);
       if(batch.correction_of_batch_id&&!complete)db.prepare("UPDATE finishing_batches SET complaint_status='reklamowana',updated_at=?,updated_by=? WHERE id=? AND complaint_status='poprawiona'").run(stamp,req.user.id,batch.correction_of_batch_id);
       markSettlementChanged(db,[batchId],req.user.id,stamp);
       updateOrderStatus(ctx,batch.order_id);
@@ -1876,7 +1938,7 @@ function handle(ctx) {
     if(rawReceived!==null&&rawReceived<0||width!==null&&width<=0||grammage!==null&&grammage<=0)fail(400,'Wartości przyjęcia muszą być nieujemne.');
     const incomplete=form.incomplete==='1';
     if(rawReceived<1&&!incomplete)fail(400,'Wpisz co najmniej jedną przyjętą belkę albo oznacz przyjęcie jako niekompletne.');
-    if(!bales.length){transaction(()=>{db.prepare('UPDATE finishing_receipts SET used_weight_kg=?,raw_pieces_received=?,actual_color=?,actual_width_cm=?,actual_grammage=?,notes=?,incomplete=? WHERE id=?').run(used,rawReceived||0,text(form,'actual_color',160),width,grammage,text(form,'notes',3000),incomplete?1:0,receiptId);const stamp=now();recomputeBatchClosure(db,receipt.batch_id,req.user.id,stamp);syncAutoLostIncident(db,receipt.batch_id,req.user.id,stamp);syncAutoRemainderPmr(db,receipt.batch_id,req.user.id,stamp);markSettlementChanged(db,[receipt.batch_id],req.user.id,stamp);updateOrderStatus(ctx,receipt.order_id);audit(req.user,'Poprawiono przyjęcie zlecenia barwiarskiego',null,JSON.stringify({receiptId,batchId:receipt.batch_id,usedWeightKg:used,incomplete}),null);});return redirect(req,res,`/finishing/orders/${receipt.order_id}#batch-${receipt.batch_id}`,'Zapisano zmiany przyjęcia.');}
+    if(!bales.length){transaction(()=>{db.prepare('UPDATE finishing_receipts SET used_weight_kg=?,raw_pieces_received=?,actual_color=?,actual_width_cm=?,actual_grammage=?,notes=?,incomplete=? WHERE id=?').run(used,rawReceived||0,text(form,'actual_color',160),width,grammage,text(form,'notes',3000),incomplete?1:0,receiptId);const stamp=now();recomputeBatchClosure(db,receipt.batch_id,req.user.id,stamp);syncAutoLostIncidentsForOrder(db,receipt.order_id,req.user.id,stamp);syncAutoRemainderPmrsForOrder(db,receipt.order_id,req.user.id,stamp);markSettlementChanged(db,[receipt.batch_id],req.user.id,stamp);updateOrderStatus(ctx,receipt.order_id);audit(req.user,'Poprawiono przyjęcie zlecenia barwiarskiego',null,JSON.stringify({receiptId,batchId:receipt.batch_id,usedWeightKg:used,incomplete}),null);});return redirect(req,res,`/finishing/orders/${receipt.order_id}#batch-${receipt.batch_id}`,'Zapisano zmiany przyjęcia.');}
     const hasMeters=bales.some(bale=>bale.meters!==null),hasWeights=bales.some(bale=>bale.weight_kg!==null);
     const meters=hasMeters?parseList(form.meters_list,'metry'):[],weights=hasWeights?parseList(form.weights_list,'kg'):[];
     if(hasMeters&&meters.length!==bales.length)fail(400,'Podaj jedną wartość metrów dla każdej belki.');
@@ -1895,7 +1957,7 @@ function handle(ctx) {
         const snapshot={...settlement,status,version,updated_at:stamp,updated_by:req.user.id,approved_at:null,approved_by:null};
         db.prepare('INSERT INTO finishing_settlement_history(settlement_id,version,action,snapshot,changed_at,changed_by) VALUES(?,?,?,?,?,?)').run(settlement.id,version,'changed',JSON.stringify(snapshot),stamp,req.user.id);
       }
-      recomputeBatchClosure(db,receipt.batch_id,req.user.id,stamp);syncAutoLostIncident(db,receipt.batch_id,req.user.id,stamp);syncAutoRemainderPmr(db,receipt.batch_id,req.user.id,stamp);updateOrderStatus(ctx,receipt.order_id);
+      recomputeBatchClosure(db,receipt.batch_id,req.user.id,stamp);syncAutoLostIncidentsForOrder(db,receipt.order_id,req.user.id,stamp);syncAutoRemainderPmrsForOrder(db,receipt.order_id,req.user.id,stamp);updateOrderStatus(ctx,receipt.order_id);
       audit(req.user,'Poprawiono ilości przyjętego zlecenia barwiarskiego',null,JSON.stringify({receiptId,batchId:receipt.batch_id,usedWeightKg:used,finishedMeters:nextMeters,finishedWeightKg:nextWeight,relatedSettlements:settlements.length}),null);
     });
     return redirect(req,res,`/finishing/orders/${receipt.order_id}#batch-${receipt.batch_id}`,'Zapisano poprawione ilości. Rozliczenie wymaga ponownego przeliczenia i zatwierdzenia.','warning');
