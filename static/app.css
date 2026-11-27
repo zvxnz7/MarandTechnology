@@ -605,19 +605,6 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-label-preview-panel>small{color:var(--muted);font-size:12px}
 .finishing-label-preview-size{width:50mm;height:74mm;background:#fff;box-shadow:0 8px 22px #20283233}
 .finishing-label-preview{width:50mm;height:74mm;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif}
-.finishing-label-preview .label-logo{display:block;max-width:44mm;width:auto;height:auto;max-height:13mm;object-fit:contain;object-position:center;margin:0 auto 2mm}
-.finishing-label-preview .label-custom-brand{min-height:12mm;display:flex;align-items:center;font-size:12pt;font-weight:700;margin:0 0 2mm}
-.finishing-label-preview .label-content{display:flex;flex:1;flex-direction:column;gap:1.1mm;min-height:0}
-.finishing-label-preview .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm}
-.finishing-label-preview .label-row span{font-size:6.2pt;color:#525a62;flex:0 0 auto;white-space:nowrap}
-.finishing-label-preview .label-row strong{font-size:calc(10.5pt * var(--label-data-scale,1) * var(--label-row-scale,1));line-height:1.05;text-align:right;white-space:nowrap;overflow-wrap:normal;min-width:0}
-.finishing-label-preview .label-row-before-quantity{border-bottom:0;padding-bottom:0}
-.finishing-label-preview .label-quantity{margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:nowrap;border-top:.5mm solid #222}
-.finishing-label-preview .label-quantity>div{display:grid;gap:.5mm;white-space:nowrap}
-.finishing-label-preview .label-quantity span{font-size:7pt;font-weight:700}
-.finishing-label-preview .label-quantity strong{font-size:calc(18pt * var(--label-quantity-scale,1));line-height:1.1;white-space:nowrap}
-.finishing-label-preview .label-secondary-quantity{font-size:7pt;font-weight:600}
-.finishing-label-preview .label-extra-text{justify-content:flex-start;white-space:nowrap;overflow-wrap:normal}
 .finishing-label-preview>small{position:absolute;bottom:1mm;right:2mm;font-size:5.5pt}
 .finishing-label-options{display:grid;align-content:start;gap:12px;min-width:0;max-height:calc(100dvh - 104px);overflow:auto;padding:16px 18px}
 .finishing-label-options fieldset{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;min-width:0;margin:0;padding:9px 11px 10px;border:1px solid var(--line);border-radius:7px}
@@ -973,9 +960,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .finishing-receipt-undo-dialog{width:min(520px,calc(100vw - 32px))}
 .finishing-receipt-undo-dialog .dialog-body>p{margin-top:0}
 .finishing-receipt-undo-dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
-.finishing-label-preview .label-content{position:relative;padding-bottom:13mm;overflow:hidden}
-.finishing-label-preview .label-row{flex:0 0 auto}
-.finishing-label-preview .label-quantity{position:absolute;left:0;right:0;bottom:0;margin:0;flex:0 0 auto}
+
 .finishing-pms-status{background:#e8efff;color:#314f90;border:1px solid #cbd8f3}
 .warehouse-selected-head>div{flex:1;min-width:0}
 .warehouse-symbol-row{width:100%}

@@ -1,0 +1,19 @@
+@page{size:50mm 74mm;margin:0}
+.label{box-sizing:border-box;width:50mm;height:74mm;margin:0;padding:2.5mm 3mm;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#111;font:8pt/1.18 Arial,sans-serif;page-break-inside:avoid;break-inside:avoid}
+.label[hidden],.label-row[hidden]{display:none!important}
+.label .label-logo{display:block;max-width:44mm!important;width:auto!important;height:auto!important;max-height:13mm!important;object-fit:contain;object-position:center;margin:0 auto 2mm}
+.label .label-custom-brand{min-height:12mm;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12pt;font-weight:700;margin:0 0 2mm;overflow:hidden}
+.label .label-content{display:flex;flex:1;flex-direction:column;gap:1.1mm;min-height:0;position:relative;padding-bottom:13mm;overflow:hidden}
+.label .label-row{display:flex;flex:0 0 auto;flex-wrap:nowrap;justify-content:space-between;align-items:baseline;gap:2mm;border-bottom:.2mm solid #d5d8da;padding-bottom:.6mm;min-width:0}
+.label .label-row-before-quantity{border-bottom:0;padding-bottom:0}
+.label .label-row span{flex:0 0 auto;font-size:6.2pt;color:#525a62;white-space:nowrap}
+.label .label-row strong{min-width:0;font-size:calc(10.5pt * var(--label-data-scale,1) * var(--label-row-scale,1));line-height:1.05;text-align:right;white-space:nowrap;overflow-wrap:normal}
+.label .label-extra-text{justify-content:flex-start;white-space:nowrap;overflow-wrap:normal}
+.label .label-quantity{position:absolute;left:0;right:0;bottom:0;margin:0;padding-top:1.5mm;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-rows:auto auto!important;align-items:baseline;column-gap:2mm;border-top:.5mm solid #222}
+.label .label-quantity>div:first-child{grid-column:1;grid-row:1;display:grid;gap:.5mm;white-space:nowrap}
+.label .label-quantity span{font-size:7pt;font-weight:700}
+.label .label-quantity-values{grid-column:2;grid-row:1/span 2;display:flex;flex-direction:column;align-items:flex-end;gap:.3mm;min-width:0;white-space:nowrap}
+.label .label-quantity-values strong{font-size:calc(18pt * var(--label-quantity-scale,1));line-height:1.1;text-align:right;white-space:nowrap}
+.label .label-secondary-quantity{text-align:right;font-size:7pt;font-weight:600;white-space:nowrap}
+.label .label-example-value{color:#a7adb3!important}
+@media print{html,body{margin:0;padding:0}.label+.label{page-break-before:always;break-before:page}}

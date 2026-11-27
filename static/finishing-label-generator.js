@@ -2,11 +2,6 @@
 
 const generatorForm = document.querySelector('.manual-label-controls');
 const labelList = document.querySelector('[data-manual-labels]');
-const labelWords = {
-  pl: {symbol:'SYMBOL',color:'KOLOR',lot:'NR PARTII',width:'SZEROKOŚĆ',grammage:'GRAMATURA',raw:'SYMBOL SUROWY',client:'KLIENT',distance:'DYSTANS',meters:'ILOŚĆ [mb]',weight:'WAGA [kg]',extra:'',secondaryMeters:'DŁUGOŚĆ [m]',secondaryWeight:'WAGA [kg]'},
-  en: {symbol:'INDEX',color:'COLOR',lot:'BATCH NO.',width:'WIDTH',grammage:'WEIGHT',raw:'GREIGE INDEX',client:'CLIENT',distance:'DISTANCE',meters:'QUANTITY [m]',weight:'WEIGHT [kg]',extra:'',secondaryMeters:'LENGTH [m]',secondaryWeight:'WEIGHT [kg]'}
-};
-
 const inputValue = key => generatorForm?.querySelector(`[data-label-input="${key}"]`)?.value.trim() || '';
 const splitValues = value => value.split(/[;\n]+/).map(item => item.trim()).filter(Boolean);
 const parseMeters = value => value ? value.split(/[;,\n]+/).map(item => item.trim()).filter(Boolean) : [];
@@ -22,37 +17,6 @@ const parseWeights = (value, expectedCount=0) => {
   if (expectedCount === 1) return [parts.join('.')];
   return parts;
 };
-const addManualRow = (label, title, value, unit='') => {
-  const row = document.createElement('div');
-  row.className = `label-row${label === 'extra' ? ' label-extra-text label-row-before-quantity' : ''}`;
-  row.dataset.labelKey = label;
-  if (label !== 'extra') {
-    const name = document.createElement('span');
-    name.textContent = title;
-    row.append(name);
-  }
-  const data = document.createElement('strong');
-  data.textContent = `${value || '—'}${unit}`;
-  row.append(data);
-  return row;
-};
-const applyBrand = (label, mode, brandText) => {
-  label.querySelector('[data-label-brand]')?.remove();
-  if (mode === 'logo') {
-    const logo = document.createElement('img');
-    logo.className = 'label-logo';
-    logo.dataset.labelBrand = '';
-    logo.src = '/static/marand-label-logo.png';
-    logo.alt = 'MARAND Technical textiles';
-    label.prepend(logo);
-  } else if (brandText) {
-    const text = document.createElement('div');
-    text.className = 'label-custom-brand';
-    text.dataset.labelBrand = '';
-    text.textContent = brandText;
-    label.prepend(text);
-  }
-};
 const setValidation = message => {
   const validation = generatorForm?.querySelector('[data-label-validation]');
   const print = document.querySelector('[data-label-print]');
@@ -62,7 +26,6 @@ const setValidation = message => {
 const renderManualLabel = () => {
   if (!generatorForm || !labelList) return;
   const language = document.querySelector('[name="manual_language"]:checked')?.value === 'en' ? 'en' : 'pl';
-  const words = labelWords[language];
   const enabled = new Set([...generatorForm.querySelectorAll('[data-manual-field]:checked')].map(input => input.dataset.manualField));
   const meters = parseMeters(inputValue('meters'));
   const weights = parseWeights(inputValue('weight'), meters.length);
@@ -81,53 +44,29 @@ const renderManualLabel = () => {
   const brandText = inputValue('brand');
   const extraText = inputValue('extra');
   const exampleMode = !hasMeters && !hasWeights;
-  const previous = [...labelList.querySelectorAll('[data-manual-label]')];
-  const templates = Array.from({length:count},(_,index) => previous[index] || previous[0]?.cloneNode(true));
-  labelList.replaceChildren(...templates);
-  templates.forEach((label,index) => {
-    const content = label.querySelector('[data-manual-label-content]');
-    content.replaceChildren();
-    const value = key => inputValue(key);
-    const definitions = [
-      ['symbol', words.symbol, value('symbol'), ''], ['raw', words.raw, value('raw'), ''], ['color', words.color, value('color'), ''],
-      ['lot', words.lot, value('lot'), ''], ['width', words.width, value('width'), ' cm'], ['grammage', words.grammage, value('grammage'), ' g/m²'],
-      ['distance', words.distance, value('distance'), ' mm'], ['client', words.client, value('client'), ''], ['extra', '', extraText, '']
-    ];
-    for (const [key,title,data,unitLabel] of definitions) if (enabled.has(key)) content.append(addManualRow(key,title,data,key==='distance'&&data?unitLabel:''));
+  const definitions = language === 'en'
+    ? [['symbol','INDEX','symbol',''],['raw','GREIGE INDEX','raw',''],['color','COLOR','color',''],['lot','BATCH NO.','lot',''],['width','WIDTH','width',' cm'],['grammage','WEIGHT','grammage',' g/m²'],['distance','DISTANCE','distance',' mm'],['client','CLIENT','client',''],['extra','', 'extra','']]
+    : [['symbol','SYMBOL','symbol',''],['raw','SYMBOL SUROWY','raw',''],['color','KOLOR','color',''],['lot','NR PARTII','lot',''],['width','SZEROKOŚĆ','width',' cm'],['grammage','GRAMATURA','grammage',' g/m²'],['distance','DYSTANS','distance',' mm'],['client','KLIENT','client',''],['extra','', 'extra','']];
+  const labels = [];
+  for (let index=0;index<count;index++) {
     const metersValue = meters[index] || '';
     const weightValue = weights[index] || '';
     const mainValue = unit === 'weight' ? (weightValue || (exampleMode?'22,1':'')) : (metersValue || (exampleMode?'100':''));
     const otherValue = unit === 'weight' ? (metersValue || (exampleMode?'100':'')) : (weightValue || (exampleMode?'22,1':''));
-    const quantity = document.createElement('div');
-    quantity.className = 'label-quantity';
-    quantity.dataset.labelKey = 'quantity';
-    quantity.dataset.quantityMeters = metersValue || '—';
-    quantity.dataset.quantityKg = weightValue || '—';
-    const summary = document.createElement('div');
-    const title = document.createElement('span');
-    title.textContent = unit === 'weight' ? words.weight : words.meters;
-    summary.append(title);
-    const amount = document.createElement('strong');
-    amount.textContent = mainValue || '—';
-    if (exampleMode) amount.classList.add('label-example-value');
-    const amountStack = document.createElement('div');
-    amountStack.className = 'label-quantity-values';
-    amountStack.append(amount);
-    if (secondaryEnabled && otherValue) {
-      const secondary = document.createElement('small');
-      secondary.className = 'label-secondary-quantity';
-      secondary.textContent = `${unit === 'weight' ? words.secondaryMeters : words.secondaryWeight}: ${otherValue}`;
-      if (exampleMode) secondary.classList.add('label-example-value');
-      amountStack.append(secondary);
-    }
-    quantity.append(summary,amountStack);
-    content.append(quantity);
-    label.lang = language;
-    applyBrand(label,brandMode,brandText);
-  });
+    const fields = definitions.filter(([key]) => enabled.has(key)).map(([key,title,input,unitLabel]) => ({key:key==='extra'?'extra-text':key,label:title,value:inputValue(input),unit:key==='distance'&&inputValue(input)?unitLabel:'',show:key==='extra'?Boolean(inputValue(input)):true}));
+    const rendered = window.MarandLabelRenderer.render({language,brandMode,brandText,fields,quantity:{
+      label:unit==='weight'?(language==='en'?'QUANTITY [kg]':'ILOŚĆ [kg]'):(language==='en'?'QUANTITY [m]':'ILOŚĆ [mb]'),
+      value:mainValue||'—',secondaryLabel:unit==='weight'?(language==='en'?'LENGTH [m]':'DŁUGOŚĆ [m]'):(language==='en'?'WEIGHT [kg]':'WAGA [kg]'),secondaryValue:secondaryEnabled?otherValue:'',
+    },rootClass:'manual-label-preview',rootAttributes:'data-manual-label'});
+    const template=document.createElement('template');template.innerHTML=rendered;
+    const label=template.content.firstElementChild;
+    if(exampleMode)label?.querySelectorAll('.label-quantity-values strong,.label-secondary-quantity').forEach(value=>value.classList.add('label-example-value'));
+    if(label)labels.push(label);
+  }
+  labelList.replaceChildren(...labels);
   const countLabel = document.querySelector('[data-label-count]');
   if (countLabel) countLabel.textContent = `${count} ${count===1?'etykieta':'etykiet'} · 50 × 74 mm`;
-  window.fitFinishingLabelRows?.();
+  window.MarandLabelRenderer.fitAll(labelList);
 };
 
 generatorForm?.addEventListener('input',renderManualLabel);
