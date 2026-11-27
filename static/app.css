@@ -490,6 +490,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-order-batch-actions-row .finishing-order-remove-spec-form{display:inline-flex;margin:0}
 .finishing-order-receive-actions .finishing-row-action{margin:0}
 .finishing-orders-list td,.finishing-orders-list td .badge{font-size:13px}
+.finishing-orders-list td:nth-child(4),.finishing-orders-list td:nth-child(5){white-space:nowrap}
+.finishing-order-trade-symbol{white-space:nowrap}
 .finishing-orders-list td:nth-child(6){white-space:nowrap}
 .finishing-orders-list th:nth-child(8),.finishing-orders-list td:nth-child(8){padding-right:28px}
 .finishing-orders-list th:last-child{text-align:right}
