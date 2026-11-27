@@ -68,6 +68,23 @@ document.querySelectorAll('[data-finishing-lot-autosave]').forEach(form=>{
  input.addEventListener('input',schedule);input.addEventListener('change',()=>{clearTimeout(timer);save();});
  form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);save();});
 });
+const setupFinishingPlantOrderAutosave=scope=>scope.querySelectorAll('[data-finishing-plant-order-autosave]').forEach(form=>{
+ if(form.dataset.autosaveReady==='1')return;form.dataset.autosaveReady='1';
+ const input=form.elements.finishing_plant_order_no;let timer=null,saving=false,queued=false,lastSaved=input.value.trim();
+ const save=async()=>{
+  const value=input.value.trim();if(value===lastSaved)return;if(saving){queued=true;return;}saving=true;
+  try{
+   const response=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:new URLSearchParams(new FormData(form))}),result=await response.json();
+   if(!response.ok||!result.ok)throw new Error(result.message||'Nie udało się zapisać numeru zlecenia wykańczalni.');
+   lastSaved=value;form.dataset.saveState='saved';input.title='Nr zlecenia wykańczalni zapisany';
+  }catch{form.dataset.saveState='error';input.title='Nie udało się zapisać numeru. Sprawdź połączenie i spróbuj ponownie.';}
+  finally{saving=false;if(queued){queued=false;timer=setTimeout(save,150);}}
+ };
+ const schedule=()=>{clearTimeout(timer);if(input.value.trim()===lastSaved){form.dataset.saveState='';return;}form.dataset.saveState='pending';timer=setTimeout(save,350);};
+ input.addEventListener('input',schedule);input.addEventListener('change',()=>{clearTimeout(timer);save();});
+ form.addEventListener('submit',event=>{event.preventDefault();clearTimeout(timer);save();});
+});
+setupFinishingPlantOrderAutosave(document);
 document.querySelectorAll('[data-finishing-lot-confirm]').forEach(form=>form.addEventListener('submit',async event=>{
  event.preventDefault();const button=form.querySelector('[type="submit"]');if(button)button.disabled=true;
  try{
@@ -973,7 +990,7 @@ document.querySelectorAll('form[data-live-search]').forEach(liveSearch=>{
    const html=await response.text(),doc=new DOMParser().parseFromString(html,'text/html'),next=doc.querySelector('[data-live-results]'),nextCount=doc.querySelector('[data-live-count]');
    if(!next)throw new Error('Brak wyników w odpowiedzi.');
    if(sequence!==searchSequence)return;
-   results.innerHTML=next.innerHTML;
+   results.innerHTML=next.innerHTML;setupFinishingPlantOrderAutosave(results);
    if(count&&nextCount)count.textContent=nextCount.textContent;
    syncControls(url);history.replaceState({},'',url);activeRow=-1;
   }catch(error){if(sequence===searchSequence)location.assign(url);}

@@ -655,9 +655,8 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-receive-form input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .finishing-receive-form input[type="number"]::-webkit-inner-spin-button,.finishing-receive-form input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .finishing-receive-summary-label{display:grid;gap:5px;margin:2px 0 0;font-size:12px;font-weight:650}
-.finishing-plant-order-number{display:grid;grid-template-columns:minmax(160px,320px);gap:6px;margin-bottom:12px;font-size:12px;font-weight:650}
-.finishing-plant-order-number .muted{font-weight:400}
-.finishing-plant-order-number input{width:100%;min-width:0}
+.finishing-order-plant-no-inline[data-save-state="saved"] input{border-color:#8dbb98}
+.finishing-order-plant-no-inline[data-save-state="error"] input{border-color:#c93237;background:#fff7f7}
 .finishing-receive-summary-label textarea{min-height:54px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px}
 .finishing-receive-summary-label small{color:#a12a2e;font-size:11px;font-weight:500}
 .finishing-receive-summary-label textarea{min-height:62px;line-height:1.55}
