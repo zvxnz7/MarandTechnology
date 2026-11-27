@@ -538,12 +538,24 @@ function migrateV27(db){
 }
 function migrateV28(db){
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>=28){db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));return;}
+  if(version>=28){db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));migrateV29(db);return;}
   db.exec('BEGIN IMMEDIATE');
   try{
     const columns=new Set(db.prepare("PRAGMA table_info('articles')").all().map(column=>column.name));
     if(!columns.has('min_stock_kg'))db.exec('ALTER TABLE articles ADD COLUMN min_stock_kg REAL CHECK(min_stock_kg IS NULL OR min_stock_kg>=0)');
     db.exec('PRAGMA user_version=28; COMMIT');
+  }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
+  db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
+  migrateV29(db);
+}
+function migrateV29(db){
+  const version=db.prepare('PRAGMA user_version').get().user_version;
+  if(version>=29){db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));return;}
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const columns=new Set(db.prepare("PRAGMA table_info('finishing_batches')").all().map(column=>column.name));
+    if(!columns.has('finishing_plant_order_no'))db.exec("ALTER TABLE finishing_batches ADD COLUMN finishing_plant_order_no TEXT NOT NULL DEFAULT ''");
+    db.exec('PRAGMA user_version=29; COMMIT');
   }catch(error){try{db.exec('ROLLBACK')}catch{}throw error;}
   db.exec(fs.readFileSync(path.join(__dirname,'..','schema.sql'),'utf8'));
 }
@@ -554,8 +566,9 @@ function migrate(db, dbPath) {
   const legacy = db.prepare('PRAGMA table_info(articles)').all();
   if (!legacy.length) { db.exec(schema); db.exec('CREATE UNIQUE INDEX IF NOT EXISTS finishing_orders_source_remainder_batch ON finishing_orders(source_remainder_batch_id) WHERE source_remainder_batch_id IS NOT NULL'); migrateStarterArticles(db); migrateV5(db); migrateV6(db); migrateV7(db); migrateV8(db); migrateV9(db); migrateV10(db); migrateV11(db); migrateV12(db); migrateV13(db); migrateV14(db); migrateV15(db); migrateV16(db); migrateV17(db); migrateV18(db); return; }
   const version=db.prepare('PRAGMA user_version').get().user_version;
-  if(version>28)throw new Error('Baza pochodzi z nowszej wersji programu.');
-  if(version===28) { db.exec(schema); return; }
+  if(version>29)throw new Error('Baza pochodzi z nowszej wersji programu.');
+  if(version===29) { db.exec(schema); return; }
+  if(version===28) { migrateV29(db); return; }
   if(version===27) { db.exec(schema); migrateV28(db); return; }
   if(version===26) { migrateV27(db); return; }
   if(version===25) { migrateV26(db); return; }
