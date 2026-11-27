@@ -62,7 +62,7 @@ function calculationContext(db,batchId){
 }
 function settlementRows(db){
   const rows=db.prepare(`SELECT b.id batch_id,b.order_id,b.correction_of_batch_id,b.correction_parent_batch_id,b.cancelled_at,b.complaint_status,b.workflow_status,b.finishing_lot,b.sent_at,b.raw_weight_kg,b.sent_pieces,b.closed_at,
-      o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,o.client_name,o.order_type,o.manual_entry,o.manual_reference,o.manual_input_description,o.source_remainder_batch_id,o.status order_status,o.source_shipment_no,
+      o.raw_symbol,coalesce(nullif(b.correction_trade_symbol,''),o.trade_symbol) trade_symbol,o.recipe_snapshot,o.client_name,o.order_type,o.manual_entry,o.manual_reference,o.manual_input_description,o.notes order_notes,o.source_remainder_batch_id,o.status order_status,o.source_shipment_no,
       o.finishing_plant_id,fp.name finishing_plant_name,a.description article_description,s.shipment_year,s.sequence shipment_sequence,sa.sequence article_sequence,
       coalesce(nullif(fs.receipt_date,''),(SELECT max(r.received_at) FROM finishing_receipts r WHERE r.batch_id=b.id)) receipt_date
     FROM finishing_batches b JOIN finishing_orders o ON o.id=b.order_id

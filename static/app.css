@@ -866,9 +866,6 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-settlement-head{align-items:center}
 .finishing-settlement-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .finishing-settlement-title h1{margin:0}
-.finishing-receipt-tabs{display:flex;gap:8px;margin:12px 0 14px;border-bottom:1px solid var(--line)}
-.finishing-receipt-tabs a{display:inline-flex;padding:9px 13px;border-bottom:3px solid transparent;color:var(--muted);font-weight:650;text-decoration:none}
-.finishing-receipt-tabs a.selected{border-color:var(--red);color:var(--ink)}
 .finishing-settlements-list input[readonly]{background:#f3f5f6;color:#48525c}
 .finishing-load-calculation{display:inline-flex;align-items:center;gap:7px}
 .finishing-load-calculation svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -877,16 +874,15 @@ select.stock-state.stock-state-in_production{background-color:#e5f4e9!important;
 .finishing-current-calculation{padding:10px 12px;border-radius:6px;background:#f1f4f6}
 .finishing-settlement-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(5,minmax(110px,.7fr));align-items:end;gap:10px}
 .finishing-settlement-filters>label{min-width:0}
-.finishing-settlements-list{min-width:1320px;table-layout:fixed}
+.finishing-settlements-list{min-width:1210px;table-layout:fixed}
 .finishing-settlements-list th,.finishing-settlements-list td{padding:7px 6px}
 .finishing-settlements-list th:nth-child(1),.finishing-settlements-list td:nth-child(1){width:34px;text-align:center}
 .finishing-settlements-list th:nth-child(2),.finishing-settlements-list td:nth-child(2){width:145px}
 .finishing-settlements-list th:nth-child(3),.finishing-settlements-list td:nth-child(3){width:114px}
-.finishing-settlements-list th:nth-child(4),.finishing-settlements-list td:nth-child(4){width:145px}
-.finishing-settlements-list th:nth-child(5),.finishing-settlements-list td:nth-child(5),.finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6),.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7){width:115px}
-.finishing-settlements-list th:nth-child(8),.finishing-settlements-list td:nth-child(8){width:180px}
-.finishing-settlements-list th:nth-child(9),.finishing-settlements-list td:nth-child(9){width:90px}
-.finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10),.finishing-settlements-list th:nth-child(11),.finishing-settlements-list td:nth-child(11),.finishing-settlements-list th:nth-child(12),.finishing-settlements-list td:nth-child(12){width:105px}
+.finishing-settlements-list th:nth-child(4),.finishing-settlements-list td:nth-child(4),.finishing-settlements-list th:nth-child(5),.finishing-settlements-list td:nth-child(5),.finishing-settlements-list th:nth-child(6),.finishing-settlements-list td:nth-child(6){width:115px}
+.finishing-settlements-list th:nth-child(7),.finishing-settlements-list td:nth-child(7){width:180px}
+.finishing-settlements-list th:nth-child(8),.finishing-settlements-list td:nth-child(8){width:90px}
+.finishing-settlements-list th:nth-child(9),.finishing-settlements-list td:nth-child(9),.finishing-settlements-list th:nth-child(10),.finishing-settlements-list td:nth-child(10),.finishing-settlements-list th:nth-child(11),.finishing-settlements-list td:nth-child(11){width:105px}
 .finishing-settlement-pm-row th{padding:8px 10px;background:#e9edf1;border-top:2px solid #fff;text-align:left;font-size:13px}
 .finishing-settlement-pm-heading{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;text-align:left}
 .finishing-settlement-pm-status{display:inline-flex;align-items:center;vertical-align:middle}

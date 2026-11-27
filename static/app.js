@@ -547,6 +547,7 @@ const recalculateSettlementRow=row=>{
  const format=value=>new Intl.NumberFormat('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(value);
  const recalculate=()=>{
   const values=Object.fromEntries(Object.entries(controls).map(([key,input])=>[key,input?.value.trim()===''?null:Number(String(input?.value||'').replace(',','.'))]));
+  if(!controls.used)values.used=Number(row.dataset.usedWeightKg||0);
   if(!(qty>0)||Object.values(values).some(value=>value===null||!Number.isFinite(value))){actual.textContent='—';theory.textContent='';delta.textContent='';return;}
   const actualCost=(values.used*(values.price+values.finishing))/qty,theoreticalCost=(values.used*(values.theoretical+values.finishing))/qty;
   actual.textContent=`${format(actualCost)} zł/${unit}`;theory.textContent=`Teoria ${format(theoreticalCost)} zł/${unit}`;
